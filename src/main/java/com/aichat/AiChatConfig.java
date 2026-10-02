@@ -11,7 +11,7 @@ import net.runelite.client.config.Range;
 @ConfigGroup(AiChatConfig.GROUP)
 public interface AiChatConfig extends Config
 {
-	String GROUP = "ai-chat";
+	String GROUP = "osrs-ai-chat";
 
 	enum Provider
 	{
@@ -303,7 +303,7 @@ public interface AiChatConfig extends Config
 	@ConfigItem(
 		keyName = "rememberChats",
 		name = "Remember chats",
-		description = "Keep your chats when RuneLite closes, saved on this computer in .runelite/plugin-data/ai-chat (the latest 200 messages of each). Turning this off deletes the saved copy; chats then last only while RuneLite is open.",
+		description = "Keep your chats when RuneLite closes, saved on this computer in .runelite/plugin-data/osrs-ai-chat (the latest 200 messages of each). Turning this off deletes the saved copy; chats then last only while RuneLite is open.",
 		section = CHAT,
 		position = 4
 	)

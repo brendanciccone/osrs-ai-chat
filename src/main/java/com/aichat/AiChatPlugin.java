@@ -53,7 +53,7 @@ import okhttp3.OkHttpClient;
 @Slf4j
 @PluginDescriptor(
 	name = "AI Chat",
-	internalName = "ai-chat",
+	internalName = "osrs-ai-chat",
 	description = "Chat with Claude, ChatGPT or any OpenAI-compatible model from a side panel or ::ai, with your own API key; get notified in game when it replies",
 	tags = {"claude", "chatgpt", "openai", "anthropic", "ollama", "ai", "llm", "assistant", "chat", "notifications"}
 )

@@ -47,12 +47,12 @@ you chose; there's no server in between.
 - **Your API key** is only sent to the provider it belongs to (never over plain `http://` to another computer on the
   internet). RuneLite keeps it with your other settings, unencrypted on your computer, and on RuneLite's servers if
   you use profile sync.
-- **Chats** are kept on this computer in `.runelite/plugin-data/ai-chat/chats.json` (the latest 200 messages of each),
-  so they're still there next time, including any character info that went with them. Clear and Delete remove them
+- **Chats** are kept on this computer in `.runelite/plugin-data/osrs-ai-chat/chats.json` (the latest 200 messages
+  of each), so they're still there next time, including any character info that went with them. Clear and Delete remove them
   from there too. Turn off **Remember chats** to keep chats only while RuneLite is open; that also deletes the saved
   copy. API keys are never saved there. With several RuneLite windows open, the first one remembers its chats and the
   others keep theirs only while open. Uninstalling AI Chat leaves the file: turn off **Remember chats** first, or
-  delete the `.runelite/plugin-data/ai-chat` folder afterwards.
+  delete the `.runelite/plugin-data/osrs-ai-chat` folder afterwards.
 - **Notifications** say which assistant replied, not what you asked.
 
 The provider's own privacy policy applies to what you send them.
