@@ -12,7 +12,7 @@ key. Free and open source.
 
 - A chat panel in the RuneLite sidebar, with several chats side by side
 - `::ai <message>` in the chatbox to ask without opening the panel (or `::ai` alone, or a hotkey you pick in the
-  settings, to open an "Ask:" box); the line is handled by the plugin and never sent to the game
+  settings, to open an "Ask:" box); the line is handled by the plugin and isn't sent to the game
 - Replies in the panel, echoed into the game chat, plus a RuneLite notification
 - Pick your provider: **Claude** (Anthropic), **ChatGPT** (OpenAI), or any service with an **OpenAI-compatible** API,
   such as OpenRouter, Groq, or a free model running on your own computer with Ollama or LM Studio
