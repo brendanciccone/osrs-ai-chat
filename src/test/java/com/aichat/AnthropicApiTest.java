@@ -13,6 +13,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
 import org.junit.After;
@@ -405,6 +406,35 @@ public class AnthropicApiTest
 		reply = send(api(), c).reply();
 		assertEquals("Looking.", reply.text);
 		assertNull(reply.rawMessages);
+	}
+
+	@Test
+	public void aTimeoutAfterTheRequestWentIsntRetried() throws Exception
+	{
+		// Holds every request until the test is over.
+		AtomicInteger hits = new AtomicInteger();
+		CountDownLatch release = new CountDownLatch(1);
+		server.server().createContext("/slow/", exchange ->
+		{
+			hits.incrementAndGet();
+			StandIn.await(release);
+			exchange.close();
+		});
+		try
+		{
+			OkHttpClient impatient = http.newBuilder().readTimeout(200, TimeUnit.MILLISECONDS).build();
+			AnthropicApi slow = new AnthropicApi(impatient, gson, server.url("/slow/v1/messages"), "sk-test", scheduler, refused);
+			StandIn.Heard heard = send(slow, conversation("claude-opus-5-5", "q"));
+			assertEquals("Claude took too long to answer. Try again, maybe with a shorter question or a faster model.", heard.error());
+			// Claude had the request and may have been answering it, and billing it: it isn't sent again.
+			assertTrue(heard.retries.isEmpty());
+			assertEquals(1, hits.get());
+			assertTrue(heard.failure.usage.incomplete);
+		}
+		finally
+		{
+			release.countDown();
+		}
 	}
 
 	@Test

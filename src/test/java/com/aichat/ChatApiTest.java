@@ -3,6 +3,9 @@ package com.aichat;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
+import java.io.IOException;
+import java.io.InterruptedIOException;
+import java.net.SocketTimeoutException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -181,6 +184,20 @@ public class ChatApiTest
 		ChatApi.ToolResult turnedDown = results.get().get(ChatApi.MAX_TOOL_CALLS);
 		assertTrue(turnedDown.error);
 		assertEquals("Too many look-ups at once: only the first 10 were run. Ask for fewer at a time.", turnedDown.content);
+	}
+
+	@Test
+	public void onlyATimeoutAfterConnectingIsTakingTooLong()
+	{
+		// The provider had the request: it may be answering it, and billing it.
+		assertTrue(ChatApi.tookTooLong(new SocketTimeoutException("timeout")));
+		assertTrue(ChatApi.tookTooLong(new SocketTimeoutException("Read timed out")));
+		assertTrue(ChatApi.tookTooLong(new InterruptedIOException("timeout")));
+		assertTrue(ChatApi.tookTooLong(new SocketTimeoutException()));
+		// Nothing answered at all.
+		assertFalse(ChatApi.tookTooLong(new SocketTimeoutException("connect timed out")));
+		assertFalse(ChatApi.tookTooLong(new SocketTimeoutException("failed to connect to /10.0.0.1 (port 443) after 10000ms")));
+		assertFalse(ChatApi.tookTooLong(new IOException("timeout")));
 	}
 
 	@Test

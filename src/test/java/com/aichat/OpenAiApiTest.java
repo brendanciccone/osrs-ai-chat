@@ -7,9 +7,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetAddress;
+import java.net.Proxy;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -17,6 +19,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
 import org.junit.After;
@@ -435,6 +438,40 @@ public class OpenAiApiTest
 		serve.setDaemon(true);
 		serve.start();
 		return HttpUrl.get("http://127.0.0.1:" + socket.getLocalPort() + "/v1/");
+	}
+
+	@Test
+	public void aTimeoutAfterTheRequestWentIsntRetried() throws Exception
+	{
+		// Holds every request until the test is over.
+		AtomicInteger hits = new AtomicInteger();
+		CountDownLatch release = new CountDownLatch(1);
+		server.server().createContext("/slow/", exchange ->
+		{
+			hits.incrementAndGet();
+			StandIn.await(release);
+			exchange.close();
+		});
+		try
+		{
+			// A service on the internet, as far as AI Chat can tell (one on this computer is never asked again anyway),
+			// though it's the stand-in on 127.0.0.1.
+			OkHttpClient impatient = http.newBuilder().readTimeout(200, TimeUnit.MILLISECONDS).proxy(Proxy.NO_PROXY)
+				.dns(host -> Collections.singletonList(InetAddress.getLoopbackAddress())).build();
+			int port = server.url("/").port();
+			OpenAiApi slow = new OpenAiApi(impatient, gson, HttpUrl.get("http://ai.example:" + port + "/slow/v1/"), "k", "m",
+				false, "low", scheduler, new ConcurrentHashMap<>());
+			StandIn.Heard heard = send(slow, conversation("m", "q"));
+			assertEquals("ai.example:" + port + " took too long to answer. Try again.", heard.error());
+			// The service had the request and may have been answering it, and billing it: it isn't sent again.
+			assertTrue(heard.retries.isEmpty());
+			assertEquals(1, hits.get());
+			assertTrue(heard.failure.usage.incomplete);
+		}
+		finally
+		{
+			release.countDown();
+		}
 	}
 
 	@Test
