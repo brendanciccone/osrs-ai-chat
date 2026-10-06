@@ -375,6 +375,39 @@ public class AnthropicApiTest
 	}
 
 	@Test
+	public void aReplyCutOffMidToolCallGoesBackAsText() throws Exception
+	{
+		server.answer(PATH, events(begin("claude-opus-5-5"), text(0, "Let me check."),
+			toolUse(1, "toolu_1", "wiki_search", "{\"query\": \"vor"), end("max_tokens", 5)));
+		ChatApi.Conversation c = conversation("claude-opus-5-5", "How much is a whip?");
+		c.tools.add(StandIn.tool("wiki_search"));
+		StandIn.Tools tools = new StandIn.Tools();
+		c.toolRunner = tools;
+		ChatApi.Reply reply = send(api(), c).reply();
+		assertTrue(reply.cutShort);
+		assertTrue(tools.calls.isEmpty());
+		assertNull("a tool call without its result can't go back", reply.rawMessages);
+
+		// The next message sends it as text: no tool call without a result after it.
+		ChatApi.Conversation next = conversation("claude-opus-5-5", "How much is a whip?", reply.text, "And a godsword?");
+		next.tools.add(StandIn.tool("wiki_search"));
+		next.turns.get(1).rawMessages = reply.rawMessages;
+		next.turns.get(1).rawKey = reply.rawKey;
+		JsonArray sent = api().body(next, true, true).getAsJsonArray("messages");
+		assertEquals(3, sent.size());
+		assertEquals("Let me check.", sent.get(1).getAsJsonObject().get("content").getAsString());
+
+		// Nor a reply whose last round came back empty after an earlier one wrote text.
+		server.clear();
+		server.answer(PATH,
+			events(begin("claude-opus-5-5"), text(0, "Looking."), toolUse(1, "t", "wiki_search", "{\"query\":\"x\"}"), end("tool_use", 3)),
+			events(begin("claude-opus-5-5"), end("end_turn", 1)));
+		reply = send(api(), c).reply();
+		assertEquals("Looking.", reply.text);
+		assertNull(reply.rawMessages);
+	}
+
+	@Test
 	public void toolsRunTogetherAndTheirResultsGoBackInOrder() throws Exception
 	{
 		server.answer(PATH,
