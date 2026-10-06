@@ -443,11 +443,21 @@ interface ChatApi
 		return f;
 	}
 
-	/** An error that says the account has run out of credits or hit a spending limit (OpenAI's insufficient_quota). */
+	/**
+	 * An error that says the account has run out of credits or hit a spending limit (OpenAI's insufficient_quota). Only
+	 * words that say so count: Groq's per-minute rate limits end with a link to its billing page, and a rate limit's
+	 * code says it is one.
+	 */
 	static boolean outOfCredits(String body)
 	{
 		String lower = body == null ? "" : body.toLowerCase(Locale.ROOT);
-		return lower.contains("quota") || lower.contains("credit") || lower.contains("billing") || lower.contains("spend");
+		if (lower.contains("rate_limit_exceeded"))
+		{
+			return false;
+		}
+		return lower.contains("insufficient_quota") || lower.contains("exceeded your current quota")
+			|| lower.contains("credit balance") || lower.contains("insufficient credits") || lower.contains("out of credits")
+			|| lower.contains("insufficient balance") || lower.contains("spend limit") || lower.contains("spending limit");
 	}
 
 	/**

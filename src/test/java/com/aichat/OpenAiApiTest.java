@@ -347,6 +347,19 @@ public class OpenAiApiTest
 		assertTrue(heard.error(), heard.error.contains("out of credits"));
 		assertTrue(heard.retries.isEmpty());
 		assertEquals(1, server.bodies.size());
+
+		// A rate limit that only links to the billing page is waited out.
+		server.clear();
+		server.answer(PATH, json(429, ChatApiTest.GROQ_RATE_LIMIT).header("retry-after", "0"), json(200, OK));
+		heard = send(compatible("llama-3.3-70b-versatile"), conversation("llama-3.3-70b-versatile", "hi"));
+		assertEquals("Hi", heard.reply().text);
+		assertEquals(1, heard.retries.size());
+
+		// And explained as one when it isn't.
+		server.clear();
+		server.answer(PATH, json(429, ChatApiTest.GROQ_RATE_LIMIT).header("retry-after", "0"));
+		heard = send(compatible("llama-3.3-70b-versatile"), conversation("llama-3.3-70b-versatile", "hi"));
+		assertTrue(heard.error(), heard.error.contains("rate limit was hit"));
 	}
 
 	@Test

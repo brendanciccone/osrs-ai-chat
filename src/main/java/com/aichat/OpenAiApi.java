@@ -1130,7 +1130,7 @@ class OpenAiApi implements ChatApi
 			case 404:
 				return "Not found at " + where + ": check the model \"" + model + "\"" + (openai ? "" : " and the URL") + " in the AI Chat settings" + detail + ".";
 			case 429:
-				return lower.contains("quota") || lower.contains("credit") || lower.contains("spend") || lower.contains("billing")
+				return ChatApi.outOfCredits(message)
 					? where + " says your account is out of credits or over its limit" + detail + "."
 					: where + "'s rate limit was hit. Try again in a minute" + detail + ".";
 			case 500:

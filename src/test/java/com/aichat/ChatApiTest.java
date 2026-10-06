@@ -58,7 +58,14 @@ public class ChatApiTest
 		assertFalse(ChatApi.retryableStatus(429, "{\"error\":{\"message\":\"You exceeded your current quota\",\"type\":\"insufficient_quota\"}}"));
 		assertFalse(ChatApi.retryableStatus(429, "{\"error\":{\"message\":\"Your credit balance is too low\"}}"));
 		assertFalse(ChatApi.retryableStatus(429, "{\"error\":{\"message\":\"Monthly spend limit reached\"}}"));
+		// Groq's limit per minute links to its billing page: a short wait still clears it.
+		assertTrue(ChatApi.retryableStatus(429, GROQ_RATE_LIMIT));
 	}
+
+	static final String GROQ_RATE_LIMIT = "{\"error\":{\"message\":\"Rate limit reached for model `llama-3.3-70b-versatile` in "
+		+ "organization `org_1` service tier `on_demand` on tokens per minute (TPM): Limit 12000, Used 11000, Requested 2000. "
+		+ "Please try again in 1.5s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing\","
+		+ "\"type\":\"tokens\",\"code\":\"rate_limit_exceeded\"}}";
 
 	@Test
 	public void waitsAreWrittenForPeople()
