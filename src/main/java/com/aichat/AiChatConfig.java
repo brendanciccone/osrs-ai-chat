@@ -106,7 +106,7 @@ public interface AiChatConfig extends Config
 		keyName = "aiRequests",
 		name = "Enable AI requests",
 		description = "Send your messages to the AI provider you choose. Nothing is sent anywhere while this is off, Wiki look-ups included.",
-		warning = "This feature submits your IP address and the messages you type to the AI provider you choose: a 3rd-party server not controlled or verified by RuneLite developers.",
+		warning = "This feature submits your IP address and the messages you type to the AI provider you choose, and (with \"Wiki look-ups\", on by default) the search words and page titles the assistant looks up to the OSRS Wiki: 3rd-party servers not controlled or verified by RuneLite developers.",
 		section = ASSISTANT,
 		position = 0
 	)
