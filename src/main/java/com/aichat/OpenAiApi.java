@@ -428,6 +428,14 @@ class OpenAiApi implements ChatApi
 				again();
 				return;
 			}
+			// After the optional settings: a reply length limit bigger than a small model's context is refused in the
+			// same words, and leaving it out is all that takes.
+			if (ChatApi.tooLongForModel(code, text))
+			{
+				fail(ChatApi.tooLong(conversation.model, !openai && isPrivate(base.host())
+					? " A model on your own computer may also take more with a bigger context size in its own settings." : ""));
+				return;
+			}
 			if (ChatApi.retryableStatus(code, text) && retries < MAX_RETRIES)
 			{
 				long delay = ChatApi.retryDelay(response.header("retry-after-ms"), response.header("retry-after"), retries + 1);

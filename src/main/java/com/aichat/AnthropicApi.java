@@ -389,6 +389,11 @@ class AnthropicApi implements ChatApi
 				again();
 				return;
 			}
+			if (ChatApi.tooLongForModel(code, text))
+			{
+				fail(ChatApi.tooLong(conversation.model, ""));
+				return;
+			}
 			if (ChatApi.retryableStatus(code, text) && retries < MAX_RETRIES)
 			{
 				long delay = ChatApi.retryDelay(response.header("retry-after-ms"), response.header("retry-after"), retries + 1);

@@ -613,6 +613,23 @@ public class AnthropicApiTest
 	}
 
 	@Test
+	public void aChatTooLongForTheModelSaysSo() throws Exception
+	{
+		server.answer(PATH, json(400, "{\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"prompt is too long: 208310 tokens > 200000 maximum\"}}"));
+		StandIn.Heard heard = send(api(), conversation("claude-haiku-4-5", "hi"));
+		assertEquals("This chat is too long for claude-haiku-4-5. Start a new chat, or choose a model that can take more.", heard.error());
+		assertTrue(heard.failure.tooLong);
+		assertEquals("not asked again as it is", 1, server.bodies.size());
+
+		server.answer(PATH, json(413, "{\"type\":\"error\",\"error\":{\"type\":\"request_too_large\",\"message\":\"Request exceeds the maximum allowed number of bytes.\"}}"));
+		assertTrue(send(api(), conversation("claude-haiku-4-5", "hi")).await().failure.tooLong);
+
+		// Other mistakes in a request aren't about its length.
+		server.answer(PATH, json(400, "{\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"max_tokens: Field required\"}}"));
+		assertFalse(send(api(), conversation("claude-haiku-4-5", "hi")).await().failure.tooLong);
+	}
+
+	@Test
 	public void stoppingDuringARetryWaitMeansNoAnswer() throws Exception
 	{
 		server.answer(PATH, json(529, "{\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}").header("retry-after", "30"),

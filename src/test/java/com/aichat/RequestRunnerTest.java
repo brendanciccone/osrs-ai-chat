@@ -707,6 +707,55 @@ public class RequestRunnerTest
 	}
 
 	@Test
+	public void aChatTooLongForTheModelIsSummarisedAndAskedAgainOnce()
+	{
+		// Few messages, but long ones: too long for this model all the same.
+		history(3);
+		Chat.Message question = send("Q4");
+		assertFalse("not long by count", chat.isSummarizing());
+		host.activity.accept("Read the Wiki page \"Vorkath\"");
+		ChatApi.Failure tooLong = ChatApi.tooLong("claude-opus-5-5", "");
+		tooLong.usage.input = 100;
+		api.listener().onError(tooLong);
+		runEdt();
+		assertTrue("still busy, with the summary", chat.isSummarizing());
+		assertFalse(question.unanswered);
+		Chat.Message note = chat.messages.get(chat.messages.size() - 1);
+		assertEquals("This chat was too long for claude-opus-5-5, so the earlier messages are summarised first and the "
+			+ "question is sent again.", note.text);
+		assertEquals("what the attempt looked up and used stays listed", List.of("Read the Wiki page \"Vorkath\""), note.activity);
+		assertEquals(100, note.usage.total());
+		assertEquals(ConversationBuilder.SUMMARY_PROMPT, api.last().system);
+		assertTrue(lastTurn(api.last()).contains("Player: Q3"));
+		assertFalse("not the question itself", lastTurn(api.last()).contains("Q4"));
+
+		api.listener().onReply(reply("The player asked three things.", 50, 10));
+		runEdt();
+		assertEquals("only the question, under the summary", 1, api.last().turns.size());
+		assertTrue(lastTurn(api.last()).endsWith("]\n\nQ4"));
+
+		// Still too long: an error this time, not another summary.
+		api.listener().onError(ChatApi.tooLong("claude-opus-5-5", ""));
+		runEdt();
+		assertFalse(chat.isRunning());
+		assertTrue(question.unanswered);
+		assertEquals(Chat.Role.ERROR, chat.messages.get(chat.messages.size() - 1).role);
+		assertEquals(3, api.sent.size());
+	}
+
+	@Test
+	public void aTooLongQuestionOnItsOwnIsAnError()
+	{
+		send("q");
+		api.listener().onError(ChatApi.tooLong("claude-opus-5-5", ""));
+		runEdt();
+		assertEquals(Arrays.asList(Chat.Role.USER, Chat.Role.ERROR), roles());
+		assertEquals("This chat is too long for claude-opus-5-5. Start a new chat, or choose a model that can take more.",
+			chat.messages.get(1).text);
+		assertEquals(1, api.sent.size());
+	}
+
+	@Test
 	public void aRetryGoesThroughTheSummaryToo()
 	{
 		history(20);

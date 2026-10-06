@@ -388,8 +388,8 @@ public class OpenAiApiTest
 
 		// Any other problem is reported, not retried.
 		server.clear();
-		server.answer(PATH, json(400, "{\"error\":{\"message\":\"context length exceeded\"}}"));
-		assertTrue(send(api, conversation("m", "hi")).error().contains("context length exceeded"));
+		server.answer(PATH, json(400, "{\"error\":{\"message\":\"messages: roles must alternate\"}}"));
+		assertTrue(send(api, conversation("m", "hi")).error().contains("roles must alternate"));
 		assertEquals(1, server.bodies.size());
 	}
 
@@ -476,6 +476,28 @@ public class OpenAiApiTest
 		StandIn.Heard heard = send(down, conversation("m", "hi"));
 		assertTrue(heard.error().contains("running"));
 		assertTrue(heard.retries.isEmpty());
+	}
+
+	@Test
+	public void aChatTooLongForTheModelSaysSo() throws Exception
+	{
+		server.answer(PATH, json(400, "{\"error\":{\"message\":\"This model's maximum context length is 128000 tokens. However, your messages resulted in 130211 tokens. Please reduce the length of the messages.\",\"type\":\"invalid_request_error\",\"param\":\"messages\",\"code\":\"context_length_exceeded\"}}"));
+		StandIn.Heard heard = send(openai("k", new ConcurrentHashMap<>()), conversation("gpt-x", "hi"));
+		assertEquals("This chat is too long for gpt-x. Start a new chat, or choose a model that can take more.", heard.error());
+		assertTrue(heard.failure.tooLong);
+
+		// A model on this computer: its own context size may be the limit.
+		server.answer(PATH, json(400, "{\"error\":{\"code\":400,\"message\":\"the request exceeds the available context size, try increasing it\",\"type\":\"exceed_context_size_error\"}}"));
+		heard = send(compatible("m"), conversation("m", "hi"));
+		assertTrue(heard.error(), heard.error.contains("bigger context size"));
+		assertTrue(heard.failure.tooLong);
+
+		// A reply length limit bigger than a small model's context: leaving it out is enough.
+		server.clear();
+		server.answer(PATH, json(400, "{\"error\":{\"message\":\"'max_tokens' is too large: 16000. This model's maximum context length is 8192 tokens and your request has 50 input tokens (16000 > 8192 - 50).\"}}"),
+			json(200, OK));
+		assertEquals("Hi", send(compatible("m"), conversation("m", "hi")).reply().text);
+		assertFalse(server.bodies.get(1).has("max_tokens"));
 	}
 
 	@Test

@@ -219,6 +219,8 @@ interface ChatApi
 		 * way, and what it had written isn't to be read as an answer.
 		 */
 		boolean withdrawn;
+		/** The chat is longer than the model can take in: summarising its earlier messages may get it through. */
+		boolean tooLong;
 
 		Failure(String message)
 		{
@@ -404,6 +406,34 @@ interface ChatApi
 			default:
 				return false;
 		}
+	}
+
+	/**
+	 * Whether an error answer says the conversation is longer than the model can take in. Each service words it its own
+	 * way: Anthropic's "prompt is too long", OpenAI's and Groq's context_length_exceeded, "maximum context length"
+	 * (OpenAI, OpenRouter, vLLM, Mistral), llama.cpp's "context size", Gemini's "exceeds the maximum number of tokens".
+	 * {@code body}: the whole answer, which has the error's code as well as its message.
+	 */
+	static boolean tooLongForModel(int code, String body)
+	{
+		if (code != 400 && code != 413 && code != 422)
+		{
+			return false;
+		}
+		String lower = body == null ? "" : body.toLowerCase(Locale.ROOT);
+		return code == 413 || lower.contains("prompt is too long") || lower.contains("context_length_exceeded")
+			|| lower.contains("context length") || lower.contains("context window") || lower.contains("context size")
+			|| lower.contains("context limit") || lower.contains("maximum context")
+			|| lower.contains("exceeds the maximum number of tokens");
+	}
+
+	/** The error for a chat the model can't take in. {@code hint}: more to say about it, or "". */
+	static Failure tooLong(String model, String hint)
+	{
+		Failure f = new Failure("This chat is too long for " + model + ". Start a new chat, or choose a model that "
+			+ "can take more." + hint);
+		f.tooLong = true;
+		return f;
 	}
 
 	/** An error that says the account has run out of credits or hit a spending limit (OpenAI's insufficient_quota). */

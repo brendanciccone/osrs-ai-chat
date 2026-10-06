@@ -181,17 +181,26 @@ final class ConversationBuilder
 	 */
 	static List<Chat.Message> planSummary(Chat chat)
 	{
+		return planSummary(chat, false);
+	}
+
+	/**
+	 * {@code tooLong}: the provider said the chat is too long for its model, however few messages it has (long replies
+	 * and look-ups add up). Then everything before the player's newest message is summarised.
+	 */
+	static List<Chat.Message> planSummary(Chat chat, boolean tooLong)
+	{
 		List<Chat.Message> history = history(chat);
-		if (history.size() <= SUMMARY_HIGH)
+		if (!tooLong && history.size() <= SUMMARY_HIGH)
 		{
 			return Collections.emptyList();
 		}
-		int cut = history.size() - SUMMARY_LOW;
+		int cut = history.size() - (tooLong ? 1 : SUMMARY_LOW);
 		while (cut > 0 && history.get(cut).role != Chat.Role.USER)
 		{
 			cut--;
 		}
-		return new ArrayList<>(history.subList(0, cut));
+		return new ArrayList<>(history.subList(0, Math.max(0, cut)));
 	}
 
 	/**

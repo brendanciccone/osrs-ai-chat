@@ -77,12 +77,15 @@ final class RequestRunner
 		final Chat chat;
 		final Chat.Message message;
 		final Setup setup;
+		/** It was too long for the model once, and goes again after a summary: if that's not enough, it's an error. */
+		final boolean shortened;
 
-		Outgoing(Chat chat, Chat.Message message, Setup setup)
+		Outgoing(Chat chat, Chat.Message message, Setup setup, boolean shortened)
 		{
 			this.chat = chat;
 			this.message = message;
 			this.setup = setup;
+			this.shortened = shortened;
 		}
 	}
 
@@ -113,7 +116,7 @@ final class RequestRunner
 			chat.name = ChatApi.shorten(text.replaceAll("\\s+", " "), 40);
 			chat.defaultName = false;
 		}
-		start(new Outgoing(chat, message, setup));
+		start(new Outgoing(chat, message, setup, false));
 	}
 
 	/**
@@ -161,7 +164,7 @@ final class RequestRunner
 			return false;
 		}
 		question.unanswered = false;
-		start(new Outgoing(chat, question, setup));
+		start(new Outgoing(chat, question, setup, false));
 		return true;
 	}
 
@@ -469,9 +472,13 @@ final class RequestRunner
 		{
 			return;
 		}
+		String before = shown != null ? shown : chat.liveText;
+		if (failure != null && failure.tooLong && !out.shortened && shorten(out, failure, before))
+		{
+			return;
+		}
 		chat.pending = null;
 		List<String> activity = chat.liveActivity;
-		String before = shown != null ? shown : chat.liveText;
 		chat.resetLive();
 		Chat.Message m;
 		if (reply != null)
@@ -501,6 +508,35 @@ final class RequestRunner
 		chat.messages.add(m);
 		host.ended(chat, m);
 		host.changed(chat);
+	}
+
+	/**
+	 * The chat was too long for the model: once per question, everything before it is summarised, however few
+	 * messages that is, and it goes again. A note says so, and keeps what this attempt looked up and used. False when
+	 * there's nothing before it to summarise.
+	 */
+	private boolean shorten(Outgoing out, ChatApi.Failure failure, String shown)
+	{
+		Chat chat = out.chat;
+		List<Chat.Message> old = ConversationBuilder.planSummary(chat, true);
+		if (old.isEmpty())
+		{
+			return false;
+		}
+		List<String> activity = chat.liveActivity;
+		keepUnfinished(chat, out.setup.api.displayName(), shown);
+		Chat.Message note = new Chat.Message(Chat.Role.NOTE, "This chat was too long for " + out.setup.model
+			+ ", so the earlier messages are summarised first and the question is sent again.");
+		note.activity = activity;
+		counted(note, failure.usage, failure.model, out.setup.model);
+		chat.messages.add(note);
+		// Still busy: the summary is next, then the question again.
+		chat.pending = new ChatApi.Pending();
+		chat.runStartedAt = System.currentTimeMillis();
+		chat.resetLive();
+		summarise(new Outgoing(chat, out.message, out.setup, true), old);
+		host.changed(chat);
+		return true;
 	}
 
 	/**

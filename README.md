@@ -97,6 +97,11 @@ messages..."), then sends that summary instead of them, along with the newest 16
 question shows the summary. If it couldn't be made (or you press Stop while it's being made), a note says so and the
 whole chat is sent that time; the next message tries again.
 
+A chat can also be too long for the model with fewer messages: long replies and the Wiki pages read for them add up,
+and smaller models take in less. When the provider says so, AI Chat summarises everything before your question and
+asks once more; if it's still too long, start a new chat or choose a model that can take more. Ollama doesn't say so:
+past the model's context size it quietly forgets the start of the chat, so raise that in Ollama for long chats.
+
 ## Tokens and cost
 
 Hover over the name above a reply to see the tokens it used, for example "1,204 in · 3,410 cached · 352 out · about
