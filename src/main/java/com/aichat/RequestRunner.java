@@ -17,7 +17,7 @@ final class RequestRunner
 {
 	/** The reply is redrawn at most this often while it streams in (about 15 times a second): each redraw is a layout. */
 	static final long LIVE_GAP_MILLIS = 66;
-	/** How the notes that say a request was stopped start: one of them after a question means it can be retried. */
+	/** How the notes that say a request was stopped start. */
 	static final String STOPPED = "Stopped";
 	static final String COULDNT_SEND = "AI Chat couldn't send this. Check the API key and URL in the settings.";
 	/** Under a reply from a model that can't use tools, whatever the settings say. */
@@ -131,20 +131,13 @@ final class RequestRunner
 	}
 
 	/**
-	 * The question Retry would send again, or null: the player's last message, when it went unanswered and nothing
-	 * but an error, a "Stopped" note, other notes or what was shown of a reply that didn't finish came after it (or
-	 * RuneLite closed while it waited).
+	 * The question Retry would send again, or null: the player's last message, when it went unanswered and nothing but
+	 * errors, notes (a "Stopped" one, or the one saying a chat too long for the model is summarised first) or what was
+	 * shown of a reply that didn't finish came after it (or RuneLite closed while it waited).
 	 */
 	static Chat.Message retryable(Chat chat)
 	{
-		if (chat.isRunning() || chat.messages.isEmpty())
-		{
-			return null;
-		}
-		Chat.Message last = chat.messages.get(chat.messages.size() - 1);
-		boolean ended = last.role == Chat.Role.ERROR || last.role == Chat.Role.USER
-			|| last.role == Chat.Role.NOTE && last.text.startsWith(STOPPED);
-		if (!ended)
+		if (chat.isRunning())
 		{
 			return null;
 		}

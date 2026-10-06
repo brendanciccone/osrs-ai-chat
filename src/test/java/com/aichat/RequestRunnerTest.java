@@ -669,8 +669,9 @@ public class RequestRunnerTest
 		q2.unanswered = true;
 		chat.messages.add(q2);
 		assertSame("RuneLite closed while it waited", q2, RequestRunner.retryable(chat));
-		chat.messages.add(new Chat.Message(Chat.Role.NOTE, "Couldn't summarise the earlier messages (busy), so the whole chat was sent this time."));
-		assertNull("a note that isn't a Stop", RequestRunner.retryable(chat));
+		chat.messages.add(new Chat.Message(Chat.Role.NOTE, "This chat was too long for claude-opus-5-5, so the earlier "
+			+ "messages are summarised first and the question is sent again."));
+		assertSame("RuneLite closed while it was summarised", q2, RequestRunner.retryable(chat));
 		chat.messages.add(new Chat.Message(Chat.Role.NOTE, "Stopped: AI requests were turned off."));
 		assertSame(q2, RequestRunner.retryable(chat));
 		chat.messages.add(new Chat.Message(Chat.Role.ERROR, "Couldn't reach Anthropic"));

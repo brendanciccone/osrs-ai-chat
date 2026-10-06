@@ -82,6 +82,23 @@ public class ChatStoreTest
 	}
 
 	@Test
+	public void aQuestionSummarisedBecauseTheChatWasTooLongCanBeRetried()
+	{
+		// RuneLite closed while a chat too long for the model was being summarised before the question went again.
+		Chat c = new Chat("x");
+		c.messages.add(new Chat.Message(Chat.Role.USER, "q1"));
+		c.messages.add(new Chat.Message(Chat.Role.ASSISTANT, "a1"));
+		Chat.Message q = new Chat.Message(Chat.Role.USER, "q2");
+		c.messages.add(q);
+		c.messages.add(new Chat.Message(Chat.Role.NOTE, "This chat was too long for claude-opus-5-5, so the earlier "
+			+ "messages are summarised first and the question is sent again."));
+		c.pending = new ChatApi.Pending();
+		Chat back = ChatStore.fromJson(gson, ChatStore.toJson(gson, List.of(c), c)).chats.get(0);
+		assertTrue(back.messages.get(2).unanswered);
+		assertSame(back.messages.get(2), RequestRunner.retryable(back));
+	}
+
+	@Test
 	public void longChatsKeepTheirLatestMessagesAndSaySo()
 	{
 		Chat c = new Chat("long");
