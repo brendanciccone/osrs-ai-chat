@@ -187,6 +187,15 @@ final class ProviderSetup
 		return config.provider() != AiChatConfig.Provider.OPENAI_COMPATIBLE;
 	}
 
+	/**
+	 * Whether "Test" can't vouch for the key: a compatible service may list its models for anyone (OpenRouter does),
+	 * so a wrong key there only shows when a message is sent.
+	 */
+	boolean keyUnchecked()
+	{
+		return !keyed() && !ChatApi.cleanKey(config.compatibleApiKey()).isEmpty();
+	}
+
 	/** The provider, address and key: what a "Test" result holds for (see {@link ConnectionCheck#setupKey}). */
 	String connection()
 	{

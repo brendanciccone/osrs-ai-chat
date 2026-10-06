@@ -61,7 +61,7 @@ class AiChatPanel extends PluginPanel
 	private static final int BOTTOM_SLACK = 24;
 	/** Rows the model list shows before it scrolls. */
 	private static final int MODEL_ROWS = 12;
-	private static final String TEST_TIP = "Check your API key, and see which models it can use";
+	private static final String TEST_TIP = "Check the connection, and see which models you can use";
 	private static final String STOP_TIP = "Stop waiting for this reply; you can carry on with the chat afterwards";
 	/** While a long chat is summarised before the question goes, Stop skips the summary instead. */
 	private static final String SKIP_TIP = "Skip the summary and send the whole chat this time. Press Stop after that to "

@@ -67,7 +67,7 @@ public class ConnectionTesterTest
 
 	private ConnectionCheck.Note note()
 	{
-		return tester.note(SETUP, "Anthropic", "claude-opus-5-5", true);
+		return tester.note(SETUP, "Anthropic", "claude-opus-5-5", true, false);
 	}
 
 	@Test
@@ -124,9 +124,9 @@ public class ConnectionTesterTest
 		api.listeners.get(0).onModels(List.of("claude-opus-5-5"));
 		runEdt();
 		String otherKey = ConnectionCheck.setupKey(AiChatConfig.Provider.CLAUDE, null, "sk-ant-2");
-		assertNull(tester.note(otherKey, "Anthropic", "claude-opus-5-5", true));
+		assertNull(tester.note(otherKey, "Anthropic", "claude-opus-5-5", true, false));
 		// Another model is fine: the list is read against it.
-		assertEquals(ConnectionCheck.Kind.WARNING, tester.note(SETUP, "Anthropic", "claude-opus-9", true).kind);
+		assertEquals(ConnectionCheck.Kind.WARNING, tester.note(SETUP, "Anthropic", "claude-opus-9", true, false).kind);
 	}
 
 	@Test

@@ -114,9 +114,10 @@ final class ConnectionCheck
 	/**
 	 * What the check says about {@code model} (blank when none is set yet). {@code service}: "Anthropic", "OpenAI", or
 	 * the address of a compatible service; {@code keyed}: the player's own key decides which models they get (Claude,
-	 * ChatGPT).
+	 * ChatGPT); {@code keyUnchecked}: a key went to a service whose list may not need one, so the list says nothing
+	 * about it.
 	 */
-	Note note(String service, String model, boolean keyed)
+	Note note(String service, String model, boolean keyed, boolean keyUnchecked)
 	{
 		if (error != null)
 		{
@@ -143,13 +144,15 @@ final class ConnectionCheck
 		{
 			return new Note(Kind.WARNING, "Connected to " + service + ", but it listed no models to chat with.", models);
 		}
+		// OpenRouter lists its models for anyone: a wrong key there only shows when a message is sent.
+		String key = keyUnchecked ? " Your key is checked when you send: some services list their models for anyone." : "";
 		if (model == null || model.trim().isEmpty())
 		{
-			return new Note(Kind.OK, "Connected to " + service + ". Choose a model:", models);
+			return new Note(Kind.OK, "Connected to " + service + "." + key + " Choose a model:", models);
 		}
 		if (has(models, model))
 		{
-			return new Note(Kind.OK, "Connected to " + service + ". " + model + " is available.", models);
+			return new Note(Kind.OK, "Connected to " + service + ". " + model + " is available." + key, models);
 		}
 		return new Note(Kind.WARNING, keyed ? "Connected, but " + model + " isn't in the list your key can use."
 			: "Connected to " + service + ", but " + model + " isn't one of its models.", models);

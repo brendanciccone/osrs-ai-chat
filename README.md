@@ -22,7 +22,7 @@ look things up on the OSRS Wiki while it answers. Uses your own API key. Free an
   memory, and says so under its reply
 - Pick your provider: **Claude** (Anthropic), **ChatGPT** (OpenAI), or any service with an **OpenAI-compatible** API,
   such as OpenRouter, Groq, or a free model running on your own computer with Ollama or LM Studio
-- **Test** your key from the panel, and choose a model from the ones it can use
+- **Test** your setup from the panel, and choose a model from the ones you can use
 - Optional, off by default: share your character (name, account type, levels and quests, and your Slayer task and
   achievement diaries when a question needs them), and your equipment, inventory and bank, for answers that fit your
   account
@@ -43,8 +43,10 @@ look things up on the OSRS Wiki while it answers. Uses your own API key. Free an
 2. In RuneLite's settings, open **AI Chat**, turn on **Enable AI requests** and choose the **AI provider**. Then open
    that provider's section (Claude, ChatGPT or OpenAI-compatible) and paste your key. For an OpenAI-compatible
    service, also set its URL (for example `http://localhost:11434/v1` for Ollama) and model.
-3. Open the AI Chat panel (the rune icon in the sidebar). Press **Test** to check your key and URL; if the model isn't
-   one you can use, or you haven't set one yet, **Choose model...** lists the ones you can. Then ask away.
+3. Open the AI Chat panel (the rune icon in the sidebar). Press **Test** to check your key and URL (some
+   OpenAI-compatible services, such as OpenRouter, list their models for any key, so there only the URL is checked);
+   if the model isn't one you can use, or you haven't set one yet, **Choose model...** lists the ones you can. Then
+   ask away.
 
 ## Privacy
 

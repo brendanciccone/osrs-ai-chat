@@ -397,7 +397,7 @@ public class AiChatPlugin extends Plugin
 		{
 			return null;
 		}
-		return tester.note(provider.connection(), provider.service(), provider.model(), provider.keyed());
+		return tester.note(provider.connection(), provider.service(), provider.model(), provider.keyed(), provider.keyUnchecked());
 	}
 
 	/** "Choose model": the provider's model setting becomes {@code model}, as if typed in the settings. */

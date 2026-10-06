@@ -93,6 +93,7 @@ public class ProviderSetupTest
 		assertEquals("claudeModel", setup.modelKey());
 		assertEquals("Anthropic", setup.service());
 		assertTrue(setup.keyed());
+		assertTrue("Anthropic's list needs the key", !setup.keyUnchecked());
 
 		settings.claudeModel = "  claude-haiku-4-5 ";
 		assertEquals("claude-haiku-4-5", setup.model());
@@ -132,10 +133,12 @@ public class ProviderSetupTest
 		assertEquals("compatibleModel", setup.modelKey());
 		assertEquals("localhost:11434", setup.service());
 		assertTrue(!setup.keyed());
+		assertTrue("no key to check", !setup.keyUnchecked());
 
 		// A key over plain http only to this computer or the home network.
 		settings.compatibleKey = "sk-or-1";
 		assertNull(setup.problem());
+		assertTrue("its model list may not need the key", setup.keyUnchecked());
 		settings.url = "http://openrouter.ai/api/v1";
 		assertEquals("Use an https:// URL for openrouter.ai: with http:// your API key would cross the internet unencrypted.",
 			setup.problem());

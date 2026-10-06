@@ -87,12 +87,12 @@ final class ConnectionTester
 	 * What the latest Test says about the setup as it is now, or null when there's nothing to say: none yet, or it was
 	 * for another provider, address or key ({@code setup}). A different model is fine: the list is read against it.
 	 */
-	ConnectionCheck.Note note(String setup, String service, String model, boolean keyed)
+	ConnectionCheck.Note note(String setup, String service, String model, boolean keyed, boolean keyUnchecked)
 	{
 		if (check == null || !check.setup.equals(setup))
 		{
 			return null;
 		}
-		return check.note(service, model, keyed);
+		return check.note(service, model, keyed, keyUnchecked);
 	}
 }
