@@ -15,13 +15,55 @@ account there, follow RuneLite's [Using Jagex Accounts](https://github.com/runel
 To try it without paying for API use, run a local model with [Ollama](https://ollama.com) (`ollama pull llama3.2`),
 then choose **OpenAI-compatible** with URL `http://localhost:11434/v1` and model `llama3.2`.
 
-The tests run both provider clients against a stand-in server on 127.0.0.1 (`ChatApiTest`, no real API calls) and
-check what saved chats keep (`ChatStoreTest`).
+## Tests
 
-Code: `AiChatPlugin` (lifecycle, chats, chatbox command, game chat, notifications), `AiChatPanel` (the sidebar),
-`AnthropicApi` and `OpenAiApi` (the providers, behind `ChatApi`), `CharacterInfo` (the optional character details),
-`ChatStore` (what "Remember chats" saves), `AiChatConfig`.
+`./gradlew build` runs them all. No test calls a real AI provider or the Wiki: the network tests use a stand-in
+server on 127.0.0.1 (`StandIn`), which serves canned answers (streams included) and records each request.
 
-Plugin Hub rules this code keeps to: Java 11, no processes, reflection or new HTTP/JSON clients (the injected
-`OkHttpClient` and `Gson` only), file access only in the plugin's own folder through `getPluginDirectory()` and off
-the Swing and client threads, nothing blocking the client thread.
+- `AnthropicApiTest`, `OpenAiApiTest`: the two providers against `StandIn`: streaming, tool rounds, retries,
+  token counts, model lists, and the settings a service may refuse. `ChatApiTest`: what they share (keys, retry
+  waits, running tools). `SseTest`: the event-stream reader. `PricingTest`: Claude cost estimates.
+- `RequestRunnerTest`: a message's way out and its answer's way back, with a stand-in provider and EDT: summary
+  first, the reply as it streams in, look-ups, Stop, Retry, and answers that come too late to count.
+  `ThrottleTest`: redrawing a streaming reply at most ~15 times a second. `ToolBoxTest`: which tools go with a
+  request, in what order, and which runner answers each call.
+- `ConversationBuilderTest`: what a request sends (history, character notes, summaries, replaying Claude's replies).
+  `ChatStoreTest`: what "Remember chats" saves and loads, files from older versions included.
+- `LookupToolsTest`: the Wiki and GE price tools, against a stand-in Wiki and canned prices. `GameDataTest` and
+  `GameDataToolsTest`: writing up the player's items, Slayer task and diaries, and when the game-data tools share.
+  `CharacterInfoTest`: the character note.
+- `MarkdownTest` and `MessageViewTest`: reading replies' Markdown, and drawing it off screen (headless).
+  `StackLayoutTest`: the transcript's layout.
+  `GameChatEchoTest`: replies as game chat. `PanelTextTest`: the status line and token counts.
+  `ConnectionCheckTest` and `ProviderSetupTest`: "Test" and what the settings say about the provider. `PrefixTest`:
+  the `::ai` command.
+
+## Code
+
+- `AiChatPlugin`: the plugin's lifecycle, threads and wiring: settings, the chatbox command and hotkey, chats,
+  saving them, game chat and notifications.
+- `RequestRunner`: sends a chat's messages and puts the answers in it (summary, character details, tools, the
+  streaming reply, Stop, Retry). `ConversationBuilder`: what each request sends. `Throttle`: paces the redraws of a
+  streaming reply.
+- `ChatApi` (shared types and helpers), `AnthropicApi`, `OpenAiApi`, `Sse`: the providers. `ProviderSetup`: the chosen
+  provider as the settings describe it. `ConnectionCheck`: "Test" and "Choose model". `Pricing`: cost estimates.
+- `ToolBox`: the tools that go with a request. `LookupTools` and `WikiClient`: Wiki search and pages, GE prices.
+  `GameDataTools` and `GameData`: the player's equipment, inventory, bank, Slayer task and diaries.
+  `CharacterInfo`: the character note.
+- `AiChatPanel` (the sidebar), `MessageView` and `Markdown` (formatted messages), `PanelText` (the panel's status and
+  token lines), `StackLayout`. `GameChatEcho`: replies as game chat.
+- `Chat` (a conversation), `ChatStore` (what "Remember chats" saves), `ChatFile` (the file itself), `AiChatConfig`.
+
+## Plugin Hub
+
+Rules this code keeps to: Java 11, no processes, reflection or new HTTP/JSON clients (the injected `OkHttpClient` and
+`Gson` only), no `Thread.sleep`, links only through `LinkBrowser.browse`, file access only in the plugin's own folder
+through `getPluginDirectory()` and off the Swing and client threads, game data read only on the client thread, and
+nothing blocking the client thread or the EDT. Nothing is sent anywhere while "Enable AI requests" is off, and
+provider, model and Wiki text is never rendered as HTML.
+
+Suggested `warning` for the plugin's Plugin Hub manifest:
+
+```
+warning=This plugin sends your messages, and any character or item details you choose to share, to the AI provider you configure (a 3rd-party server not controlled or verified by the RuneLite developers), and looks things up on the OSRS Wiki.
+```
