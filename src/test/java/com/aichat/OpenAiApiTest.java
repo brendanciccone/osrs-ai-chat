@@ -375,6 +375,24 @@ public class OpenAiApiTest
 	}
 
 	@Test
+	public void eachToolRoundGetsItsOwnRetries() throws Exception
+	{
+		String busy = "{\"error\":{\"message\":\"Bad gateway\"}}";
+		server.answer(PATH, json(502, busy).header("retry-after", "0"), json(502, busy).header("retry-after", "0"),
+			events(toolCalls("[{\"index\":0,\"id\":\"c\",\"type\":\"function\",\"function\":{\"name\":\"ge_price\",\"arguments\":\"{}\"}}]"),
+				finish("tool_calls"), DONE),
+			json(502, busy).header("retry-after", "0"), events(content("Hi"), finish("stop"), DONE));
+		ChatApi.Conversation c = conversation("m", "q");
+		c.tools.add(StandIn.tool("ge_price"));
+		c.toolRunner = new StandIn.Tools();
+		StandIn.Heard heard = send(compatible("m"), c);
+		// The first round used both its retries; the next still has its own.
+		assertEquals("Hi", heard.reply().text);
+		assertEquals(3, heard.retries.size());
+		assertEquals(5, server.bodies.size());
+	}
+
+	@Test
 	public void aBusyServiceIsAskedAgainButAnEmptyAccountIsNot() throws Exception
 	{
 		// Not a 503: OkHttp itself asks again at once when one says "Retry-After: 0".

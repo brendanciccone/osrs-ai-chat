@@ -90,7 +90,13 @@ public class AnthropicApiTest
 
 	private AnthropicApi api()
 	{
-		return new AnthropicApi(http, gson, server.url(PATH), "sk-test", scheduler, refused);
+		return api("");
+	}
+
+	/** {@code prefix}: before the usual path, for answers of its own. */
+	private AnthropicApi api(String prefix)
+	{
+		return new AnthropicApi(http, gson, server.url(prefix + PATH), "sk-test", scheduler, refused);
 	}
 
 	private static StandIn.Heard send(ChatApi api, ChatApi.Conversation c)
@@ -603,6 +609,42 @@ public class AnthropicApiTest
 		assertEquals("Anthropic is busy; it asked to wait 5 minutes. Try again then.", heard.error());
 		assertTrue(heard.retries.isEmpty());
 		assertEquals(1, server.bodies.size());
+	}
+
+	@Test
+	public void eachToolRoundGetsItsOwnRetries() throws Exception
+	{
+		String busy = "{\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}";
+		server.answer(PATH, json(529, busy).header("retry-after", "0"), json(529, busy).header("retry-after", "0"),
+			events(begin("claude-opus-5-5"), toolUse(0, "t", "ge_price", "{\"item\":\"whip\"}"), end("tool_use", 3)),
+			json(529, busy).header("retry-after", "0"), answer("Hi"));
+		ChatApi.Conversation c = conversation("claude-opus-5-5", "q");
+		c.tools.add(StandIn.tool("ge_price"));
+		c.toolRunner = new StandIn.Tools();
+		StandIn.Heard heard = send(api(), c);
+		// The first round used both its retries; the next still has its own.
+		assertEquals("Hi", heard.reply().text);
+		assertEquals(3, heard.retries.size());
+		assertEquals(5, server.bodies.size());
+	}
+
+	@Test
+	public void aStreamThatSaysClaudeIsBusyIsRetriedButNotOneThatSaysTheRequestIsWrong() throws Exception
+	{
+		// Each waits the usual 2 seconds before it's sent again, so they run side by side, each at its own address.
+		String wrong = "{\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"messages: text content blocks must be non-empty\"}}";
+		server.answer("/limited" + PATH, events(begin("claude-opus-5-5"), error("rate_limit_error")), answer("Hi"));
+		server.answer("/broken" + PATH, events(begin("claude-opus-5-5"), error("api_error")), answer("Hi"));
+		server.answer("/wrong" + PATH, events(begin("claude-opus-5-5"), event("error", wrong)), answer("Hi"));
+		StandIn.Heard limited = send(api("/limited"), conversation("claude-opus-5-5", "hi"));
+		StandIn.Heard broken = send(api("/broken"), conversation("claude-opus-5-5", "hi"));
+		StandIn.Heard refused = send(api("/wrong"), conversation("claude-opus-5-5", "hi"));
+		assertEquals("Anthropic answered HTTP 400 (messages: text content blocks must be non-empty).", refused.error());
+		assertTrue(refused.retries.isEmpty());
+		assertEquals("Hi", limited.reply().text);
+		assertEquals(List.of("Anthropic's rate limit was hit 2"), limited.retries);
+		assertEquals("Hi", broken.reply().text);
+		assertEquals(List.of("Anthropic is busy 2"), broken.retries);
 	}
 
 	@Test
