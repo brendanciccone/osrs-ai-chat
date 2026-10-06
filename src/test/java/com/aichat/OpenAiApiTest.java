@@ -225,6 +225,30 @@ public class OpenAiApiTest
 	}
 
 	@Test
+	public void reasoningBehindToolCallsGoesBackWithThem() throws Exception
+	{
+		server.answer(PATH,
+			events(chunk("{\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"The player wants \"},\"finish_reason\":null}]}"),
+				chunk("{\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"a price.\"},\"finish_reason\":null}]}"),
+				toolCalls("[{\"index\":0,\"id\":\"c\",\"type\":\"function\",\"function\":{\"name\":\"ge_price\",\"arguments\":\"{}\"}}]"),
+				finish("tool_calls"), DONE),
+			events(content("1.5m."), finish("stop"), DONE));
+		ChatApi.Conversation c = conversation("deepseek-reasoner", "Whip price?");
+		c.tools.add(StandIn.tool("ge_price"));
+		c.toolRunner = new StandIn.Tools();
+		assertEquals("1.5m.", send(compatible("deepseek-reasoner"), c).reply().text);
+		JsonObject asked = server.bodies.get(1).getAsJsonArray("messages").get(2).getAsJsonObject();
+		assertEquals("The player wants a price.", asked.get("reasoning_content").getAsString());
+
+		// Not from a service that didn't send any.
+		server.clear();
+		server.answer(PATH, events(toolCalls("[{\"index\":0,\"id\":\"c\",\"type\":\"function\",\"function\":{\"name\":\"ge_price\",\"arguments\":\"{}\"}}]"),
+			finish("tool_calls"), DONE), events(content("1.5m."), finish("stop"), DONE));
+		send(compatible("m"), c).reply();
+		assertFalse(server.bodies.get(1).getAsJsonArray("messages").get(2).getAsJsonObject().has("reasoning_content"));
+	}
+
+	@Test
 	public void toolsAreLeftOutForModelsThatCantUseThem() throws Exception
 	{
 		Map<String, Set<String>> refused = new ConcurrentHashMap<>();

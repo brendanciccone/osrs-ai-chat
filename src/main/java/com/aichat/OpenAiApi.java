@@ -520,6 +520,11 @@ class OpenAiApi implements ChatApi
 				{
 					m.refusal = m.refusal == null ? refusal : m.refusal + refusal;
 				}
+				String reasoning = string(delta, "reasoning_content");
+				if (reasoning != null)
+				{
+					m.reasoning.append(reasoning);
+				}
 				JsonElement calls = delta.get("tool_calls");
 				if (calls != null && calls.isJsonArray())
 				{
@@ -638,6 +643,12 @@ class OpenAiApi implements ChatApi
 			assistant.addProperty("role", "assistant");
 			// Empty rather than null: Gson leaves nulls out unless told otherwise, and some services want the field.
 			assistant.addProperty("content", text);
+			// DeepSeek and Kimi want the reasoning behind tool calls back while the reply carries on, and refuse the next
+			// round without it. Only where the service sent it: others may not take the field.
+			if (m.reasoning.length() > 0)
+			{
+				assistant.addProperty("reasoning_content", m.reasoning.toString());
+			}
 			assistant.add("tool_calls", calls);
 			produced.add(assistant);
 			texts.add(text);
@@ -708,6 +719,8 @@ class OpenAiApi implements ChatApi
 	private static final class Message
 	{
 		final StringBuilder content = new StringBuilder();
+		/** Reasoning the service sent apart from the reply (reasoning_content): never shown. */
+		final StringBuilder reasoning = new StringBuilder();
 		/** Tool calls by their index, their arguments still arriving in pieces. */
 		final TreeMap<Integer, ToolCall> calls = new TreeMap<>();
 		final Usage usage = new Usage();
@@ -801,6 +814,8 @@ class OpenAiApi implements ChatApi
 				return;
 			}
 			content.append(content(message.get("content")));
+			String r = string(message, "reasoning_content");
+			reasoning.append(r == null ? "" : r);
 			refusal = string(message, "refusal");
 			JsonElement toolCalls = message.get("tool_calls");
 			if (toolCalls != null && toolCalls.isJsonArray())
