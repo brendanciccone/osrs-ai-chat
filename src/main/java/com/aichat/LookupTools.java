@@ -695,15 +695,23 @@ final class LookupTools implements ChatApi.ToolRunner
 		private final ClientThread clientThread;
 		private final ScheduledExecutorService executor;
 		private final BooleanSupplier activelyTraded;
+		private final long alchTimeoutMillis;
 
 		/** {@code activelyTraded}: RuneLite's "Use actively traded price" setting. */
 		RuneLitePrices(ItemManager itemManager, ClientThread clientThread, ScheduledExecutorService executor,
 			BooleanSupplier activelyTraded)
 		{
+			this(itemManager, clientThread, executor, activelyTraded, ALCH_TIMEOUT_MILLIS);
+		}
+
+		RuneLitePrices(ItemManager itemManager, ClientThread clientThread, ScheduledExecutorService executor,
+			BooleanSupplier activelyTraded, long alchTimeoutMillis)
+		{
 			this.itemManager = itemManager;
 			this.clientThread = clientThread;
 			this.executor = executor;
 			this.activelyTraded = activelyTraded;
+			this.alchTimeoutMillis = alchTimeoutMillis;
 		}
 
 		@Override
@@ -734,7 +742,7 @@ final class LookupTools implements ChatApi.ToolRunner
 					{
 						done.accept(Collections.emptyMap());
 					}
-				}, ALCH_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+				}, alchTimeoutMillis, TimeUnit.MILLISECONDS);
 			}
 			catch (RuntimeException e)
 			{

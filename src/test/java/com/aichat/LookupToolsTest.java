@@ -15,14 +15,18 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import net.runelite.client.callback.ClientThread;
 import net.runelite.http.api.item.ItemPrice;
 import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
@@ -837,5 +841,64 @@ public class LookupToolsTest
 		assertTrue(text, text.contains("\n6. Page 6 - "));
 		assertFalse(text, text.contains("Page 7"));
 		assertEquals(Arrays.asList("Searched the Wiki for \"page\""), activity);
+	}
+
+	@Test
+	public void runeLitePricesAnswerOnceWhateverTheGameDoes() throws Exception
+	{
+		ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
+		try
+		{
+			// The client thread never gets to the read: no alchemy values, once the wait is over.
+			List<Runnable> queued = new CopyOnWriteArrayList<>();
+			ClientThread never = new ClientThread()
+			{
+				@Override
+				public void invoke(Runnable r)
+				{
+					queued.add(r);
+				}
+			};
+			BlockingQueue<Map<Integer, Integer>> heard = new LinkedBlockingQueue<>();
+			new LookupTools.RuneLitePrices(null, never, executor, () -> false, 100).highAlchemy(List.of(4151), heard::add);
+			assertEquals(Collections.emptyMap(), heard.poll(5, TimeUnit.SECONDS));
+			// It gets there after all (with no item data: each id it can't read is left out): nothing more is heard.
+			queued.get(0).run();
+			executor.submit(() -> { }).get(5, TimeUnit.SECONDS);
+			assertTrue(heard.isEmpty());
+
+			// The client thread can't take it (RuneLite is closing): an answer at once, and only that one.
+			ClientThread closing = new ClientThread()
+			{
+				@Override
+				public void invoke(Runnable r)
+				{
+					throw new IllegalStateException("closing");
+				}
+			};
+			new LookupTools.RuneLitePrices(null, closing, executor, () -> false, 100).highAlchemy(List.of(4151), heard::add);
+			assertEquals(Collections.emptyMap(), heard.poll());
+			// Past the wait: the scheduler runs in time order, so the wait's end would have come before this.
+			executor.schedule(() -> { }, 200, TimeUnit.MILLISECONDS).get(5, TimeUnit.SECONDS);
+			assertTrue(heard.isEmpty());
+
+			// The read runs at once: its answer, off the client thread, and nothing when the wait would have ended.
+			ClientThread now = new ClientThread()
+			{
+				@Override
+				public void invoke(Runnable r)
+				{
+					r.run();
+				}
+			};
+			new LookupTools.RuneLitePrices(null, now, executor, () -> false, 100).highAlchemy(List.of(4151), heard::add);
+			assertEquals(Collections.emptyMap(), heard.poll(5, TimeUnit.SECONDS));
+			executor.schedule(() -> { }, 200, TimeUnit.MILLISECONDS).get(5, TimeUnit.SECONDS);
+			assertTrue(heard.isEmpty());
+		}
+		finally
+		{
+			executor.shutdownNow();
+		}
 	}
 }
