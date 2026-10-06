@@ -674,8 +674,27 @@ public class RequestRunnerTest
 		runner.send(chat, "q", setup(true, false, true));
 		runEdt();
 		// Still reading the character details: nothing has gone to the provider.
+		Consumer<String> stale = host.characterRead;
 		runner.stop(chat);
 		assertNull(chat.messages.get(chat.messages.size() - 1).usage);
+
+		// The game answers after the Stop: the question stays where it was.
+		stale.accept("[Character: Zezima]");
+		runEdt();
+		assertTrue(api.sent.isEmpty());
+		assertFalse(chat.isRunning());
+		assertEquals("Stopped.", chat.messages.get(chat.messages.size() - 1).text);
+		assertNull(chat.messages.get(0).context);
+
+		// Nor after a Retry: only the new read sends the question, once.
+		assertTrue(runner.retry(chat, setup(true, false, true)));
+		runEdt();
+		host.characterRead.accept("[Character: Zezima]");
+		runEdt();
+		stale.accept("[Character: Zezima]");
+		runEdt();
+		assertEquals(1, api.sent.size());
+		assertSame(api.requests.get(0), chat.pending);
 	}
 
 	@Test
