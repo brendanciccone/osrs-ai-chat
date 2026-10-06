@@ -67,7 +67,7 @@ there's no server in between.
   can also look up your current Slayer task (with your Slayer points and task streak) and which achievement diaries
   you've completed, when a question needs them.
 - **Only while "Share items and gear" is on:** the assistant can look at your worn equipment, your inventory, and
-  your bank as it was the last time you had it open (since RuneLite started, on the account you're logged in to),
+  your bank as it was the last time you had it open while this setting was on (on the account you're logged in to),
   with Grand Exchange prices, when a question needs them. AI Chat keeps that last look at your bank in memory only,
   and only while this setting is on.
 - Character, Slayer, diary and item look-ups only work while you're logged in.

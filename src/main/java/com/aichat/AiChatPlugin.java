@@ -208,6 +208,7 @@ public class AiChatPlugin extends Plugin
 		{
 			gameData = new GameData(client, itemManager);
 		}
+		forgetBankUnlessShared();
 		runner = new RequestRunner(new Requests(), SwingUtilities::invokeLater, executor);
 		tester = new ConnectionTester(SwingUtilities::invokeLater, () ->
 		{
@@ -256,6 +257,7 @@ public class AiChatPlugin extends Plugin
 		}
 		tester.stop();
 		saver.saveNow();
+		forgetBankUnlessShared();
 		panel.refreshAll();
 		clientToolbar.removeNavigation(navButton);
 		navButton = null;
@@ -289,10 +291,9 @@ public class AiChatPlugin extends Plugin
 				}
 				panel.refreshAll();
 			});
-			if (("shareItems".equals(e.getKey()) || "aiRequests".equals(e.getKey())) && !canShareItems())
+			if ("shareItems".equals(e.getKey()) || "aiRequests".equals(e.getKey()))
 			{
-				// Not kept where it can't be shared.
-				clientThread.invokeLater(gameData::forgetBank);
+				forgetBankUnlessShared();
 			}
 		}
 	}
@@ -313,6 +314,18 @@ public class AiChatPlugin extends Plugin
 	private boolean canShareItems()
 	{
 		return config.aiRequests() && config.shareItems();
+	}
+
+	/**
+	 * The bank as last seen isn't kept where it can't be shared. Also checked when AI Chat is turned on or off: a
+	 * setting changed while it was off isn't heard about.
+	 */
+	private void forgetBankUnlessShared()
+	{
+		if (!canShareItems())
+		{
+			clientThread.invokeLater(gameData::forgetBank);
+		}
 	}
 
 	// ------------------------------------------------------------------
