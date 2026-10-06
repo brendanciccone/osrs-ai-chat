@@ -369,23 +369,24 @@ class AnthropicApi implements ChatApi
 		{
 			int code = response.code();
 			String message = ChatApi.errorMessage(gson, text);
-			// The fallback beta was retired, isn't enabled for this account, or this model doesn't take it: do without.
-			if (fallback && code == 400 && message != null && (message.contains("anthropic-beta") || message.contains(FALLBACKS)))
-			{
-				log.debug("asking again without server-side fallback: {}", message);
-				fallback = false;
-				fallbackDropped = true;
-				again();
-				return;
-			}
 			// Claude checks that the reasoning it's given back belongs to this exact conversation; after a settings
 			// change it may not. Once, carry on without it: earlier replies as text, and none of this reply's reasoning
-			// so far, which was built on them.
+			// so far, which was built on them. Checked first: that error also names the anthropic-beta header (for a
+			// setting this plugin doesn't use), and isn't about fallback.
 			if (replayed && code == 400 && message != null && message.contains("thinking"))
 			{
 				log.debug("asking again without earlier reasoning: {}", message);
 				replay = false;
 				produced = withoutThinking(produced);
+				again();
+				return;
+			}
+			// The fallback beta was retired, isn't enabled for this account, or this model doesn't take it: do without.
+			if (fallback && code == 400 && message != null && (message.contains(FALLBACK_BETA) || message.contains(FALLBACKS)))
+			{
+				log.debug("asking again without server-side fallback: {}", message);
+				fallback = false;
+				fallbackDropped = true;
 				again();
 				return;
 			}

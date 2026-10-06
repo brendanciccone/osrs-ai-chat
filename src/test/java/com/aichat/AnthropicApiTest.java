@@ -301,8 +301,12 @@ public class AnthropicApiTest
 	@Test
 	public void claudeRetriesOnceWithoutReasoningWhenHistoryChanged() throws Exception
 	{
+		// Anthropic's whole message, which also names the anthropic-beta header: not a refusal of fallback.
 		server.answer(PATH,
-			json(400, "{\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"messages.1.content.0: Invalid `signature` in `thinking` block. The block is bound to a different conversation.\"}}"),
+			json(400, "{\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"messages.1.content.0: "
+				+ "Invalid `signature` in `thinking` block. The block is bound to a different conversation. Remove the block, "
+				+ "or set `thinking.block_binding.prefix_mismatch_behavior` to \\\"drop_block\\\". That setting requires the "
+				+ "`thinking-binding-controls-2026-08-01` value in the `anthropic-beta` header.\"}}"),
 			answer("OK"));
 		ChatApi.Conversation c = conversation("claude-opus-5-5", "Q1", "A", "Q2");
 		c.turns.get(1).rawMessages = gson.fromJson("[{\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"s\"},{\"type\":\"text\",\"text\":\"A\"}]}]", JsonArray.class);
@@ -313,6 +317,9 @@ public class AnthropicApiTest
 		assertEquals("A", message(1, 1).get("content").getAsString());
 		// The plugin is told, so it keeps sending earlier replies as text from now on.
 		assertTrue(reply.historyAsText);
+		// Fallback is still asked for, and not remembered as refused.
+		assertEquals("default", server.bodies.get(1).get("fallbacks").getAsString());
+		assertTrue(refused.isEmpty());
 	}
 
 	@Test
