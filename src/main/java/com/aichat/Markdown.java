@@ -77,6 +77,12 @@ class Markdown
 	static final int ALIGN_LEFT = 0;
 	static final int ALIGN_CENTER = 1;
 	static final int ALIGN_RIGHT = 2;
+	/**
+	 * Most characters a table may take once its cells are padded to line up. Padding fills every row to the longest
+	 * cell of each column, so one long cell over thousands of short rows would turn a short reply into hundreds of
+	 * megabytes; a table past this is shown as written instead.
+	 */
+	static final int MAX_TABLE = 20_000;
 
 	private Markdown()
 	{
@@ -165,7 +171,8 @@ class Markdown
 
 	/**
 	 * A table as monospaced lines: cells padded to line up, " | " between columns and a rule under the header row.
-	 * {@code rows} starts with the header; {@code align} has one {@code ALIGN_*} per column.
+	 * {@code rows} starts with the header; {@code align} has one {@code ALIGN_*} per column. A table that would take
+	 * more than {@link #MAX_TABLE} characters lined up is shown as written: its cells unpadded, missing ones left out.
 	 */
 	static List<String> tableLines(List<List<String>> rows, int[] align)
 	{
@@ -174,35 +181,49 @@ class Markdown
 		Arrays.fill(width, 1);
 		for (List<String> row : rows)
 		{
-			for (int c = 0; c < columns; c++)
+			// Only the cells a row has: one that's missing is empty, and looking at it would take as long as padding it.
+			for (int c = 0; c < Math.min(columns, row.size()); c++)
 			{
-				width[c] = Math.max(width[c], cell(row, c).length());
+				width[c] = Math.max(width[c], row.get(c).length());
 			}
 		}
+		long lineWidth = 3L * (columns - 1);
+		for (int w : width)
+		{
+			lineWidth += w;
+		}
+		boolean lineUp = lineWidth * (rows.size() + 1) <= MAX_TABLE;
 		List<String> out = new ArrayList<>();
 		for (int r = 0; r < rows.size(); r++)
 		{
+			List<String> row = rows.get(r);
 			StringBuilder line = new StringBuilder();
-			for (int c = 0; c < columns; c++)
+			for (int c = 0; c < (lineUp ? columns : Math.min(columns, row.size())); c++)
 			{
 				if (c > 0)
 				{
 					line.append(" | ");
 				}
-				line.append(pad(cell(rows.get(r), c), width[c], align[c]));
+				line.append(lineUp ? pad(cell(row, c), width[c], align[c]) : row.get(c));
 			}
 			out.add(line.toString().stripTrailing());
 			if (r == 0)
 			{
-				StringBuilder rule = new StringBuilder();
-				for (int c = 0; c < columns; c++)
-				{
-					rule.append(c > 0 ? "-+-" : "").append(repeat('-', width[c]));
-				}
-				out.add(rule.toString());
+				out.add(lineUp ? rule(width) : repeat('-', Math.max(1, out.get(0).length())));
 			}
 		}
 		return out;
+	}
+
+	/** The rule under a lined-up header: dashes as wide as each column, "+" where the " | " go. */
+	private static String rule(int[] width)
+	{
+		StringBuilder rule = new StringBuilder();
+		for (int c = 0; c < width.length; c++)
+		{
+			rule.append(c > 0 ? "-+-" : "").append(repeat('-', width[c]));
+		}
+		return rule.toString();
 	}
 
 	private static String cell(List<String> row, int c)

@@ -310,6 +310,36 @@ public class MarkdownTest
 			Markdown.tableLines(rows, new int[]{Markdown.ALIGN_LEFT, Markdown.ALIGN_RIGHT, Markdown.ALIGN_CENTER}));
 	}
 
+	@Test
+	public void aTableTooBigToLineUpIsShownAsWritten()
+	{
+		// One long cell over many rows: lined up, every row would be padded to it, about 4 million characters.
+		StringBuilder reply = new StringBuilder("x|y\n-|-:\n|" + "w".repeat(2000));
+		for (int i = 0; i < 2000; i++)
+		{
+			reply.append("\n|");
+		}
+		List<Markdown.Block> blocks = Markdown.parse(reply.toString());
+		assertEquals(1, blocks.size());
+		List<String> lines = blocks.get(0).lines;
+		assertEquals(2003, lines.size());
+		assertEquals(Arrays.asList("x | y", "-----", "w".repeat(2000), ""), lines.subList(0, 4));
+		int size = 0;
+		for (String line : lines)
+		{
+			size += line.length();
+		}
+		assertTrue(size + " characters from " + reply.length(), size <= reply.length());
+		// Four lines (with the rule) of 5000 characters still line up; one more character doesn't.
+		int[] align = {Markdown.ALIGN_LEFT, Markdown.ALIGN_LEFT};
+		int wide = Markdown.MAX_TABLE / 4 - 4;
+		List<List<String>> rows = Arrays.asList(Arrays.asList("a", "b"), Arrays.asList("c".repeat(wide), ""),
+			Collections.singletonList("d"));
+		assertEquals("d" + " ".repeat(wide - 1) + " |", Markdown.tableLines(rows, align).get(3));
+		rows = Arrays.asList(Arrays.asList("a", "b"), Arrays.asList("c".repeat(wide + 1), ""), Collections.singletonList("d"));
+		assertEquals(Arrays.asList("a | b", "-----", "c".repeat(wide + 1) + " |", "d"), Markdown.tableLines(rows, align));
+	}
+
 	// Spans
 
 	@Test
