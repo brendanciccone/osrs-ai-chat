@@ -46,7 +46,7 @@ class StackLayout implements LayoutManager
 		{
 			if (c.isVisible())
 			{
-				h += heightFor(c, w);
+				h += height(c, w);
 				n++;
 			}
 		}
@@ -75,10 +75,24 @@ class StackLayout implements LayoutManager
 			{
 				continue;
 			}
-			int h = heightFor(c, w);
+			int h = height(c, w);
 			c.setBounds(in.left, y, w, h);
 			y += h + gap;
 		}
+	}
+
+	/**
+	 * The height {@code c} gets at width {@code w}. A child that hasn't changed since the last layout (still valid, and
+	 * as wide) keeps the height it has: while a reply streams in, only its own bubble is measured again, not every
+	 * message above it.
+	 */
+	private static int height(Component c, int w)
+	{
+		if (c.isValid() && c.getWidth() == w && c.getHeight() > 0)
+		{
+			return c.getHeight();
+		}
+		return heightFor(c, w);
 	}
 
 	/** Preferred height of {@code c} when it is {@code w} wide. */
