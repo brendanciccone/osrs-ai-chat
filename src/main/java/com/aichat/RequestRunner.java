@@ -118,7 +118,8 @@ final class RequestRunner
 
 	/**
 	 * The question Retry would send again, or null: the player's last message, when it went unanswered and nothing
-	 * but an error, a "Stopped" note or other notes came after it (or RuneLite closed while it waited).
+	 * but an error, a "Stopped" note, other notes or what was shown of a reply that didn't finish came after it (or
+	 * RuneLite closed while it waited).
 	 */
 	static Chat.Message retryable(Chat chat)
 	{
@@ -140,7 +141,7 @@ final class RequestRunner
 			{
 				return m.unanswered ? m : null;
 			}
-			if (m.role == Chat.Role.ASSISTANT)
+			if (m.role == Chat.Role.ASSISTANT && !m.unfinished)
 			{
 				return null;
 			}
@@ -210,9 +211,9 @@ final class RequestRunner
 				}
 
 				@Override
-				public void onError(String error)
+				public void onError(ChatApi.Failure failure)
 				{
-					edt.execute(() -> summarised(out, old, request[0], null, error));
+					edt.execute(() -> summarised(out, old, request[0], null, failure));
 				}
 			});
 		}
@@ -226,16 +227,17 @@ final class RequestRunner
 		chat.skipSummary = () ->
 		{
 			request[0].cancel();
-			afterSummary(out, old, null, "you pressed Stop");
+			afterSummary(out, old, null, new ChatApi.Failure("you pressed Stop"));
 		};
 	}
 
 	/** The answer to a summary request, if it still counts. */
-	private void summarised(Outgoing out, List<Chat.Message> old, ChatApi.Pending request, ChatApi.Reply reply, String error)
+	private void summarised(Outgoing out, List<Chat.Message> old, ChatApi.Pending request, ChatApi.Reply reply,
+		ChatApi.Failure failure)
 	{
 		if (current(out.chat, request))
 		{
-			afterSummary(out, old, reply, error);
+			afterSummary(out, old, reply, failure);
 		}
 	}
 
@@ -244,7 +246,7 @@ final class RequestRunner
 	 * left out, and the next message tries again). Either note goes just before the question, where the player sees it.
 	 * Then the question goes out.
 	 */
-	private void afterSummary(Outgoing out, List<Chat.Message> old, ChatApi.Reply reply, String error)
+	private void afterSummary(Outgoing out, List<Chat.Message> old, ChatApi.Reply reply, ChatApi.Failure failure)
 	{
 		Chat chat = out.chat;
 		chat.skipSummary = null;
@@ -260,7 +262,7 @@ final class RequestRunner
 		}
 		else
 		{
-			String reason = error != null ? error : "the summary came back empty";
+			String reason = failure != null ? failure.message : "the summary came back empty";
 			ConversationBuilder.addBefore(chat, out.message, new Chat.Message(Chat.Role.NOTE, ConversationBuilder.summaryFailed(reason)));
 		}
 		host.changed(chat);
@@ -331,13 +333,15 @@ final class RequestRunner
 				@Override
 				public void onReply(ChatApi.Reply reply)
 				{
-					edt.execute(() -> finished(out, request[0], reply, null));
+					edt.execute(() -> finished(out, request[0], reply, null, null));
 				}
 
 				@Override
-				public void onError(String error)
+				public void onError(ChatApi.Failure failure)
 				{
-					edt.execute(() -> finished(out, request[0], null, error));
+					// The newest text, which may be a moment ahead of what's drawn: the reply as far as it got.
+					String shown = partial.latest();
+					edt.execute(() -> finished(out, request[0], null, failure, shown));
 				}
 			});
 		}
@@ -435,7 +439,11 @@ final class RequestRunner
 		}
 	}
 
-	private void finished(Outgoing out, ChatApi.Pending request, ChatApi.Reply reply, String error)
+	/**
+	 * The request's answer: a reply, or an error ({@code failure}). {@code shown}: the reply's text so far when it
+	 * failed, which stays in the transcript unless the provider took it back.
+	 */
+	private void finished(Outgoing out, ChatApi.Pending request, ChatApi.Reply reply, ChatApi.Failure failure, String shown)
 	{
 		Chat chat = out.chat;
 		// Only the answer to the request still in flight counts: not one that was stopped, or a chat that's gone.
@@ -445,6 +453,7 @@ final class RequestRunner
 		}
 		chat.pending = null;
 		List<String> activity = chat.liveActivity;
+		String before = shown != null ? shown : chat.liveText;
 		chat.resetLive();
 		Chat.Message m;
 		if (reply != null)
@@ -463,12 +472,32 @@ final class RequestRunner
 		else
 		{
 			out.message.unanswered = true;
-			m = new Chat.Message(Chat.Role.ERROR, error);
+			if (!failure.withdrawn)
+			{
+				keepUnfinished(chat, out.setup.api.displayName(), before);
+			}
+			m = new Chat.Message(Chat.Role.ERROR, failure.message);
 		}
 		m.activity = activity;
 		chat.messages.add(m);
 		host.ended(chat, m);
 		host.changed(chat);
+	}
+
+	/**
+	 * What was shown of a reply that won't finish stays where the player was reading it, marked unfinished (the note or
+	 * error after it says why), rather than vanishing. It isn't sent: Retry asks the question again from the start.
+	 */
+	private static void keepUnfinished(Chat chat, String who, String text)
+	{
+		if (text == null || text.trim().isEmpty())
+		{
+			return;
+		}
+		Chat.Message m = new Chat.Message(Chat.Role.ASSISTANT, text);
+		m.who = who;
+		m.unfinished = true;
+		chat.messages.add(m);
 	}
 
 	/** A copy of the reply's token counts, or null when the provider didn't give any. */
@@ -508,6 +537,9 @@ final class RequestRunner
 			return;
 		}
 		List<String> activity = chat.liveActivity;
+		// What the player was reading when they pressed Stop, often because they'd read enough.
+		String shown = chat.liveText;
+		String who = chat.answering;
 		cancel(chat);
 		// The unanswered question stays in the transcript but isn't sent again.
 		for (int i = chat.messages.size() - 1; i >= 0; i--)
@@ -519,6 +551,7 @@ final class RequestRunner
 				break;
 			}
 		}
+		keepUnfinished(chat, who, shown);
 		Chat.Message stopped = new Chat.Message(Chat.Role.NOTE, note);
 		stopped.activity = activity;
 		chat.messages.add(stopped);

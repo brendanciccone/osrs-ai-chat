@@ -482,6 +482,13 @@ public class AnthropicApiTest
 		StandIn.Heard heard = send(api(), conversation("claude-opus-5-5", "hi"));
 		assertEquals("Claude declined to answer that.", heard.error());
 		assertEquals(List.of("Sure, here"), heard.partials);
+		assertTrue("what it wrote isn't kept", heard.failure.withdrawn);
+
+		// Any other failure leaves what was shown where it is.
+		server.answer(PATH, events(begin("claude-opus-5-5"), text(0, "Half")));
+		heard = send(api(), conversation("claude-opus-5-5", "hi"));
+		assertEquals(ChatApi.CUT_OFF, heard.error());
+		assertFalse(heard.failure.withdrawn);
 	}
 
 	@Test

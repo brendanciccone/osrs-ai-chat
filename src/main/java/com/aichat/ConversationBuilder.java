@@ -82,15 +82,14 @@ final class ConversationBuilder
 
 	/**
 	 * The messages the next request sends, oldest first: the player's questions that weren't left unanswered, and the
-	 * replies, except those the summary covers. It always starts with the player, as providers require.
+	 * replies that finished, except those the summary covers. It always starts with the player, as providers require.
 	 */
 	static List<Chat.Message> history(Chat chat)
 	{
 		List<Chat.Message> history = new ArrayList<>();
 		for (Chat.Message m : chat.messages)
 		{
-			boolean sent = m.role == Chat.Role.USER && !m.unanswered || m.role == Chat.Role.ASSISTANT;
-			if (sent && !m.summarized)
+			if (stillSent(m))
 			{
 				history.add(m);
 			}
@@ -100,6 +99,17 @@ final class ConversationBuilder
 			history.remove(0);
 		}
 		return history;
+	}
+
+	/**
+	 * Whether a message goes with the next request (if the chat's start doesn't have to give way: see {@link #history}):
+	 * a question that wasn't left unanswered, or a reply that finished, and not covered by the summary. Notes and errors
+	 * are for the player only.
+	 */
+	static boolean stillSent(Chat.Message m)
+	{
+		boolean sent = m.role == Chat.Role.USER && !m.unanswered || m.role == Chat.Role.ASSISTANT && !m.unfinished;
+		return sent && !m.summarized;
 	}
 
 	/** The character note the provider will have seen last before {@code message}, or null. */

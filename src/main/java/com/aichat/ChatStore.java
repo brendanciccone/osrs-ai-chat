@@ -48,6 +48,7 @@ final class ChatStore
 		String who;
 		String context;
 		boolean unanswered;
+		boolean unfinished;
 		boolean summarized;
 		/** Null when nothing was looked up or shared. */
 		List<String> activity;
@@ -90,6 +91,7 @@ final class ChatStore
 				sm.context = m.context;
 				// A question still waiting when RuneLite closes won't be answered.
 				sm.unanswered = m.unanswered || c.isRunning() && m.role == Chat.Role.USER && m == lastUserMessage(c);
+				sm.unfinished = m.unfinished;
 				sm.summarized = m.summarized;
 				sm.activity = m.activity == null || m.activity.isEmpty() ? null : new ArrayList<>(m.activity);
 				sm.usage = saved(m.usage, m.model);
@@ -148,6 +150,7 @@ final class ChatStore
 					m.who = sm.who;
 					m.context = sm.context;
 					m.unanswered = sm.unanswered;
+					m.unfinished = sm.unfinished && role == Chat.Role.ASSISTANT;
 					// Without its summary, a summarised message is sent again rather than lost.
 					m.summarized = sm.summarized && c.summary != null;
 					m.activity = activity(sm.activity);

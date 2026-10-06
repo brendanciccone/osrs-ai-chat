@@ -272,7 +272,9 @@ public class OpenAiApiTest
 		server.answer(PATH, events(chunk("{\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"error\",\"error\":{\"message\":\"Upstream timed out\"}}]}"), DONE));
 		assertTrue(send(compatible("m"), conversation("m", "hi")).error().contains("Upstream timed out"));
 		server.answer(PATH, events(content("Some"), finish("content_filter"), DONE));
-		assertTrue(send(compatible("m"), conversation("m", "hi")).error().contains("content filter"));
+		StandIn.Heard filtered = send(compatible("m"), conversation("m", "hi"));
+		assertTrue(filtered.error().contains("content filter"));
+		assertTrue("what it wrote isn't kept", filtered.failure.withdrawn);
 	}
 
 	@Test

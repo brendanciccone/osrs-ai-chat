@@ -154,6 +154,7 @@ final class StandIn
 		final AtomicInteger answers = new AtomicInteger();
 		volatile ChatApi.Reply reply;
 		volatile String error;
+		volatile ChatApi.Failure failure;
 		private final CountDownLatch done = new CountDownLatch(1);
 		private final CountDownLatch retrying = new CountDownLatch(1);
 
@@ -179,9 +180,10 @@ final class StandIn
 		}
 
 		@Override
-		public void onError(String message)
+		public void onError(ChatApi.Failure f)
 		{
-			error = message;
+			failure = f;
+			error = f.message;
 			answers.incrementAndGet();
 			done.countDown();
 		}

@@ -54,6 +54,23 @@ public class ChatStoreTest
 	}
 
 	@Test
+	public void anUnfinishedReplyStaysUnfinished()
+	{
+		Chat c = new Chat("x");
+		Chat.Message q = new Chat.Message(Chat.Role.USER, "q");
+		q.unanswered = true;
+		c.messages.add(q);
+		Chat.Message partial = new Chat.Message(Chat.Role.ASSISTANT, "Half a");
+		partial.unfinished = true;
+		c.messages.add(partial);
+		c.messages.add(new Chat.Message(Chat.Role.NOTE, "Stopped."));
+		Chat back = ChatStore.fromJson(gson, ChatStore.toJson(gson, List.of(c), c)).chats.get(0);
+		assertTrue(back.messages.get(1).unfinished);
+		assertTrue("never sent", ConversationBuilder.history(back).isEmpty());
+		assertSame(back.messages.get(0), RequestRunner.retryable(back));
+	}
+
+	@Test
 	public void aQuestionWithoutAnAnswerIsMarkedSo()
 	{
 		Chat c = new Chat("x");

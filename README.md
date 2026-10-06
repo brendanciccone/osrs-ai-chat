@@ -26,7 +26,7 @@ look things up on the OSRS Wiki while it answers. Uses your own API key. Free an
   account
 - The tokens each reply used, and the chat's total, with an estimate of the cost for Claude models
 - A busy provider is asked again automatically; a question that failed or was stopped can be sent again with
-  **Retry**
+  **Retry**, and what was shown of its reply stays for you to read
 - Long chats are summarised instead of cut short (see [Long chats](#long-chats))
 
 ## Setup

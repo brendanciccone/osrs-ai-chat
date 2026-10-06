@@ -538,7 +538,7 @@ class AiChatPanel extends PluginPanel
 		{
 			setBackground(m.role == Chat.Role.USER ? ColorScheme.DARKER_GRAY_COLOR : ColorScheme.DARKER_GRAY_HOVER_COLOR);
 			header.setText(m.author() + "  " + new SimpleDateFormat("HH:mm").format(new Date(m.time))
-				+ (m.unanswered ? "  (not answered)" : ""));
+				+ (m.unanswered ? "  (not answered)" : "") + (m.unfinished ? "  (unfinished)" : ""));
 			header.setForeground(color(m.role));
 			header.setToolTipText(m.usage == null ? null : PanelText.usage(m.usage, m.model));
 			retry.setVisible(retryHere);

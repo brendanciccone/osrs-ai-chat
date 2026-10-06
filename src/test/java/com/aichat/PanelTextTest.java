@@ -118,6 +118,10 @@ public class PanelTextTest
 		messages.remove(0);
 		messages.add(new Chat.Message(Chat.Role.ERROR, "Anthropic is busy"));
 		messages.add(new Chat.Message(Chat.Role.NOTE, "Stopped."));
+		// Nor does what was shown of a reply that didn't finish: its counts go with the error or note after it.
+		Chat.Message unfinished = new Chat.Message(Chat.Role.ASSISTANT, "Half a");
+		unfinished.unfinished = true;
+		messages.add(unfinished);
 		assertEquals("This chat: 2k tokens · about $0.02", PanelText.chatTotals(messages));
 	}
 

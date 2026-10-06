@@ -195,8 +195,25 @@ interface ChatApi
 
 		void onReply(Reply reply);
 
+		/** The request ended without a reply: why, for the panel, and what it used on the way. */
+		void onError(Failure failure);
+	}
+
+	/** Why a request ended without a reply. */
+	final class Failure
+	{
 		/** A short, readable explanation for the panel. */
-		void onError(String message);
+		final String message;
+		/**
+		 * The text shown so far is taken back rather than kept: the provider's safety filter stopped the reply part
+		 * way, and what it had written isn't to be read as an answer.
+		 */
+		boolean withdrawn;
+
+		Failure(String message)
+		{
+			this.message = message;
+		}
 	}
 
 	/**

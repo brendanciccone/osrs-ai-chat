@@ -80,7 +80,8 @@ final class PanelText
 		{
 			if (m.usage == null)
 			{
-				complete &= m.role != Chat.Role.ASSISTANT;
+				// What an unfinished reply used goes with the note or error after it.
+				complete &= m.role != Chat.Role.ASSISTANT || m.unfinished;
 				continue;
 			}
 			tokens += m.usage.total();

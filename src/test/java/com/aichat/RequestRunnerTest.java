@@ -430,12 +430,59 @@ public class RequestRunnerTest
 		listener.onPartial("late");
 		listener.onRetrying("Anthropic is busy", 2);
 		listener.onReply(reply("late", 1, 1));
-		listener.onError("late");
+		listener.onError(new ChatApi.Failure("late"));
 		runEdt();
 		assertEquals(messages, chat.messages.size());
 		assertNull(chat.liveText);
 		assertNull(chat.retryWhy);
 		assertTrue(host.ended.isEmpty());
+	}
+
+	@Test
+	public void stoppingKeepsWhatWasShownOfTheReply()
+	{
+		Chat.Message question = send("How do I get to Zulrah?");
+		api.listener().onPartial("Take the Zul-Andra teleport, then");
+		runEdt();
+		runner.stop(chat);
+		assertEquals(Arrays.asList(Chat.Role.USER, Chat.Role.ASSISTANT, Chat.Role.NOTE), roles());
+		Chat.Message partial = chat.messages.get(1);
+		assertEquals("still there to read and copy", "Take the Zul-Andra teleport, then", partial.text);
+		assertTrue(partial.unfinished);
+		assertEquals("Claude", partial.who);
+		assertEquals("Stopped.", chat.messages.get(2).text);
+
+		// It doesn't count as the answer: the question can be retried, and goes without it.
+		assertSame(question, RequestRunner.retryable(chat));
+		assertTrue(runner.retry(chat, setup()));
+		runEdt();
+		assertEquals(1, api.last().turns.size());
+		assertEquals("How do I get to Zulrah?", lastTurn(api.last()));
+	}
+
+	@Test
+	public void aReplyThatBreaksOffKeepsItsTextUnlessItWasTakenBack()
+	{
+		Chat.Message question = send("q");
+		api.listener().onPartial("Half a");
+		api.listener().onError(new ChatApi.Failure(ChatApi.CUT_OFF));
+		runEdt();
+		assertEquals(Arrays.asList(Chat.Role.USER, Chat.Role.ASSISTANT, Chat.Role.ERROR), roles());
+		assertEquals("Half a", chat.messages.get(1).text);
+		assertTrue(chat.messages.get(1).unfinished);
+		assertEquals(ChatApi.CUT_OFF, chat.messages.get(2).text);
+		assertEquals("only the error is announced", Collections.singletonList(chat.messages.get(2)), host.ended);
+		assertSame(question, RequestRunner.retryable(chat));
+
+		// A refusal part way takes back what was written.
+		assertTrue(runner.retry(chat, setup()));
+		runEdt();
+		api.listener().onPartial("Sure, here");
+		ChatApi.Failure declined = new ChatApi.Failure("Claude declined to answer that.");
+		declined.withdrawn = true;
+		api.listener().onError(declined);
+		runEdt();
+		assertEquals(Arrays.asList(Chat.Role.USER, Chat.Role.ASSISTANT, Chat.Role.ERROR, Chat.Role.ERROR), roles());
 	}
 
 	@Test
@@ -468,7 +515,7 @@ public class RequestRunnerTest
 	public void anErrorCanBeRetriedWithTheSameQuestion()
 	{
 		Chat.Message question = send("q");
-		api.listener().onError("Anthropic is overloaded or having trouble right now. Try again shortly.");
+		api.listener().onError(new ChatApi.Failure("Anthropic is overloaded or having trouble right now. Try again shortly."));
 		runEdt();
 		assertTrue(question.unanswered);
 		Chat.Message error = chat.messages.get(1);
@@ -580,7 +627,7 @@ public class RequestRunnerTest
 	{
 		history(20);
 		Chat.Message question = send("Q21");
-		api.listener().onError("Anthropic is overloaded or having trouble right now. Try again shortly.");
+		api.listener().onError(new ChatApi.Failure("Anthropic is overloaded or having trouble right now. Try again shortly."));
 		runEdt();
 		Chat.Message note = chat.messages.get(chat.messages.indexOf(question) - 1);
 		assertTrue(note.text, note.text.startsWith("Couldn't summarise the earlier messages (Anthropic is overloaded"));

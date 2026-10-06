@@ -24,6 +24,11 @@ class Chat
 		String context;
 		/** A USER message whose request failed or was stopped. Left out of later requests. */
 		boolean unanswered;
+		/**
+		 * An ASSISTANT reply that never finished: what was shown of it before it was stopped or broke off, kept for the
+		 * player to read (the note or error after it says why). Never sent.
+		 */
+		boolean unfinished;
 		/** Covered by the chat's {@link Chat#summary}: still shown, but no longer sent. */
 		boolean summarized;
 		/**

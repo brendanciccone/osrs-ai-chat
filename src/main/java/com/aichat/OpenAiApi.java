@@ -543,7 +543,10 @@ class OpenAiApi implements ChatApi
 			boolean cutShort = "length".equals(m.finish);
 			if ("content_filter".equals(m.finish))
 			{
-				fail(name + "'s content filter stopped the reply.");
+				// What it wrote before that isn't an answer, so it isn't kept.
+				Failure filtered = new Failure(name + "'s content filter stopped the reply.");
+				filtered.withdrawn = true;
+				fail(filtered);
 				return;
 			}
 			// A call cut off by the length limit has half its arguments: not run.
@@ -643,9 +646,14 @@ class OpenAiApi implements ChatApi
 
 		private void fail(String message)
 		{
+			fail(new Failure(message));
+		}
+
+		private void fail(Failure failure)
+		{
 			if (!pending.isCancelled() && over.compareAndSet(false, true))
 			{
-				listener.onError(message);
+				listener.onError(failure);
 			}
 		}
 	}

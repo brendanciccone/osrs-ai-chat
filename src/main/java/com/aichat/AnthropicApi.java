@@ -501,10 +501,13 @@ class AnthropicApi implements ChatApi
 			}
 			usage.add(m.usage);
 			model = m.model != null ? m.model : model;
-			// Checked before anything else: a refusal can cut the reply (or a tool call) off part way.
+			// Checked before anything else: a refusal can cut the reply (or a tool call) off part way. What it wrote
+			// before that isn't an answer, so it isn't kept (as Anthropic advises).
 			if ("refusal".equals(m.stop))
 			{
-				fail("Claude declined to answer that.");
+				Failure declined = new Failure("Claude declined to answer that.");
+				declined.withdrawn = true;
+				fail(declined);
 				return;
 			}
 			JsonArray content = echo(m.content(gson));
@@ -607,9 +610,14 @@ class AnthropicApi implements ChatApi
 
 		private void fail(String message)
 		{
+			fail(new Failure(message));
+		}
+
+		private void fail(Failure failure)
+		{
 			if (!pending.isCancelled() && over.compareAndSet(false, true))
 			{
-				listener.onError(message);
+				listener.onError(failure);
 			}
 		}
 	}
