@@ -92,12 +92,31 @@ class Chat
 
 	/** The request in flight, or null. */
 	ChatApi.Pending pending;
+	/** When the request in flight started: the summary, then the question itself. */
 	long runStartedAt;
 	/**
 	 * While the oldest messages are being summarised before a question goes out: carries on without the summary, which
 	 * is what Stop does then. Null the rest of the time.
 	 */
 	Runnable skipSummary;
+
+	// What the panel shows of the request in flight, while it runs.
+
+	/** Who's answering: "Claude", "ChatGPT", or the model of an OpenAI-compatible service. */
+	String answering;
+	/** The reply so far, as it streams in; null until its first words. */
+	String liveText;
+	/** What has been looked up or shared for it so far; it goes with the message that ends the request. */
+	List<String> liveActivity = new ArrayList<>();
+	/** The model has stopped writing to look things up, and hasn't carried on yet. */
+	boolean lookingUp;
+	/** The latest look-up that finished while {@link #lookingUp}, or null. */
+	String lookupLine;
+	/** The reply's text when the look-ups started: only text beyond it means the model is writing again. */
+	String lookupAfter;
+	/** The provider was busy: why ("Anthropic is busy"), and when it's asked again. */
+	String retryWhy;
+	long retryAt;
 
 	Chat(String name)
 	{
@@ -119,5 +138,17 @@ class Chat
 	boolean isSummarizing()
 	{
 		return skipSummary != null;
+	}
+
+	/** A new request starts (or the last one ended): nothing of it to show yet. */
+	void resetLive()
+	{
+		liveText = null;
+		liveActivity = new ArrayList<>();
+		lookingUp = false;
+		lookupLine = null;
+		lookupAfter = null;
+		retryWhy = null;
+		retryAt = 0;
 	}
 }
