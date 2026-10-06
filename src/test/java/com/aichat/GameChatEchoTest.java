@@ -97,6 +97,10 @@ public class GameChatEchoTest
 		assertEquals("50 > 40", GameChatEcho.chatText("50 > 40"));
 		// Half a marker, as a reply cut short might leave: shown as it is.
 		assertEquals("an *unfinished thought", GameChatEcho.chatText("an *unfinished thought"));
+		// Escaped punctuation is the character itself, as in the panel; other backslashes stay.
+		assertEquals("Escaped *not italic* or _either_, 1. no list", GameChatEcho.chatText("Escaped \\*not italic\\* or \\_either\\_, 1\\. no list"));
+		assertEquals("# Not a heading, [not](a link), `tick`", GameChatEcho.chatText("\\# Not a heading, \\[not\\](a link), \\`tick\\`"));
+		assertEquals("C:\\Users\\me and \\", GameChatEcho.chatText("C:\\Users\\me and \\\\"));
 	}
 
 	@Test

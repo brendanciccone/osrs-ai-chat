@@ -39,6 +39,13 @@ final class GameChatEcho
 	private static final Pattern UNDERSCORE_BOLD = Pattern.compile("(?<![\\p{L}\\p{N}_])__([^_\\s](?:[^_]*[^_\\s])?)__(?![\\p{L}\\p{N}_])");
 	private static final Pattern UNDERSCORE_ITALIC = Pattern.compile("(?<![\\p{L}\\p{N}_])_([^_\\s](?:[^_]*[^_\\s])?)_(?![\\p{L}\\p{N}_])");
 	private static final Pattern STAR_ITALIC = Pattern.compile("(?<![\\p{L}\\p{N}*])\\*([^*\\s](?:[^*]*[^*\\s])?)\\*(?![\\p{L}\\p{N}*])");
+	/** A backslash before ASCII punctuation: Markdown for that character as it is (\* is a star, not italics). */
+	private static final Pattern ESCAPED = Pattern.compile("\\\\([!-/:-@\\[-`{-~])");
+	/**
+	 * Escaped characters wait as private-use stand-ins (this plus the character) while the Markdown around them is
+	 * taken out, so no pattern takes them for markers.
+	 */
+	private static final char STAND_IN = '\uE000';
 
 	private GameChatEcho()
 	{
@@ -121,7 +128,7 @@ final class GameChatEcho
 	 */
 	static String chatText(String raw)
 	{
-		String s = raw
+		String s = escape(raw)
 			.replace('\u2018', '\'').replace('\u2019', '\'')
 			.replace('\u201C', '"').replace('\u201D', '"')
 			.replace('\u2013', '-').replace('\u2014', '-')
@@ -142,6 +149,31 @@ final class GameChatEcho
 		{
 			out.append(out.length() == 0 ? "" : " ")
 				.append(word.length() <= MAX_WORD ? word : word.substring(0, MAX_WORD - 3) + "...");
+		}
+		return unescape(out.toString());
+	}
+
+	/** Escaped punctuation as stand-ins, without its backslashes. */
+	private static String escape(String s)
+	{
+		Matcher m = ESCAPED.matcher(s);
+		StringBuffer out = new StringBuffer();
+		while (m.find())
+		{
+			m.appendReplacement(out, String.valueOf((char) (STAND_IN + m.group(1).charAt(0))));
+		}
+		m.appendTail(out);
+		return out.toString();
+	}
+
+	/** The escaped characters back in place of their stand-ins. */
+	private static String unescape(String s)
+	{
+		StringBuilder out = new StringBuilder(s.length());
+		for (int i = 0; i < s.length(); i++)
+		{
+			char c = s.charAt(i);
+			out.append(c >= STAND_IN && c < STAND_IN + 128 ? (char) (c - STAND_IN) : c);
 		}
 		return out.toString();
 	}
