@@ -1,6 +1,7 @@
 package com.aichat;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -320,6 +321,56 @@ public class RequestRunnerTest
 		assertFalse(question.unanswered);
 		// The notification and game chat: once, on completion.
 		assertEquals(Collections.singletonList(answer), host.ended);
+	}
+
+	@Test
+	public void repliesAreKeptToGoBackAsTheyCameUntilOneIsBuiltOnText()
+	{
+		history(1);
+		chat.summaryVersion = 2;
+		Chat.Message a1 = chat.messages.get(1);
+		a1.summaryVersion = 2;
+		JsonArray r1 = new JsonArray();
+		a1.rawMessages = r1;
+		a1.rawKey = "k1";
+		Chat.Message q2 = send("Q2");
+		assertSame("the earlier reply goes back as it came", r1, api.last().turns.get(1).rawMessages);
+		ChatApi.Reply reply = reply("A2", 1, 1);
+		JsonArray r2 = new JsonArray();
+		reply.rawMessages = r2;
+		reply.rawKey = "k2";
+		api.listener().onReply(reply);
+		runEdt();
+		Chat.Message a2 = chat.messages.get(3);
+		assertSame(r2, a2.rawMessages);
+		assertEquals("k2", a2.rawKey);
+		assertEquals(2, q2.summaryVersion);
+		assertEquals("made under the summary the question went with", 2, a2.summaryVersion);
+		assertSame(r1, a1.rawMessages);
+
+		send("Q3");
+		assertSame(r1, api.last().turns.get(1).rawMessages);
+		assertSame(r2, api.last().turns.get(3).rawMessages);
+		assertEquals("k2", api.last().turns.get(3).rawKey);
+		// Claude took the earlier replies only as text this time: this reply was built on that, so they stay text.
+		reply = reply("A3", 1, 1);
+		JsonArray r3 = new JsonArray();
+		reply.rawMessages = r3;
+		reply.rawKey = "k3";
+		reply.historyAsText = true;
+		api.listener().onReply(reply);
+		runEdt();
+		assertNull(a1.rawMessages);
+		assertNull(a1.rawKey);
+		assertNull(a2.rawMessages);
+		assertNull(a2.rawKey);
+		assertSame(r3, chat.messages.get(5).rawMessages);
+
+		send("Q4");
+		List<ChatApi.Turn> turns = api.last().turns;
+		assertNull(turns.get(1).rawMessages);
+		assertNull(turns.get(3).rawMessages);
+		assertSame(r3, turns.get(5).rawMessages);
 	}
 
 	@Test
