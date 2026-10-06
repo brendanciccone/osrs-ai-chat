@@ -145,7 +145,7 @@ public class AiChatPlugin extends Plugin
 	private WikiClient wikiClient;
 	/** RuneLite's own GE prices, for ge_price. */
 	private LookupTools.Prices prices;
-	/** The player's own account, for the game-data tools. Kept while RuneLite runs: it holds the bank as last seen. */
+	/** The player's own account, for the game-data tools, with the bank as last seen while AI Chat is on. */
 	private GameData gameData;
 	private RequestRunner runner;
 	/**
@@ -257,7 +257,8 @@ public class AiChatPlugin extends Plugin
 		}
 		tester.stop();
 		saver.saveNow();
-		forgetBankUnlessShared();
+		// Not kept while AI Chat is off: a setting turned off meanwhile isn't heard about.
+		clientThread.invokeLater(gameData::forgetBank);
 		panel.refreshAll();
 		clientToolbar.removeNavigation(navButton);
 		navButton = null;
@@ -316,10 +317,7 @@ public class AiChatPlugin extends Plugin
 		return config.aiRequests() && config.shareItems();
 	}
 
-	/**
-	 * The bank as last seen isn't kept where it can't be shared. Also checked when AI Chat is turned on or off: a
-	 * setting changed while it was off isn't heard about.
-	 */
+	/** The bank as last seen isn't kept where it can't be shared. Also checked when AI Chat is turned on. */
 	private void forgetBankUnlessShared()
 	{
 		if (!canShareItems())

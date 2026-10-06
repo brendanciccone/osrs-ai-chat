@@ -241,8 +241,8 @@ public class GameDataToolsTest
 	{
 		Ended e = run(tools(), "get_bank", new JsonObject());
 		assertTrue(e.result.error);
-		assertEquals("The bank can only be read while it's open, and the player hasn't opened it since \"Share items and "
-			+ "gear\" was turned on or they logged in to this account. Ask them to open their bank once, then ask again.",
+		assertEquals("The bank can only be read while it's open, and the player hasn't opened it since AI Chat or \"Share items "
+			+ "and gear\" was turned on, or they logged in to this account. Ask them to open their bank once, then ask again.",
 			e.result.content);
 		assertEquals(Collections.singletonList("Couldn't share your bank: open it once so AI Chat can see it"), activity);
 	}

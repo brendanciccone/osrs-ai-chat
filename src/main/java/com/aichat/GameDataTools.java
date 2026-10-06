@@ -52,8 +52,8 @@ final class GameDataTools implements ChatApi.ToolRunner
 		GameData.Items inventory();
 
 		/**
-		 * Null when the bank hasn't been seen on this account since it could be: since RuneLite started, or since "Share
-		 * items and gear" (or AI requests) was last turned on.
+		 * Null when the bank hasn't been seen on this account since it could be: since AI Chat, "Share items and gear" or
+		 * AI requests was last turned on.
 		 */
 		GameData.Bank bank();
 
@@ -233,8 +233,8 @@ final class GameDataTools implements ChatApi.ToolRunner
 		if (bank == null)
 		{
 			return new Outcome("Couldn't share your bank: open it once so AI Chat can see it",
-				ChatApi.ToolResult.error("The bank can only be read while it's open, and the player hasn't opened it since \""
-					+ ITEMS_SETTING + "\" was turned on or they logged in to this account. Ask them to open their bank once, "
+				ChatApi.ToolResult.error("The bank can only be read while it's open, and the player hasn't opened it since AI Chat or \""
+					+ ITEMS_SETTING + "\" was turned on, or they logged in to this account. Ask them to open their bank once, "
 					+ "then ask again."));
 		}
 		String line = search == null ? SHARED + "bank" : SEARCHED + "\"" + ChatApi.shorten(search, 60) + "\"";

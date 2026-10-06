@@ -69,7 +69,7 @@ there's no server in between.
 - **Only while "Share items and gear" is on:** the assistant can look at your worn equipment, your inventory, and
   your bank as it was the last time you had it open while this setting was on (on the account you're logged in to),
   with Grand Exchange prices, when a question needs them. AI Chat keeps that last look at your bank in memory only,
-  and only while this setting is on.
+  and only while this setting and AI Chat itself are on.
 - Character, Slayer, diary and item look-ups only work while you're logged in.
 - **Sent to the OSRS Wiki while "Wiki look-ups" is on (it is by default):** the search words and page titles the
   assistant looks up, and your IP address, go to oldschool.runescape.wiki. Nothing about your account goes there,
