@@ -1016,7 +1016,8 @@ class AnthropicApi implements ChatApi
 			{
 				if (!pending.isCancelled())
 				{
-					listener.onError("Couldn't reach Anthropic: " + e.getMessage());
+					listener.onError(ChatApi.tookTooLong(e) ? "Anthropic didn't answer in time. Try again in a moment."
+						: "Couldn't reach Anthropic: " + e.getMessage());
 				}
 			}
 

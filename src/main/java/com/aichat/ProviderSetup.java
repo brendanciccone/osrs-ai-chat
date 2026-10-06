@@ -26,6 +26,28 @@ final class ProviderSetup
 	/** What's missing before messages can be sent, or null when the chosen provider is set up. */
 	String problem()
 	{
+		String connection = connectionProblem();
+		if (connection != null || !blank(model()))
+		{
+			return connection;
+		}
+		switch (config.provider())
+		{
+			case CLAUDE:
+				return "Set a Claude model in the Claude section of the AI Chat settings, or press Test to choose one.";
+			case CHATGPT:
+				return "Set a ChatGPT model in the ChatGPT section of the AI Chat settings, or press Test to choose one.";
+			default:
+				return "Set the model in the OpenAI-compatible section of the AI Chat settings, or press Test to choose one.";
+		}
+	}
+
+	/**
+	 * What's missing before the provider can be reached, or null: {@link #problem()} without the model, which "Test"
+	 * doesn't need (it's how a player finds one).
+	 */
+	String connectionProblem()
+	{
 		if (!config.aiRequests())
 		{
 			return "Turn on \"Enable AI requests\" in the AI Chat settings, then choose a provider and add your API key.";
@@ -39,11 +61,7 @@ final class ProviderSetup
 				{
 					return "Add your Claude API key in the Claude section of the AI Chat settings (from console.anthropic.com).";
 				}
-				if (!ChatApi.sendableKey(key))
-				{
-					return BAD_KEY;
-				}
-				return blank(config.claudeModel()) ? "Set a Claude model in the Claude section of the AI Chat settings." : null;
+				return ChatApi.sendableKey(key) ? null : BAD_KEY;
 			}
 			case CHATGPT:
 			{
@@ -52,11 +70,7 @@ final class ProviderSetup
 				{
 					return "Add your OpenAI API key in the ChatGPT section of the AI Chat settings (from platform.openai.com).";
 				}
-				if (!ChatApi.sendableKey(key))
-				{
-					return BAD_KEY;
-				}
-				return blank(config.openaiModel()) ? "Set a ChatGPT model in the ChatGPT section of the AI Chat settings." : null;
+				return ChatApi.sendableKey(key) ? null : BAD_KEY;
 			}
 			default:
 			{
@@ -74,7 +88,7 @@ final class ProviderSetup
 				{
 					return "Use an https:// URL for " + url.host() + ": with http:// your API key would cross the internet unencrypted.";
 				}
-				return blank(config.compatibleModel()) ? "Set the model in the OpenAI-compatible section of the AI Chat settings." : null;
+				return null;
 			}
 		}
 	}
@@ -99,10 +113,20 @@ final class ProviderSetup
 	 */
 	ChatApi api(OkHttpClient http, Gson gson, ScheduledExecutorService scheduler, Map<String, Set<String>> refused)
 	{
-		if (problem() != null)
-		{
-			return null;
-		}
+		return problem() != null ? null : build(http, gson, scheduler, refused);
+	}
+
+	/**
+	 * The provider's API for "Test", which needs no model yet; null while it can't be reached (see
+	 * {@link #connectionProblem()}).
+	 */
+	ChatApi testApi(OkHttpClient http, Gson gson, ScheduledExecutorService scheduler, Map<String, Set<String>> refused)
+	{
+		return connectionProblem() != null ? null : build(http, gson, scheduler, refused);
+	}
+
+	private ChatApi build(OkHttpClient http, Gson gson, ScheduledExecutorService scheduler, Map<String, Set<String>> refused)
+	{
 		switch (config.provider())
 		{
 			case CLAUDE:

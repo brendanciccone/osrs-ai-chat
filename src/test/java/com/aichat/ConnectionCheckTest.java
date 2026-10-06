@@ -64,9 +64,34 @@ public class ConnectionCheckTest
 		assertEquals(bad, error.text);
 		assertTrue(error.models.isEmpty());
 
-		ConnectionCheck.Note noList = ConnectionCheck.failed(SETUP, OpenAiApi.NO_MODEL_LIST).note("api.example.com", "m", false);
-		assertEquals(ConnectionCheck.Kind.OK, noList.kind);
-		assertEquals("Connected to api.example.com. It doesn't list its models, so check the model name on its website.", noList.text);
+		// Any web server can say "not found": that's no sign the URL is right.
+		ConnectionCheck.Note noList = ConnectionCheck.failed(SETUP, OpenAiApi.NO_MODEL_LIST).note("localhost:11434", "m", false);
+		assertEquals(ConnectionCheck.Kind.WARNING, noList.kind);
+		assertEquals("localhost:11434 answered, but not with a list of models, so Test can't check the URL or the model "
+			+ "name. Check both on the service's website.", noList.text);
+	}
+
+	@Test
+	public void withoutAModelTheListIsOffered()
+	{
+		ConnectionCheck check = ConnectionCheck.listed(SETUP, Arrays.asList("llama3.2:latest", "qwen3:8b"), true);
+		ConnectionCheck.Note note = check.note("localhost:11434", "", false);
+		assertEquals(ConnectionCheck.Kind.OK, note.kind);
+		assertEquals("Connected to localhost:11434. Choose a model:", note.text);
+		assertEquals(Arrays.asList("llama3.2:latest", "qwen3:8b"), note.models);
+	}
+
+	@Test
+	public void anAliasIsFoundAsTheDatedModelItPointsTo()
+	{
+		// Anthropic lists claude-haiku-4-5 only by its full name.
+		ConnectionCheck check = ConnectionCheck.listed(SETUP, Arrays.asList("claude-opus-5-5", "claude-haiku-4-5-20251001"), false);
+		ConnectionCheck.Note note = check.note("Anthropic", "claude-haiku-4-5", true);
+		assertEquals(ConnectionCheck.Kind.OK, note.kind);
+		assertEquals("Connected to Anthropic. claude-haiku-4-5 is available.", note.text);
+		// Only a date: another model that starts the same way isn't it.
+		assertEquals(ConnectionCheck.Kind.WARNING, ConnectionCheck.listed(SETUP, Arrays.asList("claude-haiku-4-5-latest-x",
+			"claude-haiku-4-5-2025100"), false).note("Anthropic", "claude-haiku-4-5", true).kind);
 	}
 
 	@Test

@@ -40,7 +40,7 @@ class OpenAiApi implements ChatApi
 	static final HttpUrl OPENAI_URL = HttpUrl.get("https://api.openai.com/v1/");
 	/** OpenAI's small, fast model: plenty for chat, and cheap. */
 	static final String DEFAULT_MODEL = "gpt-6-luna";
-	/** What {@link #listModels} says about a service without a model list; "Test connection" treats it as connected. */
+	/** What {@link #listModels} says about a service without a model list, or with one AI Chat can't find. */
 	static final String NO_MODEL_LIST = "This service doesn't list its models; check the model name on its website.";
 	/**
 	 * Reply length limits. Most services count the model's reasoning against them too, so they leave plenty of room;
@@ -895,7 +895,17 @@ class OpenAiApi implements ChatApi
 	public Pending listModels(ModelsListener listener)
 	{
 		Pending pending = new Pending();
-		Request.Builder request = new Request.Builder().url(base.resolve("models")).get();
+		listModels(listener, pending, false);
+		return pending;
+	}
+
+	/**
+	 * Asks for {@code base}/models, or with {@code withV1} for {@code base}/v1/models: a URL that leaves out the /v1
+	 * most services need (Ollama's "http://localhost:11434") isn't found, and chats sent there wouldn't be either.
+	 */
+	private void listModels(ModelsListener listener, Pending pending, boolean withV1)
+	{
+		Request.Builder request = new Request.Builder().url(base.resolve(withV1 ? "v1/models" : "models")).get();
 		if (!apiKey.isEmpty())
 		{
 			request.header("Authorization", "Bearer " + apiKey);
@@ -911,7 +921,12 @@ class OpenAiApi implements ChatApi
 				{
 					return;
 				}
-				listener.onError(ChatApi.tookTooLong(e) ? describe(base) + " took too long to answer."
+				if (withV1)
+				{
+					listener.onError(NO_MODEL_LIST);
+					return;
+				}
+				listener.onError(ChatApi.tookTooLong(e) ? describe(base) + " didn't answer in time. Try again in a moment."
 					: "Couldn't reach " + describe(base) + ": " + e.getMessage() + (isPrivate(base.host()) ? ". Is the service running?" : ""));
 			}
 
@@ -927,7 +942,7 @@ class OpenAiApi implements ChatApi
 				{
 					if (!pending.isCancelled())
 					{
-						listener.onError("Couldn't read the answer from " + describe(base) + ": " + e.getMessage());
+						listener.onError(withV1 ? NO_MODEL_LIST : "Couldn't read the answer from " + describe(base) + ": " + e.getMessage());
 					}
 					return;
 				}
@@ -935,8 +950,21 @@ class OpenAiApi implements ChatApi
 				{
 					return;
 				}
+				if (withV1)
+				{
+					String fixed = base.resolve("v1").toString();
+					listener.onError(response.isSuccessful() && modelIds(gson, text) != null
+						? "The URL is missing /v1: set the Compatible API URL to " + fixed + " in the AI Chat settings."
+						: NO_MODEL_LIST);
+					return;
+				}
 				if (response.code() == 404)
 				{
+					if (!base.encodedPath().endsWith("/v1/"))
+					{
+						listModels(listener, pending, true);
+						return;
+					}
 					listener.onError(NO_MODEL_LIST);
 					return;
 				}
@@ -955,7 +983,6 @@ class OpenAiApi implements ChatApi
 				listener.onModels(ids);
 			}
 		});
-		return pending;
 	}
 
 	/** The ids in a model list: {"data": [{"id": ...}, ...]}, or just the list. Null if it isn't one. */

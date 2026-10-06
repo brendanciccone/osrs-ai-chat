@@ -112,8 +112,9 @@ final class ConnectionCheck
 	}
 
 	/**
-	 * What the check says about {@code model}. {@code service}: "Anthropic", "OpenAI", or the address of a compatible
-	 * service; {@code keyed}: the player's own key decides which models they get (Claude, ChatGPT).
+	 * What the check says about {@code model} (blank when none is set yet). {@code service}: "Anthropic", "OpenAI", or
+	 * the address of a compatible service; {@code keyed}: the player's own key decides which models they get (Claude,
+	 * ChatGPT).
 	 */
 	Note note(String service, String model, boolean keyed)
 	{
@@ -121,8 +122,9 @@ final class ConnectionCheck
 		{
 			if (OpenAiApi.NO_MODEL_LIST.equals(error))
 			{
-				return new Note(Kind.OK, "Connected to " + service + ". It doesn't list its models, so check the model "
-					+ "name on its website.", Collections.emptyList());
+				// Any web server answers "not found", so this says little: not even that the URL is right.
+				return new Note(Kind.WARNING, service + " answered, but not with a list of models, so Test can't check "
+					+ "the URL or the model name. Check both on the service's website.", Collections.emptyList());
 			}
 			return new Note(Kind.ERROR, error, Collections.emptyList());
 		}
@@ -134,6 +136,10 @@ final class ConnectionCheck
 		{
 			return new Note(Kind.WARNING, "Connected to " + service + ", but it listed no models to chat with.", models);
 		}
+		if (model == null || model.trim().isEmpty())
+		{
+			return new Note(Kind.OK, "Connected to " + service + ". Choose a model:", models);
+		}
 		if (has(models, model))
 		{
 			return new Note(Kind.OK, "Connected to " + service + ". " + model + " is available.", models);
@@ -142,9 +148,24 @@ final class ConnectionCheck
 			: "Connected to " + service + ", but " + model + " isn't one of its models.", models);
 	}
 
-	/** Ollama lists "llama3.2:latest" for the model asked for as "llama3.2". */
+	/**
+	 * Whether {@code model} is one of {@code models}, as named there: Ollama lists "llama3.2:latest" for the model asked
+	 * for as "llama3.2", and Anthropic lists an alias such as "claude-haiku-4-5" as the dated model it points to,
+	 * "claude-haiku-4-5-20251001".
+	 */
 	private static boolean has(List<String> models, String model)
 	{
-		return models.contains(model) || !model.contains(":") && models.contains(model + ":latest");
+		if (models.contains(model) || !model.contains(":") && models.contains(model + ":latest"))
+		{
+			return true;
+		}
+		for (String id : models)
+		{
+			if (id.length() == model.length() + 9 && id.startsWith(model + "-") && id.substring(model.length() + 1).matches("\\d{8}"))
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 }

@@ -60,6 +60,7 @@ class AiChatPanel extends PluginPanel
 	private static final int BOTTOM_SLACK = 24;
 	/** Rows the model list shows before it scrolls. */
 	private static final int MODEL_ROWS = 12;
+	private static final String TEST_TIP = "Check your API key, and see which models it can use";
 
 	private final AiChatPlugin plugin;
 
@@ -95,7 +96,7 @@ class AiChatPanel extends PluginPanel
 	{
 		super(false);
 		this.plugin = plugin;
-		testButton = smallButton("Test", "Check your API key, and see which models it can use", e -> plugin.testConnection());
+		testButton = smallButton("Test", TEST_TIP, e -> plugin.testConnection());
 
 		setLayout(new BorderLayout(0, 6));
 		setBorder(new EmptyBorder(8, 8, 8, 8));
@@ -271,24 +272,33 @@ class AiChatPanel extends PluginPanel
 	private void refreshSetup()
 	{
 		String problem = plugin.setupProblem();
-		ConnectionCheck.Note note = problem == null ? plugin.connectionNote() : null;
+		// Test needs no model: it's how a player who doesn't know the names finds one.
+		String testProblem = plugin.testProblem();
+		ConnectionCheck.Note note = plugin.connectionNote();
 		if (problem == null)
 		{
 			setupLabel.setText(plugin.setupSummary());
 			setupLabel.setForeground(OK_COLOR);
-			setupHelp.setText(note == null ? "" : note.text);
-			setupHelp.setForeground(note == null ? MUTED_COLOR : color(note.kind));
 		}
 		else
 		{
 			setupLabel.setText("Not set up yet");
 			setupLabel.setForeground(ERROR_COLOR);
-			setupHelp.setText(problem + " Open RuneLite's settings (the wrench) and search for AI Chat.");
+		}
+		if (note != null)
+		{
+			setupHelp.setText(note.text);
+			setupHelp.setForeground(color(note.kind));
+		}
+		else
+		{
+			setupHelp.setText(problem == null ? "" : problem + " Open RuneLite's settings (the wrench) and search for AI Chat.");
 			setupHelp.setForeground(MUTED_COLOR);
 		}
 		setupHelp.setVisible(!setupHelp.getText().isEmpty());
-		// Nothing is sent while AI requests are off, a test included.
-		testButton.setEnabled(problem == null);
+		// Nothing is sent while AI requests are off, a test included; the tooltip says what's missing.
+		testButton.setEnabled(testProblem == null);
+		testButton.setToolTipText(testProblem == null ? TEST_TIP : testProblem);
 		models = note == null ? Collections.emptyList() : note.models;
 		chooseRow.setVisible(!models.isEmpty());
 		boolean usable = plugin.currentChat() != null;

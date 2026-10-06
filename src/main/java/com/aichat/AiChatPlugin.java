@@ -134,6 +134,8 @@ public class AiChatPlugin extends Plugin
 
 	/** For AI requests: they can take a while, and replies shouldn't land in RuneLite's disk cache. */
 	private OkHttpClient apiHttp;
+	/** For "Test": the same, but a model list that takes longer than a few seconds isn't coming. */
+	private OkHttpClient testHttp;
 	/**
 	 * Optional request settings each service and model has refused, while the plugin runs: OpenAI-compatible settings,
 	 * and Claude models that don't take server-side fallback.
@@ -193,6 +195,10 @@ public class AiChatPlugin extends Plugin
 			.readTimeout(10, TimeUnit.MINUTES)
 			// A long reply from a slow local model streams in for a long time; Stop is there for the player.
 			.callTimeout(30, TimeUnit.MINUTES)
+			.build();
+		testHttp = apiHttp.newBuilder()
+			.readTimeout(15, TimeUnit.SECONDS)
+			.callTimeout(20, TimeUnit.SECONDS)
 			.build();
 		refusedOptions.clear();
 		provider = new ProviderSetup(config);
@@ -319,6 +325,12 @@ public class AiChatPlugin extends Plugin
 		return provider.problem();
 	}
 
+	/** What's missing before "Test" can ask the provider, or null: it needs no model, since it's how one is found. */
+	String testProblem()
+	{
+		return provider.connectionProblem();
+	}
+
 	/** "Claude · claude-opus-5-5": what answers new messages. */
 	String setupSummary()
 	{
@@ -358,7 +370,7 @@ public class AiChatPlugin extends Plugin
 	/** "Test" in the panel: asks the provider which models the key can use. Sends nothing while AI requests are off. */
 	void testConnection()
 	{
-		ChatApi api = api();
+		ChatApi api = provider.testApi(testHttp, gson, executor, refusedOptions);
 		if (api == null)
 		{
 			return;
@@ -371,7 +383,7 @@ public class AiChatPlugin extends Plugin
 	/** What the latest "Test" says about the setup as it is now, or null when there's nothing to say. */
 	ConnectionCheck.Note connectionNote()
 	{
-		if (setupProblem() != null)
+		if (testProblem() != null)
 		{
 			return null;
 		}

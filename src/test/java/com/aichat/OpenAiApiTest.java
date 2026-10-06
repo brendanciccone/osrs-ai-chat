@@ -351,6 +351,55 @@ public class OpenAiApiTest
 	}
 
 	@Test
+	public void aUrlWithoutV1IsCaughtByTest() throws Exception
+	{
+		// Ollama's address as the player typed it, without the /v1 its chats need.
+		OpenAiApi bare = new OpenAiApi(http, gson, server.url("/"), "", "llama3.2", false, "low", scheduler, new ConcurrentHashMap<>());
+		server.answer("/v1/models", json(200, "{\"object\":\"list\",\"data\":[{\"id\":\"llama3.2:latest\"}]}"));
+		AnthropicApiTest.Models models = new AnthropicApiTest.Models();
+		bare.listModels(models);
+		assertEquals("The URL is missing /v1: set the Compatible API URL to " + server.url("/v1") + " in the AI Chat settings.",
+			models.await().error);
+		assertEquals("/models", server.uris.get(0).getPath());
+		assertEquals("/v1/models", server.uris.get(1).getPath());
+
+		// Not there either: a service without a list, as far as anyone can tell.
+		server.clear();
+		server.answer("/v1/models", json(404, "{}"));
+		models = new AnthropicApiTest.Models();
+		bare.listModels(models);
+		assertEquals(OpenAiApi.NO_MODEL_LIST, models.await().error);
+		assertEquals(2, server.uris.size());
+	}
+
+	@Test
+	public void aTestThatGetsNoAnswerEnds() throws Exception
+	{
+		server.server().createContext("/slow/", exchange ->
+		{
+			try
+			{
+				Thread.sleep(5000);
+			}
+			catch (InterruptedException e)
+			{
+				Thread.currentThread().interrupt();
+			}
+			exchange.close();
+		});
+		OkHttpClient impatient = http.newBuilder().readTimeout(200, TimeUnit.MILLISECONDS).build();
+		OpenAiApi slow = new OpenAiApi(impatient, gson, server.url("/slow/v1/"), "", "m", false, "low", scheduler, new ConcurrentHashMap<>());
+		AnthropicApiTest.Models models = new AnthropicApiTest.Models();
+		slow.listModels(models);
+		assertEquals("127.0.0.1:" + server.url("/").port() + " didn't answer in time. Try again in a moment.", models.await().error);
+
+		AnthropicApi claude = new AnthropicApi(impatient, gson, server.url("/slow/v1/messages"), "k", scheduler, new ConcurrentHashMap<>());
+		models = new AnthropicApiTest.Models();
+		claude.listModels(models);
+		assertEquals("Anthropic didn't answer in time. Try again in a moment.", models.await().error);
+	}
+
+	@Test
 	public void aModelThatRefusesAnOptionalSettingIsAskedAgainWithoutIt() throws Exception
 	{
 		server.answer(PATH,
