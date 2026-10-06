@@ -524,6 +524,21 @@ public class RequestRunnerTest
 	}
 
 	@Test
+	public void dataSharedJustBeforeAStopIsListedAsShared()
+	{
+		send("What's in my bank?");
+		host.started.run();
+		runEdt();
+		// Stop is pressed while the EDT is busy: the click waits there, and meanwhile the bank goes to the provider.
+		edt.add(() -> runner.stop(chat));
+		host.activity.accept("Shared your bank");
+		runEdt();
+		Chat.Message stopped = chat.messages.get(chat.messages.size() - 1);
+		assertEquals("Stopped.", stopped.text);
+		assertEquals(Collections.singletonList("Shared your bank"), stopped.activity);
+	}
+
+	@Test
 	public void answersForADeletedChatDontCount()
 	{
 		send("q");

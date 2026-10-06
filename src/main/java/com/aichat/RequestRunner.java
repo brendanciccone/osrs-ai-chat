@@ -3,6 +3,7 @@ package com.aichat;
 import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 /**
@@ -350,9 +351,18 @@ final class RequestRunner
 		List<String> activity = chat.liveActivity;
 		// Set before any answer can be handled: answers are handled on this (the EDT) thread, after this method.
 		ChatApi.Pending[] request = new ChatApi.Pending[1];
+		// The same, for the tools' own threads.
+		AtomicReference<ChatApi.Pending> sent = new AtomicReference<>();
 		Throttle<String> partial = new Throttle<>(edt, scheduler, LIVE_GAP_MILLIS, text -> writing(chat, request[0], text));
 		ToolBox tools = host.tools(out.setup,
-			line -> edt.execute(() -> lookedUp(chat, request[0], activity, line)),
+			line ->
+			{
+				// Whether the result goes on its way is decided now, on this thread: the provider checks the same flag
+				// before sending it. By the time the EDT gets to the line, a Stop that was waiting there may have set it.
+				ChatApi.Pending p = sent.get();
+				boolean stoppedFirst = p != null && p.isCancelled();
+				edt.execute(() -> lookedUp(chat, request[0], activity, line, stoppedFirst));
+			},
 			() ->
 			{
 				// The text so far, which a look-up that's quicker than the redraws mustn't be mistaken for new.
@@ -396,6 +406,7 @@ final class RequestRunner
 			couldntSend(out);
 			return;
 		}
+		sent.set(request[0]);
 		chat.pending = request[0];
 		chat.requestSent = true;
 	}
@@ -455,13 +466,16 @@ final class RequestRunner
 		host.live(chat);
 	}
 
-	/** A tool call finished: {@code line} says what it looked up or shared. */
-	private void lookedUp(Chat chat, ChatApi.Pending request, List<String> activity, String line)
+	/**
+	 * A tool call finished: {@code line} says what it looked up or shared. {@code stoppedFirst}: the request had been
+	 * stopped when it did, so the result went nowhere.
+	 */
+	private void lookedUp(Chat chat, ChatApi.Pending request, List<String> activity, String line, boolean stoppedFirst)
 	{
-		// Kept whatever happened to the request since: it was looked up, and the player sees what was. But once it has
-		// stopped, the result goes nowhere: game data read too late wasn't shared after all.
+		// Kept whatever happened to the request since: it was looked up, and the player sees what was. But game data read
+		// after a Stop wasn't shared after all. (Read just before one, it may have been: it's listed as shared.)
 		boolean live = current(chat, request);
-		activity.add(live ? line : GameDataTools.unshared(line));
+		activity.add(stoppedFirst ? GameDataTools.unshared(line) : line);
 		if (live)
 		{
 			if (chat.lookingUp)
