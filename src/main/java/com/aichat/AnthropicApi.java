@@ -269,6 +269,8 @@ class AnthropicApi implements ChatApi
 			}
 			if (ChatApi.tookTooLong(e))
 			{
+				// It got the request, so it may have been answering it.
+				usage.incomplete = true;
 				fail(TOO_LONG);
 				return;
 			}
@@ -326,6 +328,7 @@ class AnthropicApi implements ChatApi
 					{
 						if (!pending.isCancelled())
 						{
+							brokeOff(m);
 							fail("Couldn't read Anthropic's answer: " + e.getMessage());
 						}
 						return;
@@ -344,12 +347,14 @@ class AnthropicApi implements ChatApi
 				// Stop closes the stream: not a problem to report.
 				if (!pending.isCancelled())
 				{
+					brokeOff(m);
 					fail(ChatApi.tookTooLong(e) ? TOO_LONG : CUT_OFF);
 				}
 				return;
 			}
 			catch (JsonParseException | IllegalStateException | ClassCastException | UnsupportedOperationException | NumberFormatException e)
 			{
+				brokeOff(m);
 				fail("Anthropic sent an answer AI Chat couldn't read.");
 				return;
 			}
@@ -496,9 +501,11 @@ class AnthropicApi implements ChatApi
 			}
 			if (!m.complete)
 			{
+				brokeOff(m);
 				fail(CUT_OFF);
 				return;
 			}
+			// Counted before anything else can go wrong: this response is billed whatever happens next.
 			usage.add(m.usage);
 			model = m.model != null ? m.model : model;
 			// Checked before anything else: a refusal can cut the reply (or a tool call) off part way. What it wrote
@@ -597,7 +604,19 @@ class AnthropicApi implements ChatApi
 			{
 				return;
 			}
+			brokeOff(m);
 			fail(explain(code(type), m.errorMessage, conversation.model));
+		}
+
+		/**
+		 * A response that broke off: what it counted so far is billed, and the rest of what it used was never counted.
+		 * (One that's asked again was turned away, and isn't counted.)
+		 */
+		private void brokeOff(Message m)
+		{
+			usage.add(m.usage);
+			usage.incomplete = true;
+			model = m.model != null ? m.model : model;
 		}
 
 		private void finish(Reply reply)
@@ -613,10 +632,13 @@ class AnthropicApi implements ChatApi
 			fail(new Failure(message));
 		}
 
+		/** Fails the reply, with the tokens its requests used so far. */
 		private void fail(Failure failure)
 		{
 			if (!pending.isCancelled() && over.compareAndSet(false, true))
 			{
+				failure.usage.add(usage);
+				failure.model = model;
 				listener.onError(failure);
 			}
 		}

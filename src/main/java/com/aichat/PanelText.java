@@ -42,7 +42,8 @@ final class PanelText
 	/**
 	 * A reply's tokens, for the tooltip on its header: "claude-opus-5-5: 1,204 in · 3,410 cached · 352 out · about
 	 * $0.01". Input written to the prompt cache counts as "in" (it's new to the provider); "cached" is what was read
-	 * back from it, at a fraction of the price. The cost only for models whose price is known.
+	 * back from it, at a fraction of the price. The cost only for models whose price is known, and only when all the
+	 * tokens were counted; otherwise the counts are "at least".
 	 */
 	static String usage(ChatApi.Usage u, String model)
 	{
@@ -51,13 +52,17 @@ final class PanelText
 		{
 			s.append(model).append(": ");
 		}
+		if (u.incomplete)
+		{
+			s.append("at least ");
+		}
 		s.append(number(u.input + u.cacheWrite)).append(" in");
 		if (u.cacheRead > 0)
 		{
 			s.append(" · ").append(number(u.cacheRead)).append(" cached");
 		}
 		s.append(" · ").append(number(u.output)).append(" out");
-		Double cost = Pricing.dollars(model, u);
+		Double cost = u.incomplete ? null : Pricing.dollars(model, u);
 		if (cost != null)
 		{
 			s.append(" · ").append(dollars(cost));
@@ -67,8 +72,9 @@ final class PanelText
 
 	/**
 	 * The chat's tokens so far, for the status line when nothing is on its way: "This chat: 18.2k tokens · about
-	 * $0.09"; null before there are any. The cost only when every reply's price is known, and "at least" when some
-	 * replies' tokens aren't (chats from before AI Chat counted them, or services that don't say).
+	 * $0.09"; null before there are any. The cost only when every price is known and every token counted, and "at
+	 * least" when some aren't: replies from before AI Chat counted them, services that don't say, and requests that
+	 * were stopped or broke off part way.
 	 */
 	static String chatTotals(List<Chat.Message> messages)
 	{
@@ -85,6 +91,7 @@ final class PanelText
 				continue;
 			}
 			tokens += m.usage.total();
+			complete &= !m.usage.incomplete;
 			Double d = Pricing.dollars(m.model, m.usage);
 			priced &= d != null;
 			cost += d == null ? 0 : d;

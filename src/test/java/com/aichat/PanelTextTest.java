@@ -79,6 +79,10 @@ public class PanelTextTest
 		assertEquals("gpt-6-luna: 900 in · 120 out", PanelText.usage(usage(900, 0, 0, 120), "gpt-6-luna"));
 		assertEquals("claude-haiku-4-5: 12 in · 3 out · less than $0.01", PanelText.usage(usage(12, 0, 0, 3), "claude-haiku-4-5"));
 		assertEquals("12 in · 3 out", PanelText.usage(usage(12, 0, 0, 3), null));
+		// Some went uncounted: a minimum, and no cost.
+		ChatApi.Usage cutOff = usage(1_004, 0, 200, 1);
+		cutOff.incomplete = true;
+		assertEquals("claude-opus-5-5: at least 1,204 in · 1 out", PanelText.usage(cutOff, "claude-opus-5-5"));
 	}
 
 	@Test
@@ -123,6 +127,16 @@ public class PanelTextTest
 		unfinished.unfinished = true;
 		messages.add(unfinished);
 		assertEquals("This chat: 2k tokens · about $0.02", PanelText.chatTotals(messages));
+
+		// An error's counts add up like any reply's.
+		Chat.Message error = new Chat.Message(Chat.Role.ERROR, ChatApi.TOO_MANY_ROUNDS);
+		error.usage = usage(1_000, 0, 0, 0);
+		error.model = "claude-opus-5-5";
+		messages.add(error);
+		assertEquals("This chat: 3k tokens · about $0.02", PanelText.chatTotals(messages));
+		// A request that broke off or was stopped may have used more than was counted.
+		error.usage.incomplete = true;
+		assertEquals("This chat: at least 3k tokens", PanelText.chatTotals(messages));
 	}
 
 	@Test

@@ -97,6 +97,8 @@ class Chat
 
 	/** The request in flight, or null. */
 	ChatApi.Pending pending;
+	/** The request in flight has gone to the provider, so it may be using tokens even if it's stopped now. */
+	boolean requestSent;
 	/** When the request in flight started: the summary, then the question itself. */
 	long runStartedAt;
 	/**
@@ -145,9 +147,10 @@ class Chat
 		return skipSummary != null;
 	}
 
-	/** A new request starts (or the last one ended): nothing of it to show yet. */
+	/** A new request starts (or the last one ended): nothing of it to show yet, and nothing sent. */
 	void resetLive()
 	{
+		requestSent = false;
 		liveText = null;
 		liveActivity = new ArrayList<>();
 		lookingUp = false;

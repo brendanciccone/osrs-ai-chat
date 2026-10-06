@@ -285,8 +285,20 @@ public class OpenAiApiTest
 		ChatApi.Conversation c = conversation("m", "q");
 		c.tools.add(StandIn.tool("wiki_search"));
 		c.toolRunner = new StandIn.Tools();
-		assertEquals(ChatApi.TOO_MANY_ROUNDS, send(compatible("m"), c).error());
+		StandIn.Heard heard = send(compatible("m"), c);
+		assertEquals(ChatApi.TOO_MANY_ROUNDS, heard.error());
 		assertEquals(ChatApi.MAX_TOOL_ROUNDS + 1, server.bodies.size());
+		// This service sent no token counts, so whatever was used went uncounted.
+		assertEquals(0, heard.failure.usage.total());
+		assertTrue(heard.failure.usage.incomplete);
+
+		// One that does: every round counts.
+		server.answer(PATH, events(toolCalls("[{\"index\":0,\"id\":\"c\",\"type\":\"function\",\"function\":{\"name\":\"wiki_search\",\"arguments\":\"{}\"}}]"),
+			finish("tool_calls"), chunk("{\"choices\":[],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":5}}"), DONE));
+		heard = send(compatible("m"), c);
+		assertEquals(ChatApi.TOO_MANY_ROUNDS, heard.error());
+		assertEquals((ChatApi.MAX_TOOL_ROUNDS + 1) * 105, heard.failure.usage.total());
+		assertFalse(heard.failure.usage.incomplete);
 	}
 
 	@Test

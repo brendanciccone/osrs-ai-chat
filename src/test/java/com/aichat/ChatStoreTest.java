@@ -178,6 +178,8 @@ public class ChatStoreTest
 		c.messages.add(a);
 		Chat.Message stopped = new Chat.Message(Chat.Role.NOTE, "Stopped.");
 		stopped.activity = new ArrayList<>();
+		stopped.usage = new ChatApi.Usage();
+		stopped.usage.incomplete = true;
 		c.messages.add(stopped);
 
 		String json = ChatStore.toJson(gson, List.of(c), c);
@@ -188,9 +190,13 @@ public class ChatStoreTest
 		assertEquals(12, back.usage.cacheWrite);
 		assertEquals(352, back.usage.output);
 		assertEquals("claude-opus-5-5", back.model);
-		assertTrue(json, json.contains("\"usage\":{\"input\":1204,\"cacheRead\":3410,\"cacheWrite\":12,\"output\":352,\"model\":\"claude-opus-5-5\"}"));
+		assertTrue(json, json.contains("\"usage\":{\"input\":1204,\"cacheRead\":3410,\"cacheWrite\":12,\"output\":352,\"incomplete\":false,\"model\":\"claude-opus-5-5\"}"));
+		assertFalse(back.usage.incomplete);
 		// Nothing looked up: nothing saved.
-		assertNull(ChatStore.fromJson(gson, json).chats.get(0).messages.get(2).activity);
+		Chat.Message stoppedBack = ChatStore.fromJson(gson, json).chats.get(0).messages.get(2);
+		assertNull(stoppedBack.activity);
+		// A request stopped on its way: the chat's total stays a minimum.
+		assertTrue(stoppedBack.usage.incomplete);
 	}
 
 	@Test

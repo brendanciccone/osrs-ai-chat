@@ -540,7 +540,8 @@ class AiChatPanel extends PluginPanel
 			header.setText(m.author() + "  " + new SimpleDateFormat("HH:mm").format(new Date(m.time))
 				+ (m.unanswered ? "  (not answered)" : "") + (m.unfinished ? "  (unfinished)" : ""));
 			header.setForeground(color(m.role));
-			header.setToolTipText(m.usage == null ? null : PanelText.usage(m.usage, m.model));
+			// Not for a "Stopped" note that only knows tokens may have been used.
+			header.setToolTipText(m.usage == null || m.usage.total() == 0 ? null : PanelText.usage(m.usage, m.model));
 			retry.setVisible(retryHere);
 			body.setVisible(true);
 			switch (m.role)

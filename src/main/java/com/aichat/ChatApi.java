@@ -118,6 +118,11 @@ interface ChatApi
 		long cacheRead;
 		long cacheWrite;
 		long output;
+		/**
+		 * More may have been used than is counted here: a response broke off (or was stopped) before its counts came,
+		 * or the service doesn't send them.
+		 */
+		boolean incomplete;
 
 		void add(Usage u)
 		{
@@ -125,6 +130,7 @@ interface ChatApi
 			cacheRead += u.cacheRead;
 			cacheWrite += u.cacheWrite;
 			output += u.output;
+			incomplete |= u.incomplete;
 		}
 
 		long total()
@@ -204,6 +210,10 @@ interface ChatApi
 	{
 		/** A short, readable explanation for the panel. */
 		final String message;
+		/** The tokens its requests used before it failed (look-up rounds, a reply cut off part way): billed all the same. */
+		final Usage usage = new Usage();
+		/** The model that answered before it failed, or null. */
+		String model;
 		/**
 		 * The text shown so far is taken back rather than kept: the provider's safety filter stopped the reply part
 		 * way, and what it had written isn't to be read as an answer.

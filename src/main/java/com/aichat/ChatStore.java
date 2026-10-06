@@ -62,6 +62,8 @@ final class ChatStore
 		long cacheRead;
 		long cacheWrite;
 		long output;
+		/** Some tokens weren't counted (see {@link ChatApi.Usage#incomplete}). */
+		boolean incomplete;
 		String model;
 	}
 
@@ -187,6 +189,7 @@ final class ChatStore
 		su.cacheRead = u.cacheRead;
 		su.cacheWrite = u.cacheWrite;
 		su.output = u.output;
+		su.incomplete = u.incomplete;
 		su.model = model;
 		return su;
 	}
@@ -199,6 +202,7 @@ final class ChatStore
 		u.cacheRead = Math.max(0, su.cacheRead);
 		u.cacheWrite = Math.max(0, su.cacheWrite);
 		u.output = Math.max(0, su.output);
+		u.incomplete = su.incomplete;
 		return u;
 	}
 

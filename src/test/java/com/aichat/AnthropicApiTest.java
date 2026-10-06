@@ -422,9 +422,43 @@ public class AnthropicApiTest
 		c.tools.add(StandIn.tool("wiki_search"));
 		StandIn.Tools tools = new StandIn.Tools();
 		c.toolRunner = tools;
-		assertEquals(ChatApi.TOO_MANY_ROUNDS, send(api(), c).error());
+		StandIn.Heard heard = send(api(), c);
+		assertEquals(ChatApi.TOO_MANY_ROUNDS, heard.error());
 		assertEquals(ChatApi.MAX_TOOL_ROUNDS, tools.calls.size());
 		assertEquals(ChatApi.MAX_TOOL_ROUNDS + 1, server.bodies.size());
+		// Every round was billed, answer or not: 10 in, 200 cached, 30 written to the cache and 3 out, each time.
+		ChatApi.Usage used = heard.failure.usage;
+		assertEquals((ChatApi.MAX_TOOL_ROUNDS + 1) * 10, used.input);
+		assertEquals((ChatApi.MAX_TOOL_ROUNDS + 1) * 200, used.cacheRead);
+		assertEquals((ChatApi.MAX_TOOL_ROUNDS + 1) * 30, used.cacheWrite);
+		assertEquals((ChatApi.MAX_TOOL_ROUNDS + 1) * 3, used.output);
+		assertFalse(used.incomplete);
+		assertEquals("claude-opus-5-5", heard.failure.model);
+	}
+
+	@Test
+	public void whatAFailedReplyUsedIsReported() throws Exception
+	{
+		// Cut off part way: what was counted so far, and a sign that more went uncounted.
+		server.answer(PATH, events(begin("claude-opus-5-5"), text(0, "Half")));
+		StandIn.Heard heard = send(api(), conversation("claude-opus-5-5", "hi"));
+		assertEquals(ChatApi.CUT_OFF, heard.error());
+		assertEquals(241, heard.failure.usage.total());
+		assertTrue(heard.failure.usage.incomplete);
+
+		// Declined part way: billed, and counted in full.
+		server.answer(PATH, events(begin("claude-opus-5-5"), text(0, "Sure, here"), end("refusal", 3)));
+		heard = send(api(), conversation("claude-opus-5-5", "hi"));
+		assertEquals("Claude declined to answer that.", heard.error());
+		assertEquals(243, heard.failure.usage.total());
+		assertFalse(heard.failure.usage.incomplete);
+
+		// Turned away before anything was answered: nothing used.
+		server.answer(PATH, json(401, "{\"type\":\"error\",\"error\":{\"type\":\"authentication_error\",\"message\":\"invalid x-api-key\"}}"));
+		heard = send(api(), conversation("claude-opus-5-5", "hi"));
+		assertTrue(heard.error().contains("Claude API key"));
+		assertEquals(0, heard.failure.usage.total());
+		assertFalse(heard.failure.usage.incomplete);
 	}
 
 	@Test

@@ -512,6 +512,57 @@ public class RequestRunnerTest
 	}
 
 	@Test
+	public void whatAFailedRequestUsedIsCounted()
+	{
+		send("q");
+		ChatApi.Failure failure = new ChatApi.Failure(ChatApi.TOO_MANY_ROUNDS);
+		failure.usage.input = 9000;
+		failure.usage.output = 300;
+		failure.model = "claude-opus-5-5-20261001";
+		api.listener().onError(failure);
+		runEdt();
+		Chat.Message error = chat.messages.get(chat.messages.size() - 1);
+		assertEquals(Chat.Role.ERROR, error.role);
+		assertEquals(9300, error.usage.total());
+		assertEquals("claude-opus-5-5-20261001", error.model);
+		assertEquals("This chat: 9.3k tokens · about $0.04", PanelText.chatTotals(chat.messages));
+
+		// A request stopped on its way may have used more than anyone counted: the total is a minimum from then on.
+		assertTrue(runner.retry(chat, setup()));
+		runEdt();
+		runner.stop(chat);
+		Chat.Message stopped = chat.messages.get(chat.messages.size() - 1);
+		assertTrue(stopped.usage.incomplete);
+		assertEquals("This chat: at least 9.3k tokens", PanelText.chatTotals(chat.messages));
+	}
+
+	@Test
+	public void stoppingBeforeAnythingWasSentCostsNothing()
+	{
+		runner.send(chat, "q", setup(true, false, true));
+		runEdt();
+		// Still reading the character details: nothing has gone to the provider.
+		runner.stop(chat);
+		assertNull(chat.messages.get(chat.messages.size() - 1).usage);
+	}
+
+	@Test
+	public void aFailedSummaryStillCountsWhatItUsed()
+	{
+		history(20);
+		send("Q21");
+		ChatApi.Failure failure = new ChatApi.Failure("Anthropic is overloaded or having trouble right now. Try again shortly.");
+		failure.usage.input = 5000;
+		failure.usage.incomplete = true;
+		api.listener().onError(failure);
+		runEdt();
+		Chat.Message note = chat.messages.get(chat.messages.size() - 2);
+		assertTrue(note.text, note.text.startsWith("Couldn't summarise"));
+		assertEquals(5000, note.usage.total());
+		assertTrue(note.usage.incomplete);
+	}
+
+	@Test
 	public void anErrorCanBeRetriedWithTheSameQuestion()
 	{
 		Chat.Message question = send("q");
