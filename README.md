@@ -116,7 +116,8 @@ says how many are missing.
 Hover over the name above a reply to see the tokens it used, for example "1,204 in · 3,410 cached · 352 out · about
 $0.01" (an error shows what its request used before it failed). When nothing is on its way, the line under the chat
 shows the chat's total. It says "at least", without a cost, once a request in the chat was stopped or broke off part
-way, since some of what it used was never counted. The cost is an estimate from Anthropic's published prices, for
+way, since some of what it used was never counted, or when another Claude model finished a reply the first one
+declined, since each is billed at its own prices. The cost is an estimate from Anthropic's published prices, for
 Claude models only; your provider's bill is what counts.
 
 ## Settings

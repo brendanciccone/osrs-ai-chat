@@ -587,6 +587,40 @@ public class AnthropicApiTest
 	}
 
 	@Test
+	public void whatEveryModelUsedIsCountedAfterAFallback() throws Exception
+	{
+		String fallback = block(1, "{\"type\":\"fallback\",\"from\":{\"model\":\"claude-opus-5-5\"},\"to\":{\"model\":\"claude-opus-4-8\"}}")
+			+ blockStop(1);
+		String attempts = "{\"output_tokens\":9,\"iterations\":["
+			+ "{\"type\":\"message\",\"input_tokens\":10,\"cache_read_input_tokens\":200,\"cache_creation_input_tokens\":30,\"output_tokens\":500},"
+			+ "{\"type\":\"fallback_message\",\"input_tokens\":10,\"cache_read_input_tokens\":200,\"cache_creation_input_tokens\":30,\"output_tokens\":9}]}";
+		server.answer(PATH, events(begin("claude-opus-5-5"), text(0, "Part one. "), fallback, text(2, "Part two."),
+			event("message_delta", "{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":" + attempts + "}"),
+			event("message_stop", "{\"type\":\"message_stop\"}")));
+		ChatApi.Reply reply = send(api(), conversation("claude-opus-5-5", "q")).reply();
+		assertEquals("claude-opus-4-8", reply.model);
+		// Both attempts are billed, the one that declined part way included.
+		assertEquals(20, reply.usage.input);
+		assertEquals(400, reply.usage.cacheRead);
+		assertEquals(60, reply.usage.cacheWrite);
+		assertEquals(509, reply.usage.output);
+		// Each at its own model's prices: no cost is worked out.
+		assertTrue(reply.usage.incomplete);
+
+		// Without the attempts listed, the counts are only the last one's: a minimum.
+		server.clear();
+		server.answer(PATH, events(begin("claude-opus-5-5"), text(0, "Part one. "), fallback, text(2, "Part two."), end("end_turn", 9)));
+		reply = send(api(), conversation("claude-opus-5-5", "q")).reply();
+		assertEquals(9, reply.usage.output);
+		assertTrue(reply.usage.incomplete);
+
+		// An ordinary reply's counts are whole.
+		server.clear();
+		server.answer(PATH, answer("Hi"));
+		assertFalse(send(api(), conversation("claude-opus-5-5", "q")).reply().usage.incomplete);
+	}
+
+	@Test
 	public void afterAFallbackOnlyTheTextFromBeforeItGoesBack() throws Exception
 	{
 		server.answer(PATH, events(begin("claude-opus-5-5"), thinking(0, "hmm", "sig-a"), text(1, "Part one. "),

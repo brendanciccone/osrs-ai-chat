@@ -691,6 +691,10 @@ class AnthropicApi implements ChatApi
 			model = string(o, "model");
 			stop = string(o, "stop_reason");
 			readUsage(object(o, "usage"), usage);
+			for (JsonElement block : whole)
+			{
+				usage.incomplete |= "fallback".equals(type(block));
+			}
 			complete = true;
 		}
 
@@ -707,7 +711,9 @@ class AnthropicApi implements ChatApi
 			{
 				text.append(string(block, "text"));
 			}
-			// Another model took over after this one declined: it's the one answering now.
+			// Another model took over after this one declined: it's the one answering now. What the first one wrote is
+			// billed too, at its own prices, and may not be in the counts: the cost can't be told.
+			usage.incomplete |= "fallback".equals(type);
 			JsonObject to = "fallback".equals(type) ? object(block, "to") : null;
 			if (to != null && string(to, "model") != null)
 			{
@@ -982,6 +988,34 @@ class AnthropicApi implements ChatApi
 		{
 			return;
 		}
+		JsonElement iterations = u.get("iterations");
+		if (iterations != null && iterations.isJsonArray() && iterations.getAsJsonArray().size() > 0)
+		{
+			// Each attempt at the message, when another model took over from one that declined: all of them are billed,
+			// but the counts outside cover only the last.
+			Usage all = new Usage();
+			for (JsonElement attempt : iterations.getAsJsonArray())
+			{
+				if (attempt.isJsonObject())
+				{
+					Usage one = new Usage();
+					readCounts(attempt.getAsJsonObject(), one);
+					all.add(one);
+				}
+			}
+			usage.input = all.input;
+			usage.cacheRead = all.cacheRead;
+			usage.cacheWrite = all.cacheWrite;
+			usage.output = all.output;
+			// More than one model's tokens, each at its own prices.
+			usage.incomplete |= iterations.getAsJsonArray().size() > 1;
+			return;
+		}
+		readCounts(u, usage);
+	}
+
+	private static void readCounts(JsonObject u, Usage usage)
+	{
 		usage.input = count(u, "input_tokens", usage.input);
 		usage.cacheRead = count(u, "cache_read_input_tokens", usage.cacheRead);
 		usage.cacheWrite = count(u, "cache_creation_input_tokens", usage.cacheWrite);

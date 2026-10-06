@@ -125,7 +125,7 @@ interface ChatApi
 		long output;
 		/**
 		 * More may have been used than is counted here: a response broke off (or was stopped) before its counts came,
-		 * or the service doesn't send them.
+		 * the service doesn't send them, or another model took over part way (billed at its own prices).
 		 */
 		boolean incomplete;
 
