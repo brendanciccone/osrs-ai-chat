@@ -229,11 +229,12 @@ final class RequestRunner
 		}
 		chat.pending = request[0];
 		chat.requestSent = true;
-		// Stop skips the summary, not the message: this time the whole chat is sent instead.
+		// Stop (the panel calls it Skip meanwhile) skips the summary, not the message: this time the whole chat is sent
+		// instead. Pressed again, it stops the message.
 		chat.skipSummary = () ->
 		{
 			request[0].cancel();
-			ChatApi.Failure skipped = new ChatApi.Failure("you pressed Stop");
+			ChatApi.Failure skipped = new ChatApi.Failure("you skipped it");
 			// It was on its way: some of it may have been answered, and billed.
 			skipped.usage.incomplete = true;
 			afterSummary(out, old, null, skipped);
@@ -587,7 +588,10 @@ final class RequestRunner
 	// Stopping
 	// ------------------------------------------------------------------
 
-	/** The player pressed Stop: while summarising, that skips the summary; otherwise the request stops. */
+	/**
+	 * The player pressed Stop: while summarising, that skips the summary (the button says Skip then); otherwise the
+	 * request stops.
+	 */
 	void stop(Chat chat)
 	{
 		if (chat.isSummarizing())

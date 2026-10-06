@@ -679,7 +679,7 @@ public class RequestRunnerTest
 		assertTrue("the question still goes", chat.isRunning());
 		assertFalse(question.unanswered);
 		Chat.Message note = chat.messages.get(chat.messages.indexOf(question) - 1);
-		assertEquals("Couldn't summarise the earlier messages (you pressed Stop), so the whole chat was sent this time.", note.text);
+		assertEquals("Couldn't summarise the earlier messages (you skipped it), so the whole chat was sent this time.", note.text);
 		assertEquals(2, api.sent.size());
 		assertEquals(41, api.last().turns.size());
 
@@ -687,6 +687,12 @@ public class RequestRunnerTest
 		api.listeners.get(0).onReply(reply("late summary", 1, 1));
 		runEdt();
 		assertNull(chat.summary);
+
+		// Pressed again, Stop stops the question.
+		runner.stop(chat);
+		assertFalse(chat.isRunning());
+		assertTrue(question.unanswered);
+		assertEquals("Stopped.", chat.messages.get(chat.messages.size() - 1).text);
 	}
 
 	@Test

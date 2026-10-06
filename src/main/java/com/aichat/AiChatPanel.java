@@ -62,6 +62,10 @@ class AiChatPanel extends PluginPanel
 	/** Rows the model list shows before it scrolls. */
 	private static final int MODEL_ROWS = 12;
 	private static final String TEST_TIP = "Check your API key, and see which models it can use";
+	private static final String STOP_TIP = "Stop waiting for this reply; you can carry on with the chat afterwards";
+	/** While a long chat is summarised before the question goes, Stop skips the summary instead. */
+	private static final String SKIP_TIP = "Skip the summary and send the whole chat this time. Press Stop after that to "
+		+ "stop the question too.";
 
 	private final AiChatPlugin plugin;
 
@@ -220,7 +224,7 @@ class AiChatPanel extends PluginPanel
 		buttons.setOpaque(false);
 		sendButton.addActionListener(e -> send());
 		stopButton.addActionListener(e -> plugin.stop());
-		stopButton.setToolTipText("Stop waiting for this reply; you can carry on with the chat afterwards");
+		stopButton.setToolTipText(STOP_TIP);
 		buttons.add(stopButton, BorderLayout.WEST);
 		buttons.add(sendButton, BorderLayout.CENTER);
 		p.add(buttons);
@@ -446,6 +450,10 @@ class AiChatPanel extends PluginPanel
 		Chat chat = plugin.currentChat();
 		boolean running = chat != null && chat.isRunning();
 		stopButton.setEnabled(running);
+		// It doesn't stop the question then, so it doesn't say it does.
+		boolean summarising = running && chat.isSummarizing();
+		stopButton.setText(summarising ? "Skip" : "Stop");
+		stopButton.setToolTipText(summarising ? SKIP_TIP : STOP_TIP);
 		sendButton.setEnabled(chat != null && !running);
 		if (!running)
 		{
