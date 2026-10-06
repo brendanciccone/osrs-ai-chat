@@ -24,7 +24,8 @@ server on 127.0.0.1 (`StandIn`), which serves canned answers (streams included) 
   token counts, model lists, and the settings a service may refuse. `ChatApiTest`: what they share (keys, retry
   waits, running tools). `SseTest`: the event-stream reader. `PricingTest`: Claude cost estimates.
 - `RequestRunnerTest`: a message's way out and its answer's way back, with a stand-in provider and EDT: summary
-  first, the reply as it streams in, look-ups, Stop, Retry, and answers that come too late to count.
+  first, the reply as it streams in, look-ups, Stop (what was shown stays), Retry, what failed requests used, a chat
+  too long for its model, and answers that come too late to count.
   `ThrottleTest`: redrawing a streaming reply at most ~15 times a second. `ToolBoxTest`: which tools go with a
   request, in what order, and which runner answers each call.
 - `ConversationBuilderTest`: what a request sends (history, character notes, summaries, replaying Claude's replies).
