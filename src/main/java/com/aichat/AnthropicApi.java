@@ -569,7 +569,8 @@ class AnthropicApi implements ChatApi
 			r.historyAsText = !replay;
 			// A reply cut off part way can end in a tool call that was never run (Claude wants a result right after
 			// one), or in reasoning that was never signed; a last round without text (empty, say) can't go back either.
-			// Such a reply goes back as its text, as do the replies built on it later.
+			// Such a reply goes back as its text from now on; the replies after it are built on that text, so they can
+			// still go back as they came.
 			if (!r.cutShort && calls.isEmpty() && !text.isEmpty())
 			{
 				r.rawMessages = produced;

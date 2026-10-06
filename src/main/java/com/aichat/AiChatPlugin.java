@@ -273,7 +273,7 @@ public class AiChatPlugin extends Plugin
 	{
 		if (AiChatConfig.GROUP.equals(e.getGroup()))
 		{
-			SwingUtilities.invokeLater(() ->
+			Runnable apply = () ->
 			{
 				if (panel == null)
 				{
@@ -290,7 +290,17 @@ public class AiChatPlugin extends Plugin
 					saver.apply();
 				}
 				panel.refreshAll();
-			});
+			};
+			// Settings are usually changed on the Swing thread: act at once there, so that no tool round or retry
+			// that's already due can go out after "Enable AI requests" was turned off.
+			if (SwingUtilities.isEventDispatchThread())
+			{
+				apply.run();
+			}
+			else
+			{
+				SwingUtilities.invokeLater(apply);
+			}
 			if ("shareItems".equals(e.getKey()) || "aiRequests".equals(e.getKey()))
 			{
 				forgetBankUnlessShared();

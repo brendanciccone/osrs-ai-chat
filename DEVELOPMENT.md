@@ -38,7 +38,8 @@ server on 127.0.0.1 (`StandIn`), which serves canned answers (streams included) 
   `StackLayoutTest`: the transcript's layout.
   `GameChatEchoTest`: replies as game chat. `PanelTextTest`: the status line and token counts.
   `ConnectionCheckTest` and `ProviderSetupTest`: "Test" and what the settings say about the provider.
-  `ConnectionTesterTest`: which answers to "Test" count. `PrefixTest`: the `::ai` command.
+  `ConnectionTesterTest`: which answers to "Test" count. `AiChatPanelTest`: when the transcript follows the chat
+  down. `PrefixTest`: the `::ai` command.
 
 ## Code
 

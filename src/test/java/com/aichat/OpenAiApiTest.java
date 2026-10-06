@@ -469,7 +469,12 @@ public class OpenAiApiTest
 				StringBuilder head = new StringBuilder();
 				while (!head.toString().endsWith("\r\n\r\n"))
 				{
-					head.append((char) in.read());
+					int b = in.read();
+					if (b < 0)
+					{
+						return;
+					}
+					head.append((char) b);
 				}
 				java.util.regex.Matcher length = java.util.regex.Pattern.compile("(?i)content-length: *(\\d+)").matcher(head);
 				for (int left = length.find() ? Integer.parseInt(length.group(1)) : 0; left > 0; left--)

@@ -73,7 +73,8 @@ public class ConnectionCheckTest
 		ConnectionCheck.Note noListNoModel = ConnectionCheck.failed(SETUP, OpenAiApi.NO_MODEL_LIST).note("localhost:11434", " ", false, false);
 		assertEquals(ConnectionCheck.Kind.WARNING, noListNoModel.kind);
 		assertEquals("localhost:11434 answered, but not with a list of models, so Test can't check the URL or offer a "
-			+ "model. Set the model in the AI Chat settings, with its name from the service's website.", noListNoModel.text);
+			+ "model. Set the model in the OpenAI-compatible section of the AI Chat settings, with its name from the "
+			+ "service's website.", noListNoModel.text);
 	}
 
 	@Test
