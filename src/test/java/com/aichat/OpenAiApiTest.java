@@ -438,6 +438,36 @@ public class OpenAiApiTest
 	}
 
 	@Test
+	public void jsonNestedTooDeepDoesntStallTheReply() throws Exception
+	{
+		// A model stuck writing "[": the call isn't run, and the model is told why.
+		JsonObject function = new JsonObject();
+		function.addProperty("name", "wiki_search");
+		function.addProperty("arguments", "{\"query\":" + "[".repeat(5000) + "]".repeat(5000) + "}");
+		JsonObject call = new JsonObject();
+		call.addProperty("index", 0);
+		call.addProperty("id", "c");
+		call.addProperty("type", "function");
+		call.add("function", function);
+		JsonArray calls = new JsonArray();
+		calls.add(call);
+		server.answer(PATH, events(toolCalls(calls.toString()), finish("tool_calls"), DONE), events(content("Sorry."), finish("stop"), DONE));
+		ChatApi.Conversation c = conversation("m", "q");
+		c.tools.add(StandIn.tool("wiki_search"));
+		StandIn.Tools tools = new StandIn.Tools();
+		c.toolRunner = tools;
+		assertEquals("Sorry.", send(compatible("m"), c).reply().text);
+		assertTrue(tools.calls.isEmpty());
+		JsonObject result = server.bodies.get(1).getAsJsonArray("messages").get(3).getAsJsonObject();
+		assertTrue(result.get("content").getAsString().startsWith("Arguments weren't valid JSON"));
+
+		// A piece of the stream too deep to read ends the reply with an error, not silence.
+		server.clear();
+		server.answer(PATH, events(content("Hi"), chunk("[".repeat(100_000) + "]".repeat(100_000))));
+		assertTrue(send(compatible("m"), conversation("m", "q")).error().endsWith("sent an answer AI Chat couldn't read."));
+	}
+
+	@Test
 	public void anErrorPartWayThroughTheStreamIsReported() throws Exception
 	{
 		server.answer(PATH, events(content("Partly"), chunk("{\"error\":{\"code\":502,\"message\":\"Provider returned error\"}}"), DONE));

@@ -1,6 +1,8 @@
 package com.aichat;
 
+import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -13,6 +15,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /**
  * What both providers share: keys, retries and tool rounds. The providers themselves are tested against a stand-in
@@ -178,6 +181,32 @@ public class ChatApiTest
 		ChatApi.ToolResult turnedDown = results.get().get(ChatApi.MAX_TOOL_CALLS);
 		assertTrue(turnedDown.error);
 		assertEquals("Too many look-ups at once: only the first 10 were run. Ask for fewer at a time.", turnedDown.content);
+	}
+
+	@Test
+	public void jsonNestedDeeperThanAnswersNeedIsCaught()
+	{
+		String deep = "[".repeat(ChatApi.MAX_JSON_DEPTH + 1);
+		assertFalse(ChatApi.tooDeep("{\"query\":\"[[[[\",\"n\":[1,[2.5e-3]],\"ok\":true}"));
+		assertFalse(ChatApi.tooDeep("[".repeat(ChatApi.MAX_JSON_DEPTH) + "]".repeat(ChatApi.MAX_JSON_DEPTH)));
+		assertTrue(ChatApi.tooDeep(deep));
+		assertFalse("brackets in a string, after an escaped quote", ChatApi.tooDeep("{\"q\":\"\\\"" + "[".repeat(100) + "\"}"));
+		try
+		{
+			ChatApi.fromJson(new Gson(), "{\"a\":" + deep + "]".repeat(ChatApi.MAX_JSON_DEPTH + 1) + "}", JsonObject.class);
+			fail("read");
+		}
+		catch (JsonParseException e)
+		{
+			// Refused like any other bad JSON.
+		}
+
+		// Gson also reads JSON that isn't plain, where a quote may not start a string: what follows still counts.
+		assertTrue("a quote in a bare word", ChatApi.tooDeep("[a\"," + deep));
+		assertTrue("single quotes", ChatApi.tooDeep("['\"'," + deep));
+		assertTrue("a comment", ChatApi.tooDeep("/* ,\" */" + deep));
+		assertTrue("the prefix Gson skips", ChatApi.tooDeep(")]}'\n" + deep));
+		assertFalse("a few brackets in JSON that isn't plain", ChatApi.tooDeep("{query: 'x', n: [1]}"));
 	}
 
 	@Test

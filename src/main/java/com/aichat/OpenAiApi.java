@@ -238,7 +238,7 @@ class OpenAiApi implements ChatApi
 	{
 		try
 		{
-			JsonElement parsed = gson.fromJson(errorBody, JsonElement.class);
+			JsonElement parsed = ChatApi.fromJson(gson, errorBody, JsonElement.class);
 			JsonElement error = parsed != null && parsed.isJsonObject() ? parsed.getAsJsonObject().get("error") : null;
 			return error != null && error.isJsonObject() ? string(error.getAsJsonObject(), "param") : null;
 		}
@@ -312,6 +312,13 @@ class OpenAiApi implements ChatApi
 					try (ResponseBody body = response.body())
 					{
 						answered(response, body);
+					}
+					catch (RuntimeException e)
+					{
+						// A bug: the reply still ends, rather than wait forever. Only the type is logged, in case the
+						// message quotes a header (the API key).
+						log.warn("{}'s answer not read: {}", describe(base), e.getClass().getName());
+						fail(describe(base) + " sent an answer AI Chat couldn't read.");
 					}
 				}
 			});
@@ -515,7 +522,7 @@ class OpenAiApi implements ChatApi
 				m.done = true;
 				return false;
 			}
-			JsonElement parsed = gson.fromJson(data, JsonElement.class);
+			JsonElement parsed = ChatApi.fromJson(gson, data, JsonElement.class);
 			if (parsed == null || !parsed.isJsonObject())
 			{
 				return true;
@@ -813,7 +820,7 @@ class OpenAiApi implements ChatApi
 		void whole(Gson gson, String json)
 		{
 			whole = true;
-			JsonElement parsed = gson.fromJson(json, JsonElement.class);
+			JsonElement parsed = ChatApi.fromJson(gson, json, JsonElement.class);
 			if (parsed == null || !parsed.isJsonObject())
 			{
 				throw new JsonParseException("not an object");
@@ -903,7 +910,7 @@ class OpenAiApi implements ChatApi
 		}
 		try
 		{
-			JsonElement parsed = gson.fromJson(json, JsonElement.class);
+			JsonElement parsed = ChatApi.fromJson(gson, json, JsonElement.class);
 			if (parsed == null || parsed.isJsonNull())
 			{
 				return new JsonObject();
@@ -1045,7 +1052,7 @@ class OpenAiApi implements ChatApi
 	{
 		try
 		{
-			JsonElement parsed = gson.fromJson(json, JsonElement.class);
+			JsonElement parsed = ChatApi.fromJson(gson, json, JsonElement.class);
 			JsonElement data = parsed != null && parsed.isJsonObject() ? parsed.getAsJsonObject().get("data") : parsed;
 			if (data == null || !data.isJsonArray())
 			{

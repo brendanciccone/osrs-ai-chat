@@ -35,6 +35,11 @@ interface ChatApi
 	int MAX_RETRIES = 2;
 	/** The longest wait before sending again; a provider that asks for longer gets an error instead. */
 	long MAX_RETRY_WAIT_MS = 60_000;
+	/**
+	 * Deeper than any answer or tool call needs to go. Gson reads nesting by recursion, and a few thousand levels (a
+	 * model stuck writing "[") overflow the stack.
+	 */
+	int MAX_JSON_DEPTH = 64;
 	String TOO_MANY_ROUNDS = "The assistant kept looking things up without answering. Try asking more specifically.";
 	String CUT_OFF = "The reply was cut off: the connection closed early.";
 
@@ -308,7 +313,7 @@ interface ChatApi
 	{
 		try
 		{
-			JsonElement parsed = gson.fromJson(body, JsonElement.class);
+			JsonElement parsed = fromJson(gson, body, JsonElement.class);
 			if (parsed != null && parsed.isJsonArray() && parsed.getAsJsonArray().size() > 0)
 			{
 				parsed = parsed.getAsJsonArray().get(0);
@@ -608,6 +613,88 @@ interface ChatApi
 				}
 			}
 		}
+	}
+
+	/**
+	 * Gson's reading of text from a provider or a model. Text nested deeper than {@link #MAX_JSON_DEPTH} is refused
+	 * like any other bad JSON, before Gson can overflow the stack on it: a {@link StackOverflowError} would escape every
+	 * handler, and the reply would never end.
+	 */
+	static <T> T fromJson(Gson gson, String json, Class<T> type)
+	{
+		if (json != null && tooDeep(json))
+		{
+			throw new JsonParseException("Nested too deep to read");
+		}
+		return gson.fromJson(json, type);
+	}
+
+	/**
+	 * Whether {@code json} might nest arrays and objects deeper than {@link #MAX_JSON_DEPTH}. Brackets inside strings
+	 * don't count. Gson also reads text that isn't plain JSON (single quotes, bare words, comments), and in that the
+	 * strings can't be told apart this simply: there every bracket counts.
+	 */
+	static boolean tooDeep(String json)
+	{
+		int depth = 0;
+		boolean inString = false;
+		boolean plain = true;
+		for (int i = 0; i < json.length() && plain; i++)
+		{
+			char c = json.charAt(i);
+			if (inString)
+			{
+				if (c == '\\')
+				{
+					i++;
+				}
+				else if (c == '"')
+				{
+					inString = false;
+				}
+			}
+			else if (c == '"')
+			{
+				// Straight after a bare word, Gson reads a quote as more of the word, not as the start of a string.
+				plain = i == 0 || !bareWord(json.charAt(i - 1));
+				inString = true;
+			}
+			else if (c == '[' || c == '{')
+			{
+				if (++depth > MAX_JSON_DEPTH)
+				{
+					return true;
+				}
+			}
+			else if (c == ']' || c == '}')
+			{
+				depth--;
+			}
+			else
+			{
+				plain = bareWord(c) || c == ',' || c == ':' || c == ' ' || c == '\t' || c == '\n' || c == '\r';
+			}
+		}
+		if (plain)
+		{
+			return false;
+		}
+		int brackets = 0;
+		for (int i = 0; i < json.length(); i++)
+		{
+			char c = json.charAt(i);
+			if ((c == '[' || c == '{') && ++brackets > MAX_JSON_DEPTH)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** What plain JSON has outside strings besides punctuation: numbers, true, false and null. */
+	private static boolean bareWord(char c)
+	{
+		return c >= '0' && c <= '9' || "+-.eEtrufalsn".indexOf(c) >= 0;
 	}
 
 	/** The text of a reply made in several rounds (it stopped to look things up): each round's text, in order. */

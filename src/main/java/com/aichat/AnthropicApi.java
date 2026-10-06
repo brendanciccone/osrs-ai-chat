@@ -227,6 +227,13 @@ class AnthropicApi implements ChatApi
 					{
 						answered(response, body);
 					}
+					catch (RuntimeException e)
+					{
+						// A bug: the reply still ends, rather than wait forever. Only the type is logged, in case the
+						// message quotes a header (the API key).
+						log.warn("Claude's answer not read: {}", e.getClass().getName());
+						fail("Anthropic sent an answer AI Chat couldn't read.");
+					}
 				}
 			});
 		}
@@ -333,7 +340,7 @@ class AnthropicApi implements ChatApi
 						}
 						return;
 					}
-					JsonObject o = gson.fromJson(text, JsonObject.class);
+					JsonObject o = ChatApi.fromJson(gson, text, JsonObject.class);
 					if (o == null)
 					{
 						fail("Anthropic sent an empty answer.");
@@ -433,7 +440,7 @@ class AnthropicApi implements ChatApi
 		/** One streamed event. False once the response is over. */
 		private boolean onEvent(Message m, String event, String data)
 		{
-			JsonObject o = gson.fromJson(data, JsonObject.class);
+			JsonObject o = ChatApi.fromJson(gson, data, JsonObject.class);
 			String type = o == null ? null : string(o, "type");
 			if (type == null)
 			{
@@ -869,7 +876,7 @@ class AnthropicApi implements ChatApi
 			}
 			try
 			{
-				JsonElement parsed = gson.fromJson(json, JsonElement.class);
+				JsonElement parsed = ChatApi.fromJson(gson, json, JsonElement.class);
 				if (parsed != null && parsed.isJsonObject())
 				{
 					return parsed.getAsJsonObject();
@@ -1089,7 +1096,7 @@ class AnthropicApi implements ChatApi
 				}
 				try
 				{
-					JsonObject o = gson.fromJson(text, JsonObject.class);
+					JsonObject o = ChatApi.fromJson(gson, text, JsonObject.class);
 					JsonElement data = o == null ? null : o.get("data");
 					if (data == null || !data.isJsonArray())
 					{

@@ -408,6 +408,29 @@ public class AnthropicApiTest
 	}
 
 	@Test
+	public void jsonNestedTooDeepDoesntStallTheReply() throws Exception
+	{
+		// A model stuck writing "[": the call isn't run, and Claude is told why.
+		server.answer(PATH,
+			events(begin("claude-opus-5-5"), toolUse(0, "t", "wiki_search", "{\"query\":", "[".repeat(5000), "]".repeat(5000), "}"),
+				end("tool_use", 3)),
+			answer("Sorry."));
+		ChatApi.Conversation c = conversation("claude-opus-5-5", "q");
+		c.tools.add(StandIn.tool("wiki_search"));
+		StandIn.Tools tools = new StandIn.Tools();
+		c.toolRunner = tools;
+		assertEquals("Sorry.", send(api(), c).reply().text);
+		assertTrue(tools.calls.isEmpty());
+		JsonObject result = message(1, 2).getAsJsonArray("content").get(0).getAsJsonObject();
+		assertTrue(result.get("is_error").getAsBoolean());
+
+		// An event too deep to read ends the reply with an error, not silence.
+		server.clear();
+		server.answer(PATH, events(begin("claude-opus-5-5"), event("content_block_delta", "{\"a\":".repeat(100_000) + "1" + "}".repeat(100_000))));
+		assertEquals("Anthropic sent an answer AI Chat couldn't read.", send(api(), conversation("claude-opus-5-5", "q")).error());
+	}
+
+	@Test
 	public void toolsRunTogetherAndTheirResultsGoBackInOrder() throws Exception
 	{
 		server.answer(PATH,
