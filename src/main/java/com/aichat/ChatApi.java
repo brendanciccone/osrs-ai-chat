@@ -26,6 +26,11 @@ interface ChatApi
 	MediaType JSON = MediaType.get("application/json; charset=utf-8");
 	/** Times a reply may stop to look things up before it has to answer. */
 	int MAX_TOOL_ROUNDS = 8;
+	/**
+	 * Look-ups run each time it stops; any more are turned down. The Wiki answers one request at a time, and a reply
+	 * that asks for dozens of pages at once would keep it busy for minutes.
+	 */
+	int MAX_TOOL_CALLS = 10;
 	/** Times a request is sent again when the provider is busy or couldn't be reached. */
 	int MAX_RETRIES = 2;
 	/** The longest wait before sending again; a provider that asks for longer gets an error instead. */
@@ -531,7 +536,8 @@ interface ChatApi
 	/**
 	 * Runs the tool calls of one reply at the same time and hands back their results in the same order once all are
 	 * in, on whichever thread finished last. {@code inputs}: null for a call whose arguments couldn't be read; it isn't
-	 * run, and the model is told why. A runner that breaks its promise (throws, or answers twice) can't stall the reply.
+	 * run, and the model is told why. Calls beyond {@link #MAX_TOOL_CALLS} aren't run either. A runner that breaks its
+	 * promise (throws, or answers twice) can't stall the reply.
 	 */
 	static void runTools(ToolRunner runner, List<String> names, List<JsonObject> inputs, Consumer<List<ToolResult>> done)
 	{
@@ -570,6 +576,11 @@ interface ChatApi
 			if (input == null)
 			{
 				one.accept(ToolResult.error("Arguments weren't valid JSON. Send them as a JSON object."));
+			}
+			else if (i >= MAX_TOOL_CALLS)
+			{
+				one.accept(ToolResult.error("Too many look-ups at once: only the first " + MAX_TOOL_CALLS + " were run. "
+					+ "Ask for fewer at a time."));
 			}
 			else if (runner == null)
 			{

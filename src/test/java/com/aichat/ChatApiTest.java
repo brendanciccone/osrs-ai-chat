@@ -4,6 +4,7 @@ import com.google.gson.JsonObject;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -145,6 +146,31 @@ public class ChatApiTest
 		assertTrue(none.get().get(0).error);
 		ChatApi.runTools(runner, List.of(), List.of(), none::set);
 		assertTrue(none.get().isEmpty());
+	}
+
+	@Test
+	public void onlySoManyToolCallsRunAtOnce()
+	{
+		List<String> ran = new CopyOnWriteArrayList<>();
+		List<String> names = new ArrayList<>();
+		List<JsonObject> inputs = new ArrayList<>();
+		for (int i = 0; i < ChatApi.MAX_TOOL_CALLS + 2; i++)
+		{
+			names.add("wiki_page " + i);
+			inputs.add(new JsonObject());
+		}
+		AtomicReference<List<ChatApi.ToolResult>> results = new AtomicReference<>();
+		ChatApi.runTools((name, input, done) ->
+		{
+			ran.add(name);
+			done.accept(ChatApi.ToolResult.ok("read"));
+		}, names, inputs, results::set);
+		assertEquals(names.subList(0, ChatApi.MAX_TOOL_CALLS), ran);
+		assertEquals(names.size(), results.get().size());
+		assertFalse(results.get().get(ChatApi.MAX_TOOL_CALLS - 1).error);
+		ChatApi.ToolResult turnedDown = results.get().get(ChatApi.MAX_TOOL_CALLS);
+		assertTrue(turnedDown.error);
+		assertEquals("Too many look-ups at once: only the first 10 were run. Ask for fewer at a time.", turnedDown.content);
 	}
 
 	@Test
