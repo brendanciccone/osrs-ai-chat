@@ -122,7 +122,14 @@ final class ConnectionCheck
 		{
 			if (OpenAiApi.NO_MODEL_LIST.equals(error))
 			{
-				// Any web server answers "not found", so this says little: not even that the URL is right.
+				// Any web server answers "not found", so this says little: not even that the URL is right. With no model
+				// set, there's none to choose here either: say where it goes, as the setup help did before the Test.
+				if (model == null || model.trim().isEmpty())
+				{
+					return new Note(Kind.WARNING, service + " answered, but not with a list of models, so Test can't "
+						+ "check the URL or offer a model. Set the model in the AI Chat settings, with its name from the "
+						+ "service's website.", Collections.emptyList());
+				}
 				return new Note(Kind.WARNING, service + " answered, but not with a list of models, so Test can't check "
 					+ "the URL or the model name. Check both on the service's website.", Collections.emptyList());
 			}
