@@ -107,14 +107,7 @@ public class ChatApiTest
 					// Answers on another thread, after the one asked for after it.
 					new Thread(() ->
 					{
-						try
-						{
-							secondIn.await(10, TimeUnit.SECONDS);
-						}
-						catch (InterruptedException e)
-						{
-							Thread.currentThread().interrupt();
-						}
+						StandIn.await(secondIn);
 						answer.accept(ChatApi.ToolResult.ok("slow " + input.get("n")));
 					}).start();
 					break;

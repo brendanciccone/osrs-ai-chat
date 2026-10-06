@@ -375,28 +375,30 @@ public class OpenAiApiTest
 	@Test
 	public void aTestThatGetsNoAnswerEnds() throws Exception
 	{
+		// Answers nothing until the test is over.
+		CountDownLatch release = new CountDownLatch(1);
 		server.server().createContext("/slow/", exchange ->
 		{
-			try
-			{
-				Thread.sleep(5000);
-			}
-			catch (InterruptedException e)
-			{
-				Thread.currentThread().interrupt();
-			}
+			StandIn.await(release);
 			exchange.close();
 		});
-		OkHttpClient impatient = http.newBuilder().readTimeout(200, TimeUnit.MILLISECONDS).build();
-		OpenAiApi slow = new OpenAiApi(impatient, gson, server.url("/slow/v1/"), "", "m", false, "low", scheduler, new ConcurrentHashMap<>());
-		AnthropicApiTest.Models models = new AnthropicApiTest.Models();
-		slow.listModels(models);
-		assertEquals("127.0.0.1:" + server.url("/").port() + " didn't answer in time. Try again in a moment.", models.await().error);
+		try
+		{
+			OkHttpClient impatient = http.newBuilder().readTimeout(200, TimeUnit.MILLISECONDS).build();
+			OpenAiApi slow = new OpenAiApi(impatient, gson, server.url("/slow/v1/"), "", "m", false, "low", scheduler, new ConcurrentHashMap<>());
+			AnthropicApiTest.Models models = new AnthropicApiTest.Models();
+			slow.listModels(models);
+			assertEquals("127.0.0.1:" + server.url("/").port() + " didn't answer in time. Try again in a moment.", models.await().error);
 
-		AnthropicApi claude = new AnthropicApi(impatient, gson, server.url("/slow/v1/messages"), "k", scheduler, new ConcurrentHashMap<>());
-		models = new AnthropicApiTest.Models();
-		claude.listModels(models);
-		assertEquals("Anthropic didn't answer in time. Try again in a moment.", models.await().error);
+			AnthropicApi claude = new AnthropicApi(impatient, gson, server.url("/slow/v1/messages"), "k", scheduler, new ConcurrentHashMap<>());
+			models = new AnthropicApiTest.Models();
+			claude.listModels(models);
+			assertEquals("Anthropic didn't answer in time. Try again in a moment.", models.await().error);
+		}
+		finally
+		{
+			release.countDown();
+		}
 	}
 
 	@Test
@@ -636,14 +638,7 @@ public class OpenAiApiTest
 		CountDownLatch release = new CountDownLatch(1);
 		server.server().createContext("/slow", exchange ->
 		{
-			try
-			{
-				release.await(10, TimeUnit.SECONDS);
-			}
-			catch (InterruptedException e)
-			{
-				Thread.currentThread().interrupt();
-			}
+			StandIn.await(release);
 			exchange.sendResponseHeaders(500, -1);
 			exchange.close();
 		});

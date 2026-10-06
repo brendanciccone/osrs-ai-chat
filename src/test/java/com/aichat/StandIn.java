@@ -55,6 +55,22 @@ final class StandIn
 		}
 	}
 
+	/**
+	 * Waits at most 10 seconds for {@code latch}: how a stand-in holds an answer back until the test lets it go. Like the
+	 * plugin, the tests never sleep or interrupt a thread.
+	 */
+	static void await(CountDownLatch latch)
+	{
+		try
+		{
+			latch.await(10, TimeUnit.SECONDS);
+		}
+		catch (InterruptedException e)
+		{
+			// The stand-in is shutting down: the answer goes nowhere anyway.
+		}
+	}
+
 	static Answer json(int code, String body)
 	{
 		return new Answer(code, body, "application/json");

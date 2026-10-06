@@ -75,14 +75,7 @@ public class LookupToolsTest
 			int code;
 			if ("hold".equals(answer[0]))
 			{
-				try
-				{
-					release.await(10, TimeUnit.SECONDS);
-				}
-				catch (InterruptedException e)
-				{
-					Thread.currentThread().interrupt();
-				}
+				StandIn.await(release);
 				code = 200;
 			}
 			else

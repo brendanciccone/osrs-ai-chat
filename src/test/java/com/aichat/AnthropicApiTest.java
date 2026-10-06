@@ -382,14 +382,7 @@ public class AnthropicApiTest
 		StandIn.Tools tools = new StandIn.Tools()
 			.on("wiki_page", done -> new Thread(() ->
 			{
-				try
-				{
-					priceIn.await();
-				}
-				catch (InterruptedException e)
-				{
-					Thread.currentThread().interrupt();
-				}
+				StandIn.await(priceIn);
 				done.accept(ChatApi.ToolResult.error("The Wiki has no page called Vorkath."));
 			}).start())
 			.on("ge_price", done ->
