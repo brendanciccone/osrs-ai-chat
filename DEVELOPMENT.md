@@ -28,31 +28,34 @@ server on 127.0.0.1 (`StandIn`), which serves canned answers (streams included) 
   `ThrottleTest`: redrawing a streaming reply at most ~15 times a second. `ToolBoxTest`: which tools go with a
   request, in what order, and which runner answers each call.
 - `ConversationBuilderTest`: what a request sends (history, character notes, summaries, replaying Claude's replies).
-  `ChatStoreTest`: what "Remember chats" saves and loads, files from older versions included.
+  `ChatStoreTest`: what "Remember chats" saves and loads, files from older versions included. `ChatSaverTest`: when
+  the saved chats are opened, brought back, saved and deleted, with a stand-in disk.
 - `LookupToolsTest`: the Wiki and GE price tools, against a stand-in Wiki and canned prices. `GameDataTest` and
   `GameDataToolsTest`: writing up the player's items, Slayer task and diaries, and when the game-data tools share.
   `CharacterInfoTest`: the character note.
 - `MarkdownTest` and `MessageViewTest`: reading replies' Markdown, and drawing it off screen (headless).
   `StackLayoutTest`: the transcript's layout.
   `GameChatEchoTest`: replies as game chat. `PanelTextTest`: the status line and token counts.
-  `ConnectionCheckTest` and `ProviderSetupTest`: "Test" and what the settings say about the provider. `PrefixTest`:
-  the `::ai` command.
+  `ConnectionCheckTest` and `ProviderSetupTest`: "Test" and what the settings say about the provider.
+  `ConnectionTesterTest`: which answers to "Test" count. `PrefixTest`: the `::ai` command.
 
 ## Code
 
-- `AiChatPlugin`: the plugin's lifecycle, threads and wiring: settings, the chatbox command and hotkey, chats,
-  saving them, game chat and notifications.
+- `AiChatPlugin`: the plugin's lifecycle, threads and wiring: settings, the chatbox command and hotkey, chats, game
+  chat and notifications.
 - `RequestRunner`: sends a chat's messages and puts the answers in it (summary, character details, tools, the
   streaming reply, Stop, Retry). `ConversationBuilder`: what each request sends. `Throttle`: paces the redraws of a
   streaming reply.
 - `ChatApi` (shared types and helpers), `AnthropicApi`, `OpenAiApi`, `Sse`: the providers. `ProviderSetup`: the chosen
-  provider as the settings describe it. `ConnectionCheck`: "Test" and "Choose model". `Pricing`: cost estimates.
+  provider as the settings describe it. `ConnectionTester`: "Test" while it runs. `ConnectionCheck`: what its answer
+  says, and "Choose model". `Pricing`: cost estimates.
 - `ToolBox`: the tools that go with a request. `LookupTools` and `WikiClient`: Wiki search and pages, GE prices.
   `GameDataTools` and `GameData`: the player's equipment, inventory, bank, Slayer task and diaries.
   `CharacterInfo`: the character note.
 - `AiChatPanel` (the sidebar), `MessageView` and `Markdown` (formatted messages), `PanelText` (the panel's status and
   token lines), `StackLayout`. `GameChatEcho`: replies as game chat.
-- `Chat` (a conversation), `ChatStore` (what "Remember chats" saves), `ChatFile` (the file itself), `AiChatConfig`.
+- `Chat` (a conversation), `ChatSaver` ("Remember chats": when to load, save and delete), `ChatStore` (what's saved),
+  `ChatFile` (the file itself), `AiChatConfig`.
 
 ## Plugin Hub
 

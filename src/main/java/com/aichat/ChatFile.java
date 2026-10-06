@@ -23,7 +23,7 @@ import net.runelite.client.util.Filepath;
  * each other. Every method does file work, so call them off the Swing and client threads.
  */
 @Slf4j
-final class ChatFile
+final class ChatFile implements ChatSaver.Disk
 {
 	enum State
 	{
@@ -66,7 +66,8 @@ final class ChatFile
 	}
 
 	/** Takes ownership if no other window has it, and reads the saved chats. Only the first call does anything. */
-	synchronized Opened open()
+	@Override
+	public synchronized Opened open()
 	{
 		if (state != null)
 		{
@@ -157,7 +158,8 @@ final class ChatFile
 	 * Writes save number {@code number}, unless this window doesn't own the chats, a newer save was already written,
 	 * or {@code wanted} says saving has been turned off since.
 	 */
-	synchronized void write(String json, long number, BooleanSupplier wanted)
+	@Override
+	public synchronized void write(String json, long number, BooleanSupplier wanted)
 	{
 		if (state != State.OWNER || number < written || !wanted.getAsBoolean())
 		{
@@ -204,7 +206,8 @@ final class ChatFile
 	}
 
 	/** Deletes the saved chats, and any temporary file a save left behind. The lock, if held, stays. */
-	synchronized void delete()
+	@Override
+	public synchronized void delete()
 	{
 		try
 		{

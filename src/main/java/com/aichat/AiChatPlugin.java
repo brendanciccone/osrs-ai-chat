@@ -146,22 +146,13 @@ public class AiChatPlugin extends Plugin
 	/** The player's own account, for the game-data tools. Kept while RuneLite runs: it holds the bank as last seen. */
 	private GameData gameData;
 	private RequestRunner runner;
-	/** The saved chats on disk ("Remember chats"); its file work runs on {@link #executor}. */
-	private ChatFile chatFile;
-	/** EDT: whether this window owns the saved chats; null until the file has been opened. */
-	private ChatFile.State fileState;
-	/** EDT: the saved chats are being opened; a save now would overwrite them, so it waits. */
-	private boolean loading;
-	private boolean saveAfterLoading;
-	/** EDT: the next save, if one is waiting. */
-	private ScheduledFuture<?> pendingSave;
-	private long saveCount;
-	/** EDT: RuneLite is closing; save at once instead of a moment later. */
-	private boolean closing;
-	/** EDT: the latest "Test", or null. */
-	private ConnectionCheck connectionCheck;
-	/** EDT: the "Test" request in flight, or null. */
-	private ChatApi.Pending testing;
+	/**
+	 * EDT: "Remember chats", saving to the plugin's folder (its file work runs on {@link #executor}). Kept while
+	 * RuneLite runs, like the chats: the file is opened once.
+	 */
+	private ChatSaver saver;
+	/** EDT: "Test" and its latest result. */
+	private ConnectionTester tester;
 	private AiChatPanel panel;
 	private NavigationButton navButton;
 
@@ -212,9 +203,17 @@ public class AiChatPlugin extends Plugin
 			gameData = new GameData(client, itemManager);
 		}
 		runner = new RequestRunner(new Requests(), SwingUtilities::invokeLater, executor);
-		if (chatFile == null)
+		tester = new ConnectionTester(SwingUtilities::invokeLater, () ->
 		{
-			chatFile = new ChatFile(this::getPluginDirectory, gson);
+			if (panel != null)
+			{
+				panel.refreshAll();
+			}
+		});
+		if (saver == null)
+		{
+			saver = new ChatSaver(new ChatFile(this::getPluginDirectory, gson), gson, SwingUtilities::invokeLater, executor,
+				new Saving());
 		}
 		// Chats outlive turning the plugin off and on: they're kept for as long as RuneLite runs, and, with "Remember
 		// chats", on disk for the next time.
@@ -237,7 +236,7 @@ public class AiChatPlugin extends Plugin
 		clientToolbar.addNavigation(navButton);
 		keyManager.registerKeyListener(askHotkey);
 		// "Remember chats" may have changed while AI Chat was off, unseen by onConfigChanged: act on it now.
-		applyRememberChats();
+		saver.apply();
 	}
 
 	@Override
@@ -249,8 +248,8 @@ public class AiChatPlugin extends Plugin
 		{
 			runner.stop(c, "Stopped: AI Chat was turned off.");
 		}
-		stopTesting();
-		saveNow();
+		tester.stop();
+		saver.saveNow();
 		panel.refreshAll();
 		clientToolbar.removeNavigation(navButton);
 		navButton = null;
@@ -276,11 +275,11 @@ public class AiChatPlugin extends Plugin
 					{
 						runner.stop(c, "Stopped: AI requests were turned off.");
 					}
-					stopTesting();
+					tester.stop();
 				}
 				if ("rememberChats".equals(e.getKey()))
 				{
-					applyRememberChats();
+					saver.apply();
 				}
 				panel.refreshAll();
 			});
@@ -364,74 +363,19 @@ public class AiChatPlugin extends Plugin
 		{
 			return;
 		}
-		stopTesting();
-		String setup = provider.connection();
 		// Anthropic lists the newest models first; the others in no useful order.
-		boolean sorted = config.provider() != AiChatConfig.Provider.CLAUDE;
-		connectionCheck = ConnectionCheck.testing(setup);
-		// Set before any answer can be handled: answers are handled on this (the EDT) thread, after this method.
-		ChatApi.Pending[] request = new ChatApi.Pending[1];
-		try
-		{
-			request[0] = api.listModels(new ChatApi.ModelsListener()
-			{
-				@Override
-				public void onModels(List<String> ids)
-				{
-					SwingUtilities.invokeLater(() -> tested(request[0], ConnectionCheck.listed(setup, ids, sorted)));
-				}
-
-				@Override
-				public void onError(String message)
-				{
-					SwingUtilities.invokeLater(() -> tested(request[0], ConnectionCheck.failed(setup, message)));
-				}
-			});
-		}
-		catch (RuntimeException e)
-		{
-			// As with sending: the exception's message can contain the API key.
-			connectionCheck = ConnectionCheck.failed(setup, RequestRunner.COULDNT_SEND);
-		}
-		testing = request[0];
+		tester.start(api, provider.connection(), config.provider() != AiChatConfig.Provider.CLAUDE);
 		panel.refreshAll();
 	}
 
-	private void tested(ChatApi.Pending request, ConnectionCheck check)
-	{
-		if (request == null || testing != request || request.isCancelled())
-		{
-			return;
-		}
-		testing = null;
-		connectionCheck = check;
-		if (panel != null)
-		{
-			panel.refreshAll();
-		}
-	}
-
-	private void stopTesting()
-	{
-		if (testing != null)
-		{
-			testing.cancel();
-			testing = null;
-		}
-		connectionCheck = null;
-	}
-
-	/**
-	 * What the latest "Test" says about the setup as it is now, or null when there's nothing to say: none yet, or it
-	 * was for another provider, address or key. A different model is fine: the list is read against it.
-	 */
+	/** What the latest "Test" says about the setup as it is now, or null when there's nothing to say. */
 	ConnectionCheck.Note connectionNote()
 	{
-		if (connectionCheck == null || setupProblem() != null || !connectionCheck.setup.equals(provider.connection()))
+		if (setupProblem() != null)
 		{
 			return null;
 		}
-		return connectionCheck.note(provider.service(), provider.model(), provider.keyed());
+		return tester.note(provider.connection(), provider.service(), provider.model(), provider.keyed());
 	}
 
 	/** "Choose model": the provider's model setting becomes {@code model}, as if typed in the settings. */
@@ -639,7 +583,7 @@ public class AiChatPlugin extends Plugin
 		chat.name = name;
 		chat.defaultName = false;
 		chat.namedByPlayer = true;
-		saveSoon();
+		saver.saveSoon();
 		panel.refreshAll();
 	}
 
@@ -651,7 +595,7 @@ public class AiChatPlugin extends Plugin
 		chat.leftOut = 0;
 		chat.leftOutSummarized = 0;
 		chat.leftOutNote = null;
-		saveSoon();
+		saver.saveSoon();
 		panel.refreshAll();
 	}
 
@@ -668,7 +612,7 @@ public class AiChatPlugin extends Plugin
 		{
 			current = chats.get(Math.max(0, Math.min(index, chats.size() - 1)));
 		}
-		saveSoon();
+		saver.saveSoon();
 		panel.refreshAll();
 	}
 
@@ -723,7 +667,7 @@ public class AiChatPlugin extends Plugin
 		@Override
 		public void changed(Chat chat)
 		{
-			saveSoon();
+			saver.saveSoon();
 			if (panel != null)
 			{
 				panel.refreshAll();
@@ -750,149 +694,43 @@ public class AiChatPlugin extends Plugin
 	// Saved chats ("Remember chats")
 	// ------------------------------------------------------------------
 
-	/** EDT. Makes the saved chats match the setting: open (and load) them, save, or delete them. */
-	private void applyRememberChats()
+	/** What {@link ChatSaver} needs from the plugin. On the EDT, except {@link #rememberChats}. */
+	private final class Saving implements ChatSaver.Host
 	{
-		if (!config.rememberChats())
+		@Override
+		public boolean rememberChats()
 		{
-			deleteSaved();
+			return config.rememberChats();
 		}
-		else if (fileState == null)
-		{
-			openSaved();
-		}
-		else if (fileState == ChatFile.State.OWNER)
-		{
-			saveSoon();
-		}
-		else
-		{
-			showFileNote();
-		}
-	}
 
-	/** EDT. Opens the saved chats in the background, brings them back, and from then on saves this window's. */
-	private void openSaved()
-	{
-		if (loading)
+		@Override
+		public List<Chat> chats()
 		{
-			return;
+			return chats;
 		}
-		loading = true;
-		executor.execute(() ->
-		{
-			ChatFile.Opened opened = chatFile.open();
-			SwingUtilities.invokeLater(() ->
-			{
-				loading = false;
-				fileState = opened.state;
-				if (opened.loaded != null)
-				{
-					restore(opened.loaded);
-				}
-				showFileNote();
-				saveAfterLoading = false;
-				// Brings the file up to date with chats from before it was opened, if any.
-				saveSoon();
-			});
-		});
-	}
 
-	/** EDT. Saved chats go first; the empty chat made at start-up gives way to them. */
-	private void restore(ChatStore.Loaded loaded)
-	{
-		List<Chat> fresh = new ArrayList<>();
-		for (Chat c : loaded.chats)
+		@Override
+		public Chat current()
 		{
-			if (chats.stream().noneMatch(existing -> existing.id.equals(c.id)))
+			return current;
+		}
+
+		@Override
+		public void restored(Chat shown)
+		{
+			current = shown;
+			chatCounter = Math.max(chatCounter, chats.size());
+			if (panel != null)
 			{
-				fresh.add(c);
+				panel.refreshAll();
 			}
 		}
-		if (fresh.isEmpty())
-		{
-			return;
-		}
-		chats.removeIf(c -> c.messages.isEmpty() && !c.isRunning() && !c.namedByPlayer);
-		chats.addAll(0, fresh);
-		if (current == null || !chats.contains(current))
-		{
-			current = loaded.current != null && chats.contains(loaded.current) ? loaded.current : fresh.get(fresh.size() - 1);
-		}
-		chatCounter = Math.max(chatCounter, chats.size());
-		if (panel != null)
-		{
-			panel.refreshAll();
-		}
-	}
 
-	/** EDT. Says why this window's chats aren't being remembered, if they aren't. */
-	private void showFileNote()
-	{
-		if (panel == null || !config.rememberChats())
+		@Override
+		public void note(String text)
 		{
-			return;
+			showError(text);
 		}
-		if (fileState == ChatFile.State.OTHER_WINDOW)
-		{
-			panel.showNote("Chats in this window won't be remembered: AI Chat already remembers chats in another RuneLite window.");
-		}
-		else if (fileState == ChatFile.State.UNREADABLE)
-		{
-			panel.showNote("Your saved chats couldn't be read, so this session won't save over them. Restarting RuneLite may help.");
-		}
-	}
-
-	/** EDT. Saves the chats a moment from now; more changes in the meantime make it one save. */
-	private void saveSoon()
-	{
-		save(1);
-	}
-
-	/** EDT. */
-	private void saveNow()
-	{
-		save(0);
-	}
-
-	/** EDT. The save scheduled, or null if there's nothing to save to. */
-	private ScheduledFuture<?> save(long delaySeconds)
-	{
-		if (!config.rememberChats())
-		{
-			return null;
-		}
-		if (loading)
-		{
-			saveAfterLoading = true;
-			return null;
-		}
-		if (fileState != ChatFile.State.OWNER)
-		{
-			return null;
-		}
-		// Taken now, on the EDT, where the chats live.
-		String json = ChatStore.toJson(gson, chats, current);
-		long number = ++saveCount;
-		if (pendingSave != null)
-		{
-			pendingSave.cancel(false);
-		}
-		pendingSave = executor.schedule(() -> chatFile.write(json, number, config::rememberChats),
-			closing ? 0 : delaySeconds, TimeUnit.SECONDS);
-		return pendingSave;
-	}
-
-	/** EDT. "Remember chats" is off: no saves waiting, and no saved copy left. */
-	private void deleteSaved()
-	{
-		if (pendingSave != null)
-		{
-			pendingSave.cancel(false);
-			pendingSave = null;
-		}
-		ChatFile file = chatFile;
-		executor.execute(file::delete);
 	}
 
 	/** RuneLite doesn't turn plugins off when it closes, so this is the last chance to save. */
@@ -902,15 +740,10 @@ public class AiChatPlugin extends Plugin
 		// RuneLite posts this from the Swing thread, where the chats live; anywhere else, save without waiting.
 		if (!SwingUtilities.isEventDispatchThread())
 		{
-			SwingUtilities.invokeLater(() ->
-			{
-				closing = true;
-				saveNow();
-			});
+			SwingUtilities.invokeLater(saver::close);
 			return;
 		}
-		closing = true;
-		ScheduledFuture<?> saved = save(0);
+		ScheduledFuture<?> saved = saver.close();
 		if (saved != null)
 		{
 			// RuneLite waits for this (up to a few seconds) before exiting.
