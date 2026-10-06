@@ -4,6 +4,12 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.InetAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -373,6 +379,62 @@ public class OpenAiApiTest
 		// A finish reason without [DONE] is a whole answer: some services stop there.
 		server.answer(PATH, events(content("Whole"), finish("stop")));
 		assertEquals("Whole", send(compatible("m"), conversation("m", "hi")).reply().text);
+	}
+
+	@Test
+	public void aConnectionLostAfterTheReplyEndedKeepsTheReply() throws Exception
+	{
+		// The finish reason came, then the connection closed before the stream's own end.
+		OpenAiApi api = new OpenAiApi(http, gson, answerThenDrop(content("Whole answer."), finish("stop")), "", "m", false,
+			"low", scheduler, new ConcurrentHashMap<>());
+		ChatApi.Reply reply = send(api, conversation("m", "hi")).reply();
+		assertEquals("Whole answer.", reply.text);
+		assertTrue("its counts never came", reply.usage.incomplete);
+
+		// Before it: cut off.
+		api = new OpenAiApi(http, gson, answerThenDrop(content("Half a")), "", "m", false, "low", scheduler,
+			new ConcurrentHashMap<>());
+		assertEquals(ChatApi.CUT_OFF, send(api, conversation("m", "hi")).error());
+	}
+
+	/**
+	 * A server for one request that streams {@code events}, then closes the connection short of the length it promised
+	 * (the stand-in server would keep it open). Its base URL.
+	 */
+	private static HttpUrl answerThenDrop(String... events) throws IOException
+	{
+		ServerSocket socket = new ServerSocket(0, 1, InetAddress.getLoopbackAddress());
+		Thread serve = new Thread(() ->
+		{
+			try (ServerSocket s = socket; Socket c = s.accept())
+			{
+				// The whole request first, or closing would reset the connection before the answer is read.
+				InputStream in = c.getInputStream();
+				StringBuilder head = new StringBuilder();
+				while (!head.toString().endsWith("\r\n\r\n"))
+				{
+					head.append((char) in.read());
+				}
+				java.util.regex.Matcher length = java.util.regex.Pattern.compile("(?i)content-length: *(\\d+)").matcher(head);
+				for (int left = length.find() ? Integer.parseInt(length.group(1)) : 0; left > 0; left--)
+				{
+					in.read();
+				}
+				byte[] body = String.join("", events).getBytes(StandardCharsets.UTF_8);
+				OutputStream out = c.getOutputStream();
+				out.write(("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: " + (body.length + 100)
+					+ "\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+				out.write(body);
+				out.flush();
+			}
+			catch (IOException e)
+			{
+				// The test fails on what the client heard.
+			}
+		});
+		serve.setDaemon(true);
+		serve.start();
+		return HttpUrl.get("http://127.0.0.1:" + socket.getLocalPort() + "/v1/");
 	}
 
 	@Test

@@ -416,11 +416,19 @@ class OpenAiApi implements ChatApi
 			catch (IOException e)
 			{
 				// Stop closes the stream: not a problem to report.
-				if (!pending.isCancelled())
+				if (pending.isCancelled())
 				{
-					brokeOff(m);
-					fail(ChatApi.tookTooLong(e) ? describe(base) + " took too long to answer." : CUT_OFF);
+					return;
 				}
+				// The reply had ended (its finish reason came after everything else), and only the counts or [DONE] were
+				// lost with the connection: it's whole, its counts unknown.
+				if (m.finish != null && m.error == null)
+				{
+					completed(m);
+					return;
+				}
+				brokeOff(m);
+				fail(ChatApi.tookTooLong(e) ? describe(base) + " took too long to answer." : CUT_OFF);
 				return;
 			}
 			catch (JsonParseException | IllegalStateException | ClassCastException | UnsupportedOperationException | NumberFormatException e)
