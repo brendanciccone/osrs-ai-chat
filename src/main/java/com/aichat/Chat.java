@@ -24,6 +24,13 @@ class Chat
 		String context;
 		/** A USER message whose request failed or was stopped. Left out of later requests. */
 		boolean unanswered;
+		/** Covered by the chat's {@link Chat#summary}: still shown, but no longer sent. */
+		boolean summarized;
+		/**
+		 * The chat's {@link Chat#summaryVersion} when this was sent or answered. A reply goes back exactly as it came
+		 * only while that's unchanged: a new summary changes what came before it.
+		 */
+		int summaryVersion;
 		/**
 		 * Anthropic only: the reply's content blocks exactly as returned, with the model and system prompt that
 		 * produced them. Claude expects them back unchanged on the next turn, as long as nothing before them changed.
@@ -67,10 +74,22 @@ class Chat
 	/** The player named this chat themselves, so the name can appear in notifications (it isn't their question). */
 	boolean namedByPlayer;
 	final List<Message> messages = new ArrayList<>();
+	/**
+	 * What the oldest messages were summarised to, sent instead of them (see {@link ConversationBuilder}); null until a
+	 * chat gets long.
+	 */
+	String summary;
+	/** Goes up with every new summary. */
+	int summaryVersion;
 
 	/** The request in flight, or null. */
 	ChatApi.Pending pending;
 	long runStartedAt;
+	/**
+	 * While the oldest messages are being summarised before a question goes out: carries on without the summary, which
+	 * is what Stop does then. Null the rest of the time.
+	 */
+	Runnable skipSummary;
 
 	Chat(String name)
 	{
@@ -87,5 +106,10 @@ class Chat
 	boolean isRunning()
 	{
 		return pending != null;
+	}
+
+	boolean isSummarizing()
+	{
+		return skipSummary != null;
 	}
 }

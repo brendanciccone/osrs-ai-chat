@@ -57,8 +57,6 @@ public class AiChatPlugin extends Plugin
 {
 	/** Typed in the chatbox: "::ai what should I train next?". */
 	private static final String PREFIX = "::ai";
-	/** Earlier messages sent with each request; older ones are left out to keep requests (and costs) bounded. */
-	private static final int MAX_HISTORY = 40;
 
 	static final String SYSTEM_PROMPT = "You are the assistant in AI Chat, a RuneLite plugin: an Old School RuneScape "
 		+ "player is chatting with you from inside the game client, often while playing. Keep answers short and direct "
@@ -484,151 +482,211 @@ public class AiChatPlugin extends Plugin
 			chat.defaultName = false;
 		}
 		saveSoon();
-		String model = model();
-		String system = systemPrompt();
-		boolean shareCharacter = config.sendCharacter();
-		// Busy from now on, so nothing else is sent in this chat while character details are gathered.
+		Outgoing out = new Outgoing(chat, message, api, model(), systemPrompt(), config.sendCharacter());
+		// Busy from now on, so nothing else is sent in this chat while the request is put together.
 		chat.pending = new ChatApi.Pending();
 		chat.runStartedAt = System.currentTimeMillis();
-		panel.refreshAll();
-
-		if (shareCharacter)
+		List<Chat.Message> old = ConversationBuilder.planSummary(chat);
+		if (old.isEmpty())
 		{
-			ChatApi.Pending placeholder = chat.pending;
-			// invokeLater: reading quest states runs a game script, which can't happen inside another one.
-			clientThread.invokeLater(() ->
-			{
-				String context = null;
-				try
-				{
-					context = client.getGameState() == GameState.LOGGED_IN ? CharacterInfo.describe(client) : null;
-				}
-				catch (RuntimeException e)
-				{
-					// Send the message without it rather than leave the chat waiting forever.
-					log.debug("couldn't read character info", e);
-				}
-				String sent = context;
-				SwingUtilities.invokeLater(() ->
-				{
-					// Stopped (or the plugin turned off) while we were on the client thread.
-					if (chat.pending == placeholder && !placeholder.isCancelled())
-					{
-						dispatch(chat, message, api, model, system, true, sent);
-					}
-				});
-			});
+			readCharacter(out);
 		}
 		else
 		{
-			dispatch(chat, message, api, model, system, false, null);
+			summarise(out, old);
 		}
+		panel.refreshAll();
 		return true;
 	}
 
-	/**
-	 * Sends the chat so far. {@code shareCharacter}: the setting when the message was sent; {@code context}: the
-	 * character details read for it, if any.
-	 */
-	private void dispatch(Chat chat, Chat.Message message, ChatApi api, String model, String system,
-		boolean shareCharacter, String context)
+	/** A message on its way, with the settings it goes with: those of when the player sent it. */
+	private static final class Outgoing
 	{
+		final Chat chat;
+		final Chat.Message message;
+		final ChatApi api;
+		final String model;
+		final String system;
+		final boolean shareCharacter;
+
+		Outgoing(Chat chat, Chat.Message message, ChatApi api, String model, String system, boolean shareCharacter)
+		{
+			this.chat = chat;
+			this.message = message;
+			this.api = api;
+			this.model = model;
+			this.system = system;
+			this.shareCharacter = shareCharacter;
+		}
+	}
+
+	/**
+	 * EDT. The chat has grown long: its oldest messages are summarised with one extra request, and the message goes
+	 * out after that, with the summary instead of them or, if there's none, with the whole chat.
+	 */
+	private void summarise(Outgoing out, List<Chat.Message> old)
+	{
+		Chat chat = out.chat;
+		// Set before any answer can be handled: answers are handled on this (the EDT) thread, after this method.
+		ChatApi.Pending[] request = new ChatApi.Pending[1];
+		try
+		{
+			request[0] = out.api.send(ConversationBuilder.summaryConversation(chat, old, out.model), new ChatApi.Listener()
+			{
+				@Override
+				public void onReply(ChatApi.Reply reply)
+				{
+					SwingUtilities.invokeLater(() -> summarised(out, old, request[0], reply.text, null));
+				}
+
+				@Override
+				public void onError(String error)
+				{
+					SwingUtilities.invokeLater(() -> summarised(out, old, request[0], null, error));
+				}
+			});
+		}
+		catch (RuntimeException e)
+		{
+			couldntSend(chat, out.message);
+			return;
+		}
+		chat.pending = request[0];
+		// Stop skips the summary, not the message: this time the whole chat is sent instead.
+		chat.skipSummary = () ->
+		{
+			request[0].cancel();
+			afterSummary(out, old, null, "you pressed Stop");
+		};
+	}
+
+	/** EDT. The answer to a summary request, if it still counts. */
+	private void summarised(Outgoing out, List<Chat.Message> old, ChatApi.Pending request, String summary, String error)
+	{
+		Chat chat = out.chat;
+		if (chat.pending != request || request.isCancelled() || !chats.contains(chat))
+		{
+			return;
+		}
+		afterSummary(out, old, summary, error);
+	}
+
+	/**
+	 * EDT. Sends the summary instead of the oldest messages from now on, or says why there's none this time (then
+	 * nothing is left out, and the next message tries again). Then the message goes out.
+	 */
+	private void afterSummary(Outgoing out, List<Chat.Message> old, String summary, String error)
+	{
+		Chat chat = out.chat;
+		chat.skipSummary = null;
+		// Still busy: the message itself is next.
+		chat.pending = new ChatApi.Pending();
+		if (summary != null && !summary.trim().isEmpty())
+		{
+			ConversationBuilder.applySummary(chat, old, summary);
+		}
+		else
+		{
+			String reason = error != null ? error : "the summary came back empty";
+			chat.messages.add(new Chat.Message(Chat.Role.NOTE, ConversationBuilder.summaryFailed(reason)));
+		}
+		saveSoon();
+		if (panel != null)
+		{
+			panel.refreshAll();
+		}
+		readCharacter(out);
+	}
+
+	/** EDT. Reads the character details first if they go with the message, then sends it. */
+	private void readCharacter(Outgoing out)
+	{
+		if (!out.shareCharacter)
+		{
+			dispatch(out, null);
+			return;
+		}
+		Chat chat = out.chat;
+		ChatApi.Pending placeholder = chat.pending;
+		// invokeLater: reading quest states runs a game script, which can't happen inside another one.
+		clientThread.invokeLater(() ->
+		{
+			String context = null;
+			try
+			{
+				context = client.getGameState() == GameState.LOGGED_IN ? CharacterInfo.describe(client) : null;
+			}
+			catch (RuntimeException e)
+			{
+				// Send the message without it rather than leave the chat waiting forever.
+				log.debug("couldn't read character info", e);
+			}
+			String sent = context;
+			SwingUtilities.invokeLater(() ->
+			{
+				// Stopped (or the plugin turned off) while we were on the client thread.
+				if (chat.pending == placeholder && !placeholder.isCancelled())
+				{
+					dispatch(out, sent);
+				}
+			});
+		});
+	}
+
+	/** EDT. Sends the chat so far. {@code context}: the character details read for the message, if any. */
+	private void dispatch(Outgoing out, String context)
+	{
+		Chat chat = out.chat;
 		if (!config.aiRequests())
 		{
 			stop(chat, "Stopped: AI requests are turned off.");
 			return;
 		}
 
-		ChatApi.Conversation conversation = new ChatApi.Conversation();
-		conversation.model = model;
-		conversation.system = system;
-		List<Chat.Message> history = new ArrayList<>();
-		for (Chat.Message m : chat.messages)
-		{
-			boolean sent = m.role == Chat.Role.USER && !m.unanswered || m.role == Chat.Role.ASSISTANT;
-			if (sent)
-			{
-				history.add(m);
-			}
-		}
-		// Claude only accepts earlier replies back verbatim when everything before them is unchanged: not if the
-		// oldest messages had to be left out. A conversation also has to start with the player.
-		boolean trimmed = history.size() > MAX_HISTORY;
-		List<Chat.Message> recent = new ArrayList<>(history.subList(Math.max(0, history.size() - MAX_HISTORY), history.size()));
-		while (!recent.isEmpty() && recent.get(0).role != Chat.Role.USER)
-		{
-			recent.remove(0);
-		}
-
-		// Character details go with this message unless the latest ones the provider will see are the same. Decided
-		// from what's actually sent: an earlier note may have gone with a failed request or been trimmed off.
-		if (shareCharacter && context != null)
-		{
-			String seen = null;
-			for (Chat.Message m : recent)
-			{
-				if (m != message && m.context != null)
-				{
-					seen = m.context;
-				}
-			}
-			if (!context.equals(seen))
-			{
-				message.context = context;
-			}
-		}
-		// With sharing turned off, earlier notes stay out too. That changes earlier turns, so Claude's replies can't be
-		// replayed as they were.
-		boolean notesLeftOut = false;
-		for (Chat.Message m : recent)
-		{
-			notesLeftOut |= !shareCharacter && m.context != null;
-		}
-		for (Chat.Message m : recent)
-		{
-			boolean withNote = shareCharacter && m.context != null;
-			ChatApi.Turn t = new ChatApi.Turn(m.role == Chat.Role.USER, withNote ? m.context + "\n\n" + m.text : m.text);
-			if (!trimmed && !notesLeftOut)
-			{
-				t.rawContent = m.rawContent;
-				t.rawModel = m.rawModel;
-				t.rawSystem = m.rawSystem;
-			}
-			conversation.turns.add(t);
-		}
-
-		String who = api.displayName();
+		ChatApi.Conversation conversation = ConversationBuilder.conversation(chat, out.message, out.model, out.system,
+			out.shareCharacter, context);
+		String who = out.api.displayName();
 		// Set before any answer can be handled: answers are handled on this (the EDT) thread, after this method.
 		ChatApi.Pending[] request = new ChatApi.Pending[1];
 		try
 		{
-			request[0] = api.send(conversation, new ChatApi.Listener()
+			request[0] = out.api.send(conversation, new ChatApi.Listener()
 			{
 				@Override
 				public void onReply(ChatApi.Reply reply)
 				{
-					SwingUtilities.invokeLater(() -> finished(chat, request[0], message, who, system, reply, null));
+					SwingUtilities.invokeLater(() -> finished(chat, request[0], out.message, who, out.system, reply, null));
 				}
 
 				@Override
 				public void onError(String error)
 				{
-					SwingUtilities.invokeLater(() -> finished(chat, request[0], message, who, system, null, error));
+					SwingUtilities.invokeLater(() -> finished(chat, request[0], out.message, who, out.system, null, error));
 				}
 			});
 		}
 		catch (RuntimeException e)
 		{
-			// Building the request failed (OkHttp rejects some header values). Its message can contain the API key:
-			// don't pass it on or log it.
-			chat.pending = null;
-			message.unanswered = true;
-			chat.messages.add(new Chat.Message(Chat.Role.ERROR, "AI Chat couldn't send this. Check the API key and URL in the settings."));
-			saveSoon();
-			panel.refreshAll();
+			couldntSend(chat, out.message);
 			return;
 		}
 		chat.pending = request[0];
+	}
+
+	/**
+	 * EDT. Building the request failed (OkHttp rejects some header values). The exception's message can contain the API
+	 * key: it isn't passed on or logged.
+	 */
+	private void couldntSend(Chat chat, Chat.Message message)
+	{
+		chat.pending = null;
+		message.unanswered = true;
+		chat.messages.add(new Chat.Message(Chat.Role.ERROR, "AI Chat couldn't send this. Check the API key and URL in the settings."));
+		saveSoon();
+		if (panel != null)
+		{
+			panel.refreshAll();
+		}
 	}
 
 	private void finished(Chat chat, ChatApi.Pending request, Chat.Message question, String who, String system,
@@ -645,18 +703,11 @@ public class AiChatPlugin extends Plugin
 			if (reply.historyAsText)
 			{
 				// This reply was built on plain-text history; keep sending the earlier replies that way.
-				for (Chat.Message earlier : chat.messages)
-				{
-					earlier.rawContent = null;
-					earlier.rawModel = null;
-					earlier.rawSystem = null;
-				}
+				ConversationBuilder.forgetRaw(chat);
 			}
 			Chat.Message m = new Chat.Message(Chat.Role.ASSISTANT, reply.text + (reply.cutShort ? "\n\n(The reply was cut short.)" : ""));
 			m.who = who;
-			m.rawContent = reply.rawContent;
-			m.rawModel = reply.model;
-			m.rawSystem = system;
+			ConversationBuilder.recordReply(m, question, reply, system);
 			chat.messages.add(m);
 			ping(chat, m);
 		}
@@ -708,9 +759,18 @@ public class AiChatPlugin extends Plugin
 
 	void stop()
 	{
-		if (current != null)
+		Chat chat = current;
+		if (chat == null)
 		{
-			stop(current, "Stopped.");
+			return;
+		}
+		if (chat.isSummarizing())
+		{
+			chat.skipSummary.run();
+		}
+		else
+		{
+			stop(chat, "Stopped.");
 		}
 	}
 
@@ -720,8 +780,7 @@ public class AiChatPlugin extends Plugin
 		{
 			return;
 		}
-		chat.pending.cancel();
-		chat.pending = null;
+		cancel(chat);
 		// The unanswered question stays in the transcript but isn't sent again.
 		for (int i = chat.messages.size() - 1; i >= 0; i--)
 		{
@@ -740,6 +799,17 @@ public class AiChatPlugin extends Plugin
 		}
 	}
 
+	/** Cancels whatever the chat is waiting for, if anything; its answer won't be heard. */
+	private static void cancel(Chat chat)
+	{
+		if (chat.pending != null)
+		{
+			chat.pending.cancel();
+			chat.pending = null;
+		}
+		chat.skipSummary = null;
+	}
+
 	// These take the chat from where the action started: the selection can change while a dialog is open.
 
 	void renameChat(Chat chat, String name)
@@ -753,23 +823,16 @@ public class AiChatPlugin extends Plugin
 
 	void clearChat(Chat chat)
 	{
-		if (chat.pending != null)
-		{
-			chat.pending.cancel();
-			chat.pending = null;
-		}
+		cancel(chat);
 		chat.messages.clear();
+		chat.summary = null;
 		saveSoon();
 		panel.refreshAll();
 	}
 
 	void deleteChat(Chat chat)
 	{
-		if (chat.pending != null)
-		{
-			chat.pending.cancel();
-			chat.pending = null;
-		}
+		cancel(chat);
 		int index = chats.indexOf(chat);
 		chats.remove(chat);
 		if (chats.isEmpty())

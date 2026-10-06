@@ -6,9 +6,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * What's kept of the chats between RuneLite sessions, when "Remember chats" is on: names and messages, nothing else.
- * API keys aren't part of a chat, and Claude's replayable reasoning stays in memory only. Converting happens on the
- * Swing EDT (where chats live); reading and writing the file happen elsewhere.
+ * What's kept of the chats between RuneLite sessions, when "Remember chats" is on: names, messages, and the summary
+ * sent instead of a long chat's oldest messages; nothing else. API keys aren't part of a chat, and Claude's replayable
+ * reasoning stays in memory only. Converting happens on the Swing EDT (where chats live); reading and writing the file
+ * happen elsewhere. Files from before a field was added still load: it's just missing (null, 0 or false).
  */
 final class ChatStore
 {
@@ -34,6 +35,8 @@ final class ChatStore
 		String name;
 		boolean defaultName;
 		boolean namedByPlayer;
+		String summary;
+		int summaryVersion;
 		List<SavedMessage> messages = new ArrayList<>();
 	}
 
@@ -45,6 +48,7 @@ final class ChatStore
 		String who;
 		String context;
 		boolean unanswered;
+		boolean summarized;
 	}
 
 	/** EDT. */
@@ -60,6 +64,8 @@ final class ChatStore
 			sc.name = c.name;
 			sc.defaultName = c.defaultName;
 			sc.namedByPlayer = c.namedByPlayer;
+			sc.summary = c.summary;
+			sc.summaryVersion = c.summaryVersion;
 			List<Chat.Message> messages = c.messages.subList(Math.max(0, c.messages.size() - MAX_MESSAGES), c.messages.size());
 			for (Chat.Message m : messages)
 			{
@@ -71,6 +77,7 @@ final class ChatStore
 				sm.context = m.context;
 				// A question still waiting when RuneLite closes won't be answered.
 				sm.unanswered = m.unanswered || c.isRunning() && m.role == Chat.Role.USER && m == lastUserMessage(c);
+				sm.summarized = m.summarized;
 				sc.messages.add(sm);
 			}
 			saved.chats.add(sc);
@@ -111,6 +118,8 @@ final class ChatStore
 			Chat c = new Chat(sc.id, sc.name);
 			c.defaultName = sc.defaultName;
 			c.namedByPlayer = sc.namedByPlayer;
+			c.summary = sc.summary == null || sc.summary.trim().isEmpty() ? null : sc.summary;
+			c.summaryVersion = sc.summaryVersion;
 			if (sc.messages != null)
 			{
 				for (SavedMessage sm : sc.messages)
@@ -124,6 +133,8 @@ final class ChatStore
 					m.who = sm.who;
 					m.context = sm.context;
 					m.unanswered = sm.unanswered;
+					// Without its summary, a summarised message is sent again rather than lost.
+					m.summarized = sm.summarized && c.summary != null;
 					c.messages.add(m);
 				}
 			}
