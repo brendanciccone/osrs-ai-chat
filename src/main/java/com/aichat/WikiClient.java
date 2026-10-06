@@ -34,6 +34,8 @@ final class WikiClient
 {
 	/** The error code for a request that wasn't sent because Wiki look-ups were turned off. */
 	static final String TURNED_OFF = "turned-off";
+	/** The error code for a request that wasn't sent because the reply it was for had stopped. */
+	static final String STOPPED = "stopped";
 	/** Where people read the Wiki: links in replies point here, also in tests. */
 	static final HttpUrl BASE = HttpUrl.get("https://oldschool.runescape.wiki/");
 	static final HttpUrl API = HttpUrl.get("https://oldschool.runescape.wiki/api.php");
@@ -73,8 +75,9 @@ final class WikiClient
 
 		/**
 		 * {@code code}: the Wiki's own error code ("missingtitle", "nosuchsection"...) when it answered with one,
-		 * {@link #TURNED_OFF} when look-ups were turned off before the request went out, or null when the Wiki couldn't
-		 * be reached or understood. {@code message} says what went wrong in a sentence.
+		 * {@link #TURNED_OFF} when look-ups were turned off before the request went out, {@link #STOPPED} when it was no
+		 * longer wanted by then, or null when the Wiki couldn't be reached or understood. {@code message} says what went
+		 * wrong in a sentence.
 		 */
 		void onError(String code, String message);
 	}
@@ -173,8 +176,11 @@ final class WikiClient
 		this.api = api;
 	}
 
-	/** Full-text search of the Wiki's articles: up to {@code limit} results with a snippet each. */
-	void search(String query, int limit, Listener<Search> listener)
+	/**
+	 * Full-text search of the Wiki's articles: up to {@code limit} results with a snippet each. {@code wanted}: checked
+	 * just before it goes out, like the settings; false once the reply it's for has stopped.
+	 */
+	void search(String query, int limit, BooleanSupplier wanted, Listener<Search> listener)
 	{
 		HttpUrl url = common(api.newBuilder()
 			.addQueryParameter("action", "query")
@@ -183,14 +189,14 @@ final class WikiClient
 			.addQueryParameter("srlimit", String.valueOf(limit))
 			.addQueryParameter("srprop", "snippet")
 			.addQueryParameter("srnamespace", "0"));
-		get(url, listener, WikiClient::search);
+		get(url, wanted, listener, WikiClient::search);
 	}
 
 	/**
 	 * A page's wikitext, redirects followed. {@code section} -1 reads the whole page and lists its sections; 0 or more
-	 * reads only that section (0 is the part before the first heading).
+	 * reads only that section (0 is the part before the first heading). {@code wanted}: as for {@link #search}.
 	 */
-	void page(String title, int section, Listener<Page> listener)
+	void page(String title, int section, BooleanSupplier wanted, Listener<Page> listener)
 	{
 		HttpUrl.Builder url = api.newBuilder()
 			.addQueryParameter("action", "parse")
@@ -202,7 +208,7 @@ final class WikiClient
 		{
 			url.addQueryParameter("section", String.valueOf(section));
 		}
-		get(common(url), listener, o -> page(o, section));
+		get(common(url), wanted, listener, o -> page(o, section));
 	}
 
 	private static HttpUrl common(HttpUrl.Builder url)
@@ -218,13 +224,13 @@ final class WikiClient
 	}
 
 	/** Sends a GET once no other request is in flight, and turns the answer into a result with {@code read}. */
-	private <T> void get(HttpUrl url, Listener<T> listener, Function<JsonObject, T> read)
+	private <T> void get(HttpUrl url, BooleanSupplier wanted, Listener<T> listener, Function<JsonObject, T> read)
 	{
 		Request request = new Request.Builder()
 			.url(url)
 			.header("User-Agent", USER_AGENT)
 			.build();
-		Runnable send = () -> send(request, listener, read);
+		Runnable send = () -> send(request, wanted, listener, read);
 		if (startNow(send))
 		{
 			send.run();
@@ -233,15 +239,16 @@ final class WikiClient
 
 	/**
 	 * Runs as the one request in flight. {@link #finished} follows exactly once whatever happens, before the listener
-	 * hears back: a listener that throws can't hold up the requests waiting.
+	 * hears back: a listener that throws can't hold up the requests waiting. A request whose reply was stopped while it
+	 * waited its turn isn't sent: the Wiki has nothing to answer, and the next reply's look-ups don't wait behind it.
 	 */
-	private <T> void send(Request request, Listener<T> listener, Function<JsonObject, T> read)
+	private <T> void send(Request request, BooleanSupplier wanted, Listener<T> listener, Function<JsonObject, T> read)
 	{
-		boolean turnedOff;
+		String notSent;
 		try
 		{
-			turnedOff = !allowed.getAsBoolean();
-			if (!turnedOff)
+			notSent = !wanted.getAsBoolean() ? STOPPED : !allowed.getAsBoolean() ? TURNED_OFF : null;
+			if (notSent == null)
 			{
 				http.newCall(request).enqueue(callback(listener, read));
 				return;
@@ -251,10 +258,14 @@ final class WikiClient
 		{
 			// OkHttp turned the call away (RuneLite is closing, say).
 			log.debug("Wiki request not sent", e);
-			turnedOff = false;
+			notSent = null;
 		}
 		finished();
-		if (turnedOff)
+		if (STOPPED.equals(notSent))
+		{
+			listener.onError(STOPPED, "The reply this was for has stopped.");
+		}
+		else if (TURNED_OFF.equals(notSent))
 		{
 			listener.onError(TURNED_OFF, "Wiki look-ups are turned off in the AI Chat settings.");
 		}

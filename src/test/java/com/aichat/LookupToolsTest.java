@@ -20,6 +20,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import net.runelite.http.api.item.ItemPrice;
@@ -419,11 +420,34 @@ public class LookupToolsTest
 	}
 
 	@Test
+	public void lookUpsStillWaitingWhenTheReplyStopsArentSent() throws Exception
+	{
+		answer("hold", PAGE, "200", SEARCH);
+		AtomicBoolean wanted = new AtomicBoolean(true);
+		LookupTools tools = new LookupTools(wiki(5000), new FakePrices(), activity::add, wanted::get);
+		CountDownLatch page = start(tools, "wiki_page", "{\"title\":\"Abyssal whip\"}");
+		CountDownLatch search = start(tools, "wiki_search", "{\"query\":\"whip\"}");
+		// The reply stops while the Wiki is still answering the page: the search waiting its turn goes nowhere.
+		wanted.set(false);
+		release.countDown();
+		assertTrue(page.await(10, TimeUnit.SECONDS));
+		assertTrue(search.await(10, TimeUnit.SECONDS));
+		assertEquals(1, requests.size());
+		int errors = 0;
+		for (ChatApi.ToolResult r : results)
+		{
+			errors += r.error ? 1 : 0;
+		}
+		assertEquals(1, errors);
+		assertEquals("nothing to list for it", List.of("Read the Wiki page \"Abyssal whip\""), activity);
+	}
+
+	@Test
 	public void aListenerThatThrowsDoesntHoldUpTheNextRequest() throws Exception
 	{
 		answer("hold", PAGE, "200", PAGE);
 		WikiClient wiki = wiki(5000);
-		wiki.page("Abyssal whip", -1, new WikiClient.Listener<WikiClient.Page>()
+		wiki.page("Abyssal whip", -1, () -> true, new WikiClient.Listener<WikiClient.Page>()
 		{
 			@Override
 			public void onResult(WikiClient.Page result)
@@ -438,7 +462,7 @@ public class LookupToolsTest
 			}
 		});
 		CountDownLatch second = new CountDownLatch(1);
-		wiki.page("Abyssal whip", -1, new WikiClient.Listener<WikiClient.Page>()
+		wiki.page("Abyssal whip", -1, () -> true, new WikiClient.Listener<WikiClient.Page>()
 		{
 			@Override
 			public void onResult(WikiClient.Page result)

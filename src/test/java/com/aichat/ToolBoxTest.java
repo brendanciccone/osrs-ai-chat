@@ -105,12 +105,13 @@ public class ToolBoxTest
 		}
 	}
 
+	/** The tools for a request sent with these settings, as the plugin makes them. */
 	private ToolBox tools(boolean wikiLookups, boolean shareItems, boolean shareCharacter)
 	{
-		LookupTools lookups = new LookupTools(wikiLookups ? wiki : null, new OnePrice(), activity::add);
-		GameDataTools game = new GameDataTools(new Game(), Runnable::run, executor, () -> shareItems, () -> shareCharacter,
-			activity::add);
-		return new ToolBox(lookups, game, started::incrementAndGet);
+		ToolBox.Parts parts = new ToolBox.Parts(wiki, new OnePrice(), new Game(), Runnable::run, executor, () -> true,
+			() -> true);
+		RequestRunner.Setup setup = new RequestRunner.Setup(null, "m", "s", shareCharacter, shareItems, wikiLookups);
+		return parts.forRequest(setup, () -> true, activity::add, started::incrementAndGet);
 	}
 
 	private static List<String> names(List<ChatApi.ToolSpec> specs)

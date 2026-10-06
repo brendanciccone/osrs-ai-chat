@@ -73,12 +73,21 @@ final class LookupTools implements ChatApi.ToolRunner
 	private final WikiClient wiki;
 	private final Prices prices;
 	private final Consumer<String> activity;
+	/** False once the reply these look-ups are for has stopped: Wiki requests still waiting their turn aren't sent. */
+	private final BooleanSupplier wanted;
 
+	/** Look-ups that are always wanted. */
 	LookupTools(WikiClient wiki, Prices prices, Consumer<String> activity)
+	{
+		this(wiki, prices, activity, () -> true);
+	}
+
+	LookupTools(WikiClient wiki, Prices prices, Consumer<String> activity, BooleanSupplier wanted)
 	{
 		this.wiki = wiki;
 		this.prices = prices;
 		this.activity = activity;
+		this.wanted = wanted;
 	}
 
 	static boolean handles(String name)
@@ -178,7 +187,10 @@ final class LookupTools implements ChatApi.ToolRunner
 		}
 	}
 
-	/** One call's ending: its activity line, then its result, together and only once. */
+	/**
+	 * One call's ending: its activity line, then its result, together and only once. No line for a look-up that wasn't
+	 * made because its reply had stopped: there's nothing to list.
+	 */
 	private final class Report
 	{
 		private final AtomicBoolean sent = new AtomicBoolean();
@@ -216,7 +228,10 @@ final class LookupTools implements ChatApi.ToolRunner
 			}
 			try
 			{
-				activity.accept(line);
+				if (line != null)
+				{
+					activity.accept(line);
+				}
 			}
 			catch (RuntimeException e)
 			{
@@ -240,7 +255,7 @@ final class LookupTools implements ChatApi.ToolRunner
 				ChatApi.ToolResult.error(WIKI_SEARCH + " needs a query, e.g. {\"query\": \"abyssal whip\"}."));
 			return;
 		}
-		wiki.search(query, SEARCH_RESULTS, new WikiClient.Listener<WikiClient.Search>()
+		wiki.search(query, SEARCH_RESULTS, wanted, new WikiClient.Listener<WikiClient.Search>()
 		{
 			@Override
 			public void onResult(WikiClient.Search search)
@@ -251,8 +266,8 @@ final class LookupTools implements ChatApi.ToolRunner
 			@Override
 			public void onError(String code, String message)
 			{
-				report.send("Couldn't search the Wiki for " + quote(query), WikiClient.TURNED_OFF.equals(code)
-					? wikiOff() : ChatApi.ToolResult.error(message + TRY_AGAIN));
+				report.send(WikiClient.STOPPED.equals(code) ? null : "Couldn't search the Wiki for " + quote(query),
+					WikiClient.TURNED_OFF.equals(code) ? wikiOff() : ChatApi.ToolResult.error(message + TRY_AGAIN));
 			}
 		});
 	}
@@ -280,7 +295,7 @@ final class LookupTools implements ChatApi.ToolRunner
 			return;
 		}
 		int part = (int) section;
-		wiki.page(title, part, new WikiClient.Listener<WikiClient.Page>()
+		wiki.page(title, part, wanted, new WikiClient.Listener<WikiClient.Page>()
 		{
 			@Override
 			public void onResult(WikiClient.Page page)
@@ -292,7 +307,11 @@ final class LookupTools implements ChatApi.ToolRunner
 			@Override
 			public void onError(String code, String message)
 			{
-				if ("missingtitle".equals(code) || "invalidtitle".equals(code))
+				if (WikiClient.STOPPED.equals(code))
+				{
+					report.send(null, ChatApi.ToolResult.error(message));
+				}
+				else if ("missingtitle".equals(code) || "invalidtitle".equals(code))
 				{
 					report.send("Found no Wiki page called " + quote(title), ChatApi.ToolResult.error(
 						"The Wiki has no page called " + quote(title) + ". Try " + WIKI_SEARCH + " first."));

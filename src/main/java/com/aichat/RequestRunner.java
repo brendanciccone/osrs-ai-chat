@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 /**
@@ -41,10 +42,11 @@ final class RequestRunner
 		void readCharacter(Consumer<String> done);
 
 		/**
-		 * The tools for one request, with the settings in {@code setup}. {@code activity} hears one line per call, and
-		 * {@code started} when a call starts, both on the tools' own threads.
+		 * The tools for one request, with the settings in {@code setup}. {@code wanted}: false once the request has
+		 * stopped. {@code activity} hears one line per call, and {@code started} when a call starts, all on the tools' own
+		 * threads.
 		 */
-		ToolBox tools(Setup setup, Consumer<String> activity, Runnable started);
+		ToolBox tools(Setup setup, BooleanSupplier wanted, Consumer<String> activity, Runnable started);
 
 		/** Whether the chat is still one of the plugin's (not deleted). */
 		boolean has(Chat chat);
@@ -351,16 +353,20 @@ final class RequestRunner
 		List<String> activity = chat.liveActivity;
 		// Set before any answer can be handled: answers are handled on this (the EDT) thread, after this method.
 		ChatApi.Pending[] request = new ChatApi.Pending[1];
-		// The same, for the tools' own threads.
+		// The same, for the tools' own threads: whether the request still wants their results.
 		AtomicReference<ChatApi.Pending> sent = new AtomicReference<>();
+		BooleanSupplier wanted = () ->
+		{
+			ChatApi.Pending p = sent.get();
+			return p == null || !p.isCancelled();
+		};
 		Throttle<String> partial = new Throttle<>(edt, scheduler, LIVE_GAP_MILLIS, text -> writing(chat, request[0], text));
-		ToolBox tools = host.tools(out.setup,
+		ToolBox tools = host.tools(out.setup, wanted,
 			line ->
 			{
 				// Whether the result goes on its way is decided now, on this thread: the provider checks the same flag
 				// before sending it. By the time the EDT gets to the line, a Stop that was waiting there may have set it.
-				ChatApi.Pending p = sent.get();
-				boolean stoppedFirst = p != null && p.isCancelled();
+				boolean stoppedFirst = !wanted.getAsBoolean();
 				edt.execute(() -> lookedUp(chat, request[0], activity, line, stoppedFirst));
 			},
 			() ->

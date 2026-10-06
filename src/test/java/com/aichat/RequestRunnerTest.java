@@ -1,5 +1,6 @@
 package com.aichat;
 
+import com.google.gson.Gson;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -10,8 +11,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import net.runelite.http.api.item.ItemPrice;
+import okhttp3.OkHttpClient;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -97,8 +100,12 @@ public class RequestRunnerTest
 		int changed;
 		int live;
 		Consumer<String> characterRead;
+		BooleanSupplier wanted;
 		Consumer<String> activity;
 		Runnable started;
+		/** The plugin's tools, made from stand-ins: a Wiki that never sends anything, no prices, no game. */
+		final ToolBox.Parts parts = new ToolBox.Parts(new WikiClient(new OkHttpClient(), new Gson(), () -> false),
+			new NoPrices(), new NoGame(), Runnable::run, scheduler, () -> true, () -> character);
 
 		@Override
 		public boolean aiRequests()
@@ -119,13 +126,12 @@ public class RequestRunnerTest
 		}
 
 		@Override
-		public ToolBox tools(RequestRunner.Setup setup, Consumer<String> activity, Runnable started)
+		public ToolBox tools(RequestRunner.Setup setup, BooleanSupplier wanted, Consumer<String> activity, Runnable started)
 		{
+			this.wanted = wanted;
 			this.activity = activity;
 			this.started = started;
-			return new ToolBox(new LookupTools(null, new NoPrices(), activity),
-				new GameDataTools(new NoGame(), Runnable::run, scheduler, () -> setup.shareItems, () -> setup.shareCharacter,
-					activity), started);
+			return parts.forRequest(setup, wanted, activity, started);
 		}
 
 		@Override
@@ -347,14 +353,35 @@ public class RequestRunnerTest
 		runEdt();
 		host.characterRead.accept(null);
 		runEdt();
+		assertEquals(Arrays.asList("ge_price", "get_equipment", "get_inventory", "get_bank", "get_slayer_task",
+			"get_achievement_diaries"), toolNames());
+		assertNotNull(api.last().toolRunner);
+
+		api.listener().onReply(reply("a", 1, 1));
+		runEdt();
+		runner.send(chat, "What drops a whip?", setup(false, false, true));
+		runEdt();
+		assertEquals(Arrays.asList("wiki_search", "wiki_page", "ge_price"), toolNames());
+	}
+
+	private List<String> toolNames()
+	{
 		List<String> names = new ArrayList<>();
 		for (ChatApi.ToolSpec t : api.last().tools)
 		{
 			names.add(t.name);
 		}
-		assertEquals(Arrays.asList("ge_price", "get_equipment", "get_inventory", "get_bank", "get_slayer_task",
-			"get_achievement_diaries"), names);
-		assertNotNull(api.last().toolRunner);
+		return names;
+	}
+
+	@Test
+	public void lookUpsArentWantedOnceTheRequestStops()
+	{
+		send("q");
+		assertTrue(host.wanted.getAsBoolean());
+		runner.stop(chat);
+		// Wiki look-ups still waiting their turn aren't sent.
+		assertFalse(host.wanted.getAsBoolean());
 	}
 
 	@Test

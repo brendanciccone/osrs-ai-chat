@@ -12,6 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
@@ -141,12 +142,13 @@ public class AiChatPlugin extends Plugin
 	 * and Claude models that don't take server-side fallback.
 	 */
 	private final Map<String, Set<String>> refusedOptions = new ConcurrentHashMap<>();
-	/** The OSRS Wiki, for the assistant's look-ups; it sends nothing while AI requests or Wiki look-ups are off. */
-	private WikiClient wikiClient;
-	/** RuneLite's own GE prices, for ge_price. */
-	private LookupTools.Prices prices;
 	/** The player's own account, for the game-data tools, with the bank as last seen while AI Chat is on. */
 	private GameData gameData;
+	/**
+	 * What every request's tools are made from: the OSRS Wiki (which sends nothing while AI requests or Wiki look-ups
+	 * are off), RuneLite's own GE prices, and the player's account.
+	 */
+	private ToolBox.Parts tools;
 	private RequestRunner runner;
 	/**
 	 * EDT: "Remember chats", saving to the plugin's folder (its file work runs on {@link #executor}). Kept while
@@ -202,14 +204,16 @@ public class AiChatPlugin extends Plugin
 			.build();
 		refusedOptions.clear();
 		provider = new ProviderSetup(config);
-		wikiClient = new WikiClient(okHttpClient, gson, () -> config.aiRequests() && config.wikiLookups());
-		prices = new LookupTools.RuneLitePrices(itemManager, clientThread, executor, runeLiteConfig::useWikiItemPrices);
 		if (gameData == null)
 		{
 			gameData = new GameData(client, itemManager);
 		}
 		forgetBankUnlessShared();
-		runner = new RequestRunner(new Requests(), SwingUtilities::invokeLater, executor);
+		Requests requests = new Requests();
+		tools = new ToolBox.Parts(new WikiClient(okHttpClient, gson, () -> config.aiRequests() && config.wikiLookups()),
+			new LookupTools.RuneLitePrices(itemManager, clientThread, executor, runeLiteConfig::useWikiItemPrices),
+			gameData, clientThread::invoke, executor, this::canShareItems, requests::shareCharacter);
+		runner = new RequestRunner(requests, SwingUtilities::invokeLater, executor);
 		tester = new ConnectionTester(SwingUtilities::invokeLater, () ->
 		{
 			if (panel != null)
@@ -675,16 +679,9 @@ public class AiChatPlugin extends Plugin
 		}
 
 		@Override
-		public ToolBox tools(RequestRunner.Setup setup, Consumer<String> activity, Runnable started)
+		public ToolBox tools(RequestRunner.Setup setup, BooleanSupplier wanted, Consumer<String> activity, Runnable started)
 		{
-			LookupTools lookups = new LookupTools(setup.wikiLookups ? wikiClient : null, prices, activity);
-			// The settings as they were when the player sent the message, and as they are at each call: turning one off
-			// while a reply is being written stops the sharing at once.
-			GameDataTools game = new GameDataTools(gameData, clientThread::invoke, executor,
-				() -> setup.shareItems && canShareItems(),
-				() -> setup.shareCharacter && shareCharacter(),
-				activity);
-			return new ToolBox(lookups, game, started);
+			return tools.forRequest(setup, wanted, activity, started);
 		}
 
 		@Override
