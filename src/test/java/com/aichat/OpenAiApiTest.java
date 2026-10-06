@@ -208,14 +208,29 @@ public class OpenAiApiTest
 		ChatApi.Conversation c = conversation("llama3", "hi");
 		c.tools.add(StandIn.tool("wiki_search"));
 		c.toolRunner = new StandIn.Tools();
-		assertEquals("Hi", send(compatible("llama3", "low", refused), c).reply().text);
+		ChatApi.Reply reply = send(compatible("llama3", "low", refused), c).reply();
+		assertEquals("Hi", reply.text);
+		assertTrue("the panel is told", reply.toolsUnavailable);
 		assertTrue(server.bodies.get(0).has("tools"));
 		assertFalse(server.bodies.get(1).has("tools"));
 		assertTrue("the rest is unchanged", server.bodies.get(1).has("reasoning_effort"));
 		assertTrue(refused.values().iterator().next().contains("tools"));
+		// The model is told it has none, so it doesn't send the player to settings that are already on.
+		assertEquals("Be brief.", systemOf(0));
+		assertEquals("Be brief." + OpenAiApi.NO_TOOLS, systemOf(1));
 
-		send(compatible("llama3", "low", refused), c).reply();
+		assertTrue(send(compatible("llama3", "low", refused), c).reply().toolsUnavailable);
 		assertFalse("remembered", server.bodies.get(2).has("tools"));
+		assertEquals("Be brief." + OpenAiApi.NO_TOOLS, systemOf(2));
+
+		// A request without tools has none to miss.
+		assertFalse(send(compatible("llama3", "low", refused), conversation("llama3", "hi")).reply().toolsUnavailable);
+		assertEquals("Be brief.", systemOf(3));
+	}
+
+	private String systemOf(int request)
+	{
+		return server.bodies.get(request).getAsJsonArray("messages").get(0).getAsJsonObject().get("content").getAsString();
 	}
 
 	@Test

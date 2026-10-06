@@ -18,6 +18,8 @@ final class RequestRunner
 	/** How the notes that say a request was stopped start: one of them after a question means it can be retried. */
 	static final String STOPPED = "Stopped";
 	static final String COULDNT_SEND = "AI Chat couldn't send this. Check the API key and URL in the settings.";
+	/** Under a reply from a model that can't use tools, whatever the settings say. */
+	static final String NO_LOOKUPS = "No look-ups: this model can't use tools, so it answered from memory";
 
 	/** What the runner needs from the plugin. On the EDT unless it says otherwise. */
 	interface Host
@@ -492,6 +494,10 @@ final class RequestRunner
 			m.who = out.setup.api.displayName();
 			ConversationBuilder.recordReply(m, out.message, reply);
 			counted(m, reply.usage, reply.model, out.setup.model);
+			if (reply.toolsUnavailable)
+			{
+				activity.add(NO_LOOKUPS);
+			}
 		}
 		else
 		{

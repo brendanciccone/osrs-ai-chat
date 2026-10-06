@@ -17,7 +17,9 @@ look things up on the OSRS Wiki while it answers. Uses your own API key. Free an
   message from its right-click menu. Once a reply is complete, it's echoed into the game chat, with a RuneLite
   notification
 - **Wiki look-ups:** the assistant can search and read the OSRS Wiki and check Grand Exchange prices (from RuneLite's
-  own price data) while it answers, and links the pages it used. What it looked up is listed under each reply
+  own price data) while it answers, and links the pages it used. What it looked up is listed under each reply.
+  Look-ups need a model that can use tools; a model that can't (some that run on your own computer) answers from
+  memory, and says so under its reply
 - Pick your provider: **Claude** (Anthropic), **ChatGPT** (OpenAI), or any service with an **OpenAI-compatible** API,
   such as OpenRouter, Groq, or a free model running on your own computer with Ollama or LM Studio
 - **Test** your key from the panel, and choose a model from the ones it can use

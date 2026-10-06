@@ -76,10 +76,10 @@ public class AiChatPlugin extends Plugin
 		+ "read the OSRS Wiki, ge_price gives Grand Exchange prices from RuneLite) rather than relying on memory. When "
 		+ "you used a Wiki page, link it, as https://oldschool.runescape.wiki/w/Page_name. Without the tools, say when "
 		+ "you're unsure and suggest the OSRS Wiki. Tools that read the player's equipment, inventory, bank, Slayer task "
-		+ "or achievement diaries only exist when the player has chosen to share those; if you'd need one you don't "
-		+ "have, say which setting would allow it (\"Share items and gear\" or \"Send character info\"). You can't see "
-		+ "or control the game otherwise. If the player has chosen to share their character, their message starts "
-		+ "with a [Character: ...] note with details from the game.";
+		+ "or achievement diaries are only offered when the player has chosen to share those; if you have other tools "
+		+ "but not the one you'd need, say which setting would allow it (\"Share items and gear\" or \"Send character "
+		+ "info\"). You can't see or control the game otherwise. If the player has chosen to share their character, "
+		+ "their message starts with a [Character: ...] note with details from the game.";
 
 	@Inject
 	private Client client;

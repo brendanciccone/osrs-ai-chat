@@ -181,6 +181,8 @@ interface ChatApi
 		JsonArray rawMessages;
 		/** The {@link #promptKey} of the requests that made this reply. */
 		String rawKey;
+		/** The request came with tools, but the model can't use them: it answered without looking anything up. */
+		boolean toolsUnavailable;
 		final Usage usage = new Usage();
 	}
 

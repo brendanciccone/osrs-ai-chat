@@ -51,6 +51,12 @@ class OpenAiApi implements ChatApi
 	/** Some models (Qwen, DeepSeek R1 on some hosts, local models) put their reasoning inside the reply. */
 	private static final Pattern THINKING = Pattern.compile("(?s)<think>.*?</think>");
 	private static final String COULDNT_SEND = "AI Chat couldn't send the next part of this. Check the API key and URL in the settings.";
+	/**
+	 * Added to the instructions when the model can't use tools: they say which setting allows a game-data tool that
+	 * isn't offered, which would be the wrong advice when none can be.
+	 */
+	static final String NO_TOOLS = "\n\n(This model can't use tools here, so you have none, whatever the player's "
+		+ "settings: answer from what you know.)";
 
 	private final OkHttpClient http;
 	private final Gson gson;
@@ -105,8 +111,9 @@ class OpenAiApi implements ChatApi
 	{
 		JsonObject body = new JsonObject();
 		body.addProperty("model", conversation.model);
+		boolean noTools = !conversation.tools.isEmpty() && skip.contains("tools");
 		JsonArray messages = new JsonArray();
-		messages.add(message("system", conversation.system));
+		messages.add(message("system", noTools ? conversation.system + NO_TOOLS : conversation.system));
 		for (Turn t : conversation.turns)
 		{
 			messages.add(message(t.user ? "user" : "assistant", t.text));
@@ -124,7 +131,7 @@ class OpenAiApi implements ChatApi
 			options.addProperty("include_usage", true);
 			body.add("stream_options", options);
 		}
-		if (!conversation.tools.isEmpty() && !skip.contains("tools"))
+		if (!conversation.tools.isEmpty() && !noTools)
 		{
 			JsonArray tools = new JsonArray();
 			for (ToolSpec t : conversation.tools)
@@ -584,6 +591,7 @@ class OpenAiApi implements ChatApi
 			r.text = all;
 			r.model = model;
 			r.cutShort = cutShort;
+			r.toolsUnavailable = !conversation.tools.isEmpty() && !sent.has("tools");
 			r.usage.add(usage);
 			finish(r);
 		}

@@ -323,6 +323,17 @@ public class RequestRunnerTest
 	}
 
 	@Test
+	public void aModelThatCantLookThingsUpSaysSoUnderItsReply()
+	{
+		send("Vorkath's weaknesses?");
+		ChatApi.Reply r = reply("Stab, I think.", 10, 5);
+		r.toolsUnavailable = true;
+		api.listener().onReply(r);
+		runEdt();
+		assertEquals(Collections.singletonList(RequestRunner.NO_LOOKUPS), chat.messages.get(1).activity);
+	}
+
+	@Test
 	public void eachRequestOffersTheToolsItsSettingsAllow()
 	{
 		runner.send(chat, "What's in my bank?", setup(true, true, false));
