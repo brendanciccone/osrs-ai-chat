@@ -428,6 +428,11 @@ class OpenAiApi implements ChatApi
 			// A model that doesn't take one of our optional settings says so: once per setting, do without it.
 			// 400 from most services, 422 from those that validate the request's fields (Mistral).
 			String rejected = code == 400 || code == 422 ? rejectedOption(gson, sent, text) : null;
+			// A model that has just called tools can use them: an error about them now is about something else.
+			if ("tools".equals(rejected) && produced.size() > 0)
+			{
+				rejected = null;
+			}
 			if (rejected != null)
 			{
 				log.debug("asking again without {}", rejected);
@@ -620,6 +625,10 @@ class OpenAiApi implements ChatApi
 				call.addProperty("id", id);
 				call.addProperty("type", "function");
 				call.add("function", function);
+				if (c.extra != null)
+				{
+					call.add("extra_content", c.extra);
+				}
 				calls.add(call);
 				ids.add(id);
 				names.add(c.name == null ? "" : c.name);
@@ -814,11 +823,18 @@ class OpenAiApi implements ChatApi
 		String id;
 		String name;
 		final StringBuilder arguments = new StringBuilder();
+		/**
+		 * What else the service put on the call, to go back with it: Gemini's signature for the reasoning behind it
+		 * ({"google": {"thought_signature": ...}}), without which it refuses the next round.
+		 */
+		JsonElement extra;
 
 		void add(JsonObject piece)
 		{
 			String i = string(piece, "id");
 			id = i != null && !i.isEmpty() ? i : id;
+			JsonElement e = piece.get("extra_content");
+			extra = e != null && !e.isJsonNull() ? e.deepCopy() : extra;
 			JsonObject function = object(piece, "function");
 			if (function == null)
 			{

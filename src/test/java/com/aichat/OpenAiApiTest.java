@@ -200,6 +200,31 @@ public class OpenAiApiTest
 	}
 
 	@Test
+	public void geminisSignaturesGoBackWithItsToolCalls() throws Exception
+	{
+		String signed = "[{\"index\":0,\"id\":\"function-call-1\",\"type\":\"function\",\"function\":{\"name\":\"ge_price\","
+			+ "\"arguments\":\"{\\\"item\\\":\\\"whip\\\"}\"},\"extra_content\":{\"google\":{\"thought_signature\":\"SIG_A\"}}}]";
+		server.answer(PATH, events(toolCalls(signed), finish("tool_calls"), DONE), events(content("1.5m."), finish("stop"), DONE));
+		ChatApi.Conversation c = conversation("gemini-3-pro", "Whip price?");
+		c.tools.add(StandIn.tool("ge_price"));
+		c.toolRunner = new StandIn.Tools();
+		assertEquals("1.5m.", send(compatible("gemini-3-pro"), c).reply().text);
+		JsonObject call = server.bodies.get(1).getAsJsonArray("messages").get(2).getAsJsonObject()
+			.getAsJsonArray("tool_calls").get(0).getAsJsonObject();
+		assertEquals("SIG_A", call.getAsJsonObject("extra_content").getAsJsonObject("google").get("thought_signature").getAsString());
+
+		// An error about tools after the model has called them isn't a model that can't use them.
+		server.clear();
+		server.answer(PATH, events(toolCalls(signed), finish("tool_calls"), DONE),
+			json(400, "[{\"error\":{\"code\":400,\"message\":\"Function call is missing a thought_signature in functionCall parts. "
+				+ "This is required for tools to work correctly.\",\"status\":\"INVALID_ARGUMENT\"}}]"));
+		Map<String, Set<String>> refused = new ConcurrentHashMap<>();
+		assertTrue(send(compatible("gemini-3-pro", "low", refused), c).error().contains("thought_signature"));
+		assertEquals(2, server.bodies.size());
+		assertTrue(refused.isEmpty());
+	}
+
+	@Test
 	public void toolsAreLeftOutForModelsThatCantUseThem() throws Exception
 	{
 		Map<String, Set<String>> refused = new ConcurrentHashMap<>();
