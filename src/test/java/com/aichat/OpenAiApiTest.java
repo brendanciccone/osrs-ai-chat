@@ -209,6 +209,41 @@ public class OpenAiApiTest
 	}
 
 	@Test
+	public void toolCallsWithoutIndexOrIdStillPairUp() throws Exception
+	{
+		// Some local services leave out "index": a new id is a new call, and a piece without one adds to the last call.
+		server.answer(PATH,
+			events(toolCalls("[{\"id\":\"a\",\"type\":\"function\",\"function\":{\"name\":\"wiki_search\",\"arguments\":\"{\\\"query\\\":\"}}]"),
+				toolCalls("[{\"function\":{\"arguments\":\"\\\"x\\\"}\"}}]"),
+				toolCalls("[{\"id\":\"b\",\"type\":\"function\",\"function\":{\"name\":\"ge_price\",\"arguments\":\"{\\\"item\\\":\"}}]"),
+				// Others repeat the id on every piece: the same id is the same call.
+				toolCalls("[{\"id\":\"b\",\"function\":{\"arguments\":\"\\\"y\\\"}\"}}]"),
+				finish("tool_calls"), DONE),
+			// And some leave out the id too: the results must still say which call they answer.
+			events(toolCalls("[{\"type\":\"function\",\"function\":{\"name\":\"ge_price\",\"arguments\":\"{}\"}}]"),
+				finish("tool_calls"), DONE),
+			events(content("Done."), finish("stop"), DONE));
+		ChatApi.Conversation c = conversation("m", "q");
+		c.tools.add(StandIn.tool("wiki_search"));
+		c.tools.add(StandIn.tool("ge_price"));
+		StandIn.Tools tools = new StandIn.Tools();
+		c.toolRunner = tools;
+		assertEquals("Done.", send(compatible("m"), c).reply().text);
+		assertEquals(List.of("wiki_search {\"query\":\"x\"}", "ge_price {\"item\":\"y\"}", "ge_price {}"), tools.calls);
+
+		JsonArray round2 = server.bodies.get(1).getAsJsonArray("messages");
+		JsonArray asked = round2.get(2).getAsJsonObject().getAsJsonArray("tool_calls");
+		assertEquals("a", asked.get(0).getAsJsonObject().get("id").getAsString());
+		assertEquals("b", asked.get(1).getAsJsonObject().get("id").getAsString());
+		assertEquals("a", round2.get(3).getAsJsonObject().get("tool_call_id").getAsString());
+		assertEquals("b", round2.get(4).getAsJsonObject().get("tool_call_id").getAsString());
+
+		JsonArray round3 = server.bodies.get(2).getAsJsonArray("messages");
+		assertEquals("call_2_0", round3.get(5).getAsJsonObject().getAsJsonArray("tool_calls").get(0).getAsJsonObject().get("id").getAsString());
+		assertEquals("call_2_0", round3.get(6).getAsJsonObject().get("tool_call_id").getAsString());
+	}
+
+	@Test
 	public void geminisSignaturesGoBackWithItsToolCalls() throws Exception
 	{
 		String signed = "[{\"index\":0,\"id\":\"function-call-1\",\"type\":\"function\",\"function\":{\"name\":\"ge_price\","
