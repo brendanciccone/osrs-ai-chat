@@ -267,7 +267,7 @@ public class ConversationBuilderTest
 		stopped.unanswered = true;
 		Chat.Message q21 = user(chat, "Q21");
 		List<Chat.Message> old = ConversationBuilder.planSummary(chat);
-		ConversationBuilder.applySummary(chat, old, "  The player trains Agility.  ");
+		Chat.Message note = ConversationBuilder.applySummary(chat, old, "  The player trains Agility.  ", q21);
 
 		assertEquals("The player trains Agility.", chat.summary);
 		assertEquals(1, chat.summaryVersion);
@@ -277,12 +277,12 @@ public class ConversationBuilderTest
 		}
 		assertFalse(q21.summarized);
 		assertFalse("only messages that were sent are summarised", stopped.summarized);
-		// The note sits right after the last message it replaces, and shows the summary.
-		int a12 = chat.messages.indexOf(old.get(old.size() - 1));
-		Chat.Message note = chat.messages.get(a12 + 1);
+		// The note sits right before the question it was made for, where the player sees it, and shows the summary.
+		assertSame(note, chat.messages.get(chat.messages.indexOf(q21) - 1));
 		assertEquals(Chat.Role.NOTE, note.role);
 		assertEquals("Summary of the 24 earlier messages, sent instead of them:\n\nThe player trains Agility.", note.text);
-		assertEquals("Q13", chat.messages.get(a12 + 2).text);
+		int a12 = chat.messages.indexOf(old.get(old.size() - 1));
+		assertEquals("Q13", chat.messages.get(a12 + 1).text);
 
 		ChatApi.Conversation c = send(chat, q21, false, null);
 		assertEquals(17, c.turns.size());
@@ -296,8 +296,8 @@ public class ConversationBuilderTest
 	public void aLaterSummaryCoversTheEarlierOneToo()
 	{
 		Chat chat = chatOf(20);
-		user(chat, "Q21");
-		ConversationBuilder.applySummary(chat, ConversationBuilder.planSummary(chat), "S1");
+		Chat.Message q21 = user(chat, "Q21");
+		ConversationBuilder.applySummary(chat, ConversationBuilder.planSummary(chat), "S1", q21);
 		reply(chat, "A21");
 		for (int i = 22; i <= 33; i++)
 		{
@@ -314,7 +314,8 @@ public class ConversationBuilderTest
 		assertTrue(request.turns.get(0).text, request.turns.get(0).text.startsWith(
 			"The summary so far:\n\nS1\n\nThe conversation since then, to add to it:\n\nPlayer: Q13\n\nAssistant: A13\n\n"));
 
-		ConversationBuilder.applySummary(chat, old, "S2");
+		Chat.Message q33 = chat.messages.get(chat.messages.size() - 1);
+		ConversationBuilder.applySummary(chat, old, "S2", q33);
 		assertEquals(2, chat.summaryVersion);
 		assertTrue(chat.messages.stream().anyMatch(m -> m.text.startsWith("Summary of the " + (24 + old.size()) + " earlier messages")));
 		assertTrue(send(chat, chat.messages.get(chat.messages.size() - 1), false, null).turns.get(0).text
@@ -326,7 +327,7 @@ public class ConversationBuilderTest
 	{
 		Chat chat = chatOf(20);
 		Chat.Message q21 = user(chat, "Q21");
-		ConversationBuilder.applySummary(chat, ConversationBuilder.planSummary(chat), "S1");
+		ConversationBuilder.applySummary(chat, ConversationBuilder.planSummary(chat), "S1", q21);
 		// The oldest message still sent went with character details.
 		ConversationBuilder.history(chat).get(0).context = "[C1]";
 		String first = send(chat, q21, true, "[C1]").turns.get(0).text;
@@ -372,7 +373,9 @@ public class ConversationBuilderTest
 
 		Chat chat = new Chat("x");
 		Chat.Message q1 = user(chat, "Q1");
-		ConversationBuilder.applySummary(chat, List.of(q1), "S");
+		Chat.Message q2 = user(chat, "Q2");
+		ConversationBuilder.applySummary(chat, List.of(q1), "S", q2);
 		assertEquals("Summary of the earlier message, sent instead of it:\n\nS", chat.messages.get(1).text);
+		assertSame(q2, chat.messages.get(2));
 	}
 }

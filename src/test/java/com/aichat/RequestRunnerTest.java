@@ -1,0 +1,651 @@
+package com.aichat;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
+import net.runelite.http.api.item.ItemPrice;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
+
+/**
+ * A message's way out and its answer's way back: summary first when a chat is long, the reply as it streams in, what
+ * was looked up, Stop, Retry, and answers that come too late to count. The provider is a stand-in that answers when the
+ * test says so; the EDT is a queue the test runs.
+ */
+public class RequestRunnerTest
+{
+	private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+	/** Stands in for the EDT: tasks wait here until the test runs them, as invokeLater's do. */
+	private final BlockingQueue<Runnable> edt = new LinkedBlockingQueue<>();
+	private final FakeApi api = new FakeApi();
+	private final FakeHost host = new FakeHost();
+	private final RequestRunner runner = new RequestRunner(host, edt::add, scheduler);
+	private final Chat chat = new Chat("Chat 1");
+
+	@Before
+	public void open()
+	{
+		host.chats.add(chat);
+	}
+
+	@After
+	public void stop()
+	{
+		scheduler.shutdownNow();
+	}
+
+	/** A provider that keeps every request, and answers only when the test calls its listener. */
+	private static final class FakeApi implements ChatApi
+	{
+		final List<Conversation> sent = new ArrayList<>();
+		final List<Listener> listeners = new ArrayList<>();
+		final List<Pending> requests = new ArrayList<>();
+		RuntimeException failure;
+
+		@Override
+		public Pending send(Conversation conversation, Listener listener)
+		{
+			if (failure != null)
+			{
+				throw failure;
+			}
+			sent.add(conversation);
+			listeners.add(listener);
+			Pending p = new Pending();
+			requests.add(p);
+			return p;
+		}
+
+		@Override
+		public String displayName()
+		{
+			return "Claude";
+		}
+
+		Listener listener()
+		{
+			return listeners.get(listeners.size() - 1);
+		}
+
+		Conversation last()
+		{
+			return sent.get(sent.size() - 1);
+		}
+	}
+
+	private final class FakeHost implements RequestRunner.Host
+	{
+		final List<Chat> chats = new ArrayList<>();
+		final List<Chat.Message> ended = new ArrayList<>();
+		boolean ai = true;
+		int changed;
+		int live;
+		Consumer<String> characterRead;
+		Consumer<String> activity;
+		Runnable started;
+
+		@Override
+		public boolean aiRequests()
+		{
+			return ai;
+		}
+
+		@Override
+		public void readCharacter(Consumer<String> done)
+		{
+			characterRead = done;
+		}
+
+		@Override
+		public ToolBox tools(RequestRunner.Setup setup, Consumer<String> activity, Runnable started)
+		{
+			this.activity = activity;
+			this.started = started;
+			return new ToolBox(new LookupTools(null, new NoPrices(), activity),
+				new GameDataTools(new NoGame(), Runnable::run, scheduler, () -> setup.shareItems, () -> setup.shareCharacter,
+					activity), started);
+		}
+
+		@Override
+		public boolean has(Chat c)
+		{
+			return chats.contains(c);
+		}
+
+		@Override
+		public void changed(Chat c)
+		{
+			changed++;
+		}
+
+		@Override
+		public void live(Chat c)
+		{
+			live++;
+		}
+
+		@Override
+		public void ended(Chat c, Chat.Message m)
+		{
+			ended.add(m);
+		}
+	}
+
+	private static final class NoPrices implements LookupTools.Prices
+	{
+		@Override
+		public List<ItemPrice> search(String text)
+		{
+			return Collections.emptyList();
+		}
+
+		@Override
+		public long price(ItemPrice item)
+		{
+			return 0;
+		}
+
+		@Override
+		public void highAlchemy(List<Integer> ids, Consumer<Map<Integer, Integer>> done)
+		{
+			done.accept(Collections.emptyMap());
+		}
+	}
+
+	private static final class NoGame implements GameDataTools.Game
+	{
+		@Override
+		public boolean loggedIn()
+		{
+			return false;
+		}
+
+		@Override
+		public List<GameData.ItemLine> equipment()
+		{
+			return Collections.emptyList();
+		}
+
+		@Override
+		public GameData.Items inventory()
+		{
+			return null;
+		}
+
+		@Override
+		public GameData.Bank bank()
+		{
+			return null;
+		}
+
+		@Override
+		public GameData.SlayerTask slayerTask()
+		{
+			return null;
+		}
+
+		@Override
+		public List<GameData.Diary> diaries()
+		{
+			return Collections.emptyList();
+		}
+	}
+
+	/** Runs what's waiting for the EDT, and whatever that queues in turn. */
+	private void runEdt()
+	{
+		Runnable r;
+		while ((r = edt.poll()) != null)
+		{
+			r.run();
+		}
+	}
+
+	/** Waits for something to reach the EDT (a redraw held back by the throttle), then runs everything waiting. */
+	private void awaitEdt() throws InterruptedException
+	{
+		Runnable r = edt.poll(5, TimeUnit.SECONDS);
+		assertNotNull("nothing reached the EDT", r);
+		r.run();
+		runEdt();
+	}
+
+	private RequestRunner.Setup setup(boolean shareCharacter, boolean shareItems, boolean wikiLookups)
+	{
+		return new RequestRunner.Setup(api, "claude-opus-5-5", "Be brief.", shareCharacter, shareItems, wikiLookups);
+	}
+
+	private RequestRunner.Setup setup()
+	{
+		return setup(false, false, true);
+	}
+
+	/** Sends {@code text} and returns the player's message. */
+	private Chat.Message send(String text)
+	{
+		runner.send(chat, text, setup());
+		runEdt();
+		for (int i = chat.messages.size() - 1; i >= 0; i--)
+		{
+			if (chat.messages.get(i).role == Chat.Role.USER)
+			{
+				return chat.messages.get(i);
+			}
+		}
+		throw new AssertionError("no message sent");
+	}
+
+	private static ChatApi.Reply reply(String text, long input, long output)
+	{
+		ChatApi.Reply r = new ChatApi.Reply();
+		r.text = text;
+		r.model = "claude-opus-5-5-20261001";
+		r.usage.input = input;
+		r.usage.output = output;
+		return r;
+	}
+
+	/** {@code pairs} questions and answers, every one of them sent. */
+	private void history(int pairs)
+	{
+		for (int i = 1; i <= pairs; i++)
+		{
+			chat.messages.add(new Chat.Message(Chat.Role.USER, "Q" + i));
+			chat.messages.add(new Chat.Message(Chat.Role.ASSISTANT, "A" + i));
+		}
+	}
+
+	private static String lastTurn(ChatApi.Conversation c)
+	{
+		return c.turns.get(c.turns.size() - 1).text;
+	}
+
+	@Test
+	public void theReplyStreamsInThenLandsOnce()
+	{
+		Chat.Message question = send("How do I get to Zulrah?");
+		assertTrue(chat.isRunning());
+		assertEquals("How do I get to Zulrah?", chat.name);
+		assertEquals("Claude", chat.answering);
+		assertEquals(1, api.sent.size());
+		assertEquals("How do I get to Zulrah?", lastTurn(api.last()));
+		assertEquals("Waiting for a reply... 0s", PanelText.status(chat, chat.runStartedAt));
+
+		api.listener().onPartial("Take the");
+		runEdt();
+		assertEquals("Take the", chat.liveText);
+		assertEquals("Writing... 0s", PanelText.status(chat, chat.runStartedAt));
+		assertTrue(host.live > 0);
+
+		api.listener().onReply(reply("Take the Zul-Andra teleport.", 1200, 80));
+		runEdt();
+		assertFalse(chat.isRunning());
+		assertNull(chat.liveText);
+		assertEquals(2, chat.messages.size());
+		Chat.Message answer = chat.messages.get(1);
+		assertEquals(Chat.Role.ASSISTANT, answer.role);
+		assertEquals("Take the Zul-Andra teleport.", answer.text);
+		assertEquals("Claude", answer.who);
+		assertEquals(1280, answer.usage.total());
+		assertEquals("claude-opus-5-5-20261001", answer.model);
+		assertTrue(answer.activity.isEmpty());
+		assertFalse(question.unanswered);
+		// The notification and game chat: once, on completion.
+		assertEquals(Collections.singletonList(answer), host.ended);
+	}
+
+	@Test
+	public void aReplyWithoutCountsHasNoUsage()
+	{
+		send("hi");
+		ChatApi.Reply r = reply("Hello!", 0, 0);
+		r.cutShort = true;
+		api.listener().onReply(r);
+		runEdt();
+		Chat.Message answer = chat.messages.get(1);
+		assertNull(answer.usage);
+		assertEquals("Hello!\n\n(The reply was cut short.)", answer.text);
+	}
+
+	@Test
+	public void eachRequestOffersTheToolsItsSettingsAllow()
+	{
+		runner.send(chat, "What's in my bank?", setup(true, true, false));
+		runEdt();
+		host.characterRead.accept(null);
+		runEdt();
+		List<String> names = new ArrayList<>();
+		for (ChatApi.ToolSpec t : api.last().tools)
+		{
+			names.add(t.name);
+		}
+		assertEquals(Arrays.asList("ge_price", "get_equipment", "get_inventory", "get_bank", "get_slayer_task",
+			"get_achievement_diaries"), names);
+		assertNotNull(api.last().toolRunner);
+	}
+
+	@Test
+	public void lookUpsShowWhileTheyRunAndStayWithTheReply()
+	{
+		send("Vorkath's weaknesses?");
+		api.listener().onPartial("Let me check.");
+		runEdt();
+
+		host.started.run();
+		runEdt();
+		assertTrue(chat.lookingUp);
+		assertEquals("Looking things up...", PanelText.status(chat, chat.runStartedAt));
+
+		host.activity.accept("Read the Wiki page \"Vorkath\"");
+		runEdt();
+		assertEquals("Looking things up: Read the Wiki page \"Vorkath\"", PanelText.status(chat, chat.runStartedAt));
+		assertEquals(Collections.singletonList("Read the Wiki page \"Vorkath\""), chat.liveActivity);
+
+		api.listener().onPartial("Let me check.\n\nVorkath is weak to stab.");
+		runEdtSoon();
+		assertFalse(chat.lookingUp);
+		assertEquals("Writing... 0s", PanelText.status(chat, chat.runStartedAt));
+
+		api.listener().onReply(reply("Let me check.\n\nVorkath is weak to stab.", 10, 10));
+		runEdt();
+		Chat.Message answer = chat.messages.get(chat.messages.size() - 1);
+		assertEquals(Collections.singletonList("Read the Wiki page \"Vorkath\""), answer.activity);
+		assertTrue(chat.liveActivity.isEmpty());
+	}
+
+	/** Runs the EDT queue, waiting for a redraw the throttle held back if there's nothing yet. */
+	private void runEdtSoon() throws AssertionError
+	{
+		try
+		{
+			awaitEdt();
+		}
+		catch (InterruptedException e)
+		{
+			throw new AssertionError(e);
+		}
+	}
+
+	@Test
+	public void theTextFromBeforeTheLookUpsDoesntEndThem() throws Exception
+	{
+		send("q");
+		api.listener().onPartial("Let me");
+		runEdt();
+		// Held back: the last redraw was just now.
+		api.listener().onPartial("Let me check.");
+		host.started.run();
+		runEdt();
+		assertTrue(chat.lookingUp);
+		// The held-back redraw arrives after the look-up started: same words, still looking things up. (On a slow
+		// machine it may have come before it, which is the ordinary case.)
+		if (!"Let me check.".equals(chat.liveText))
+		{
+			awaitEdt();
+		}
+		assertEquals("Let me check.", chat.liveText);
+		assertTrue(chat.lookingUp);
+	}
+
+	@Test
+	public void theProviderBeingBusyShowsACountdown()
+	{
+		send("q");
+		api.listener().onRetrying("Anthropic is busy", 6);
+		runEdt();
+		assertEquals("Anthropic is busy", chat.retryWhy);
+		String status = PanelText.status(chat, System.currentTimeMillis());
+		assertTrue(status, status.matches("Anthropic is busy; trying again in [56]s"));
+	}
+
+	@Test
+	public void answersToAStoppedRequestDontCount()
+	{
+		Chat.Message question = send("q");
+		ChatApi.Listener listener = api.listener();
+		runner.stop(chat);
+		assertFalse(chat.isRunning());
+		assertTrue(api.requests.get(0).isCancelled());
+		assertTrue(question.unanswered);
+		Chat.Message stopped = chat.messages.get(chat.messages.size() - 1);
+		assertEquals(Chat.Role.NOTE, stopped.role);
+		assertEquals("Stopped.", stopped.text);
+
+		int messages = chat.messages.size();
+		listener.onPartial("late");
+		listener.onRetrying("Anthropic is busy", 2);
+		listener.onReply(reply("late", 1, 1));
+		listener.onError("late");
+		runEdt();
+		assertEquals(messages, chat.messages.size());
+		assertNull(chat.liveText);
+		assertNull(chat.retryWhy);
+		assertTrue(host.ended.isEmpty());
+	}
+
+	@Test
+	public void aLookUpThatFinishesAfterStopIsStillListed()
+	{
+		send("q");
+		host.started.run();
+		runEdt();
+		runner.stop(chat);
+		int changes = host.changed;
+		host.activity.accept("Shared your bank");
+		runEdt();
+		Chat.Message stopped = chat.messages.get(chat.messages.size() - 1);
+		assertEquals(Collections.singletonList("Shared your bank"), stopped.activity);
+		assertTrue("shown and saved", host.changed > changes);
+	}
+
+	@Test
+	public void answersForADeletedChatDontCount()
+	{
+		send("q");
+		host.chats.remove(chat);
+		api.listener().onReply(reply("a", 1, 1));
+		runEdt();
+		assertEquals(1, chat.messages.size());
+		assertTrue(host.ended.isEmpty());
+	}
+
+	@Test
+	public void anErrorCanBeRetriedWithTheSameQuestion()
+	{
+		Chat.Message question = send("q");
+		api.listener().onError("Anthropic is overloaded or having trouble right now. Try again shortly.");
+		runEdt();
+		assertTrue(question.unanswered);
+		Chat.Message error = chat.messages.get(1);
+		assertEquals(Chat.Role.ERROR, error.role);
+		assertEquals(Collections.singletonList(error), host.ended);
+		assertSame(question, RequestRunner.retryable(chat));
+
+		assertTrue(runner.retry(chat, setup()));
+		runEdt();
+		assertFalse(question.unanswered);
+		assertTrue(chat.isRunning());
+		assertNull(RequestRunner.retryable(chat));
+		// The same message goes again, and the error isn't part of what's sent.
+		assertEquals(2, api.sent.size());
+		assertEquals(1, api.last().turns.size());
+		assertEquals("q", lastTurn(api.last()));
+
+		api.listener().onReply(reply("a", 1, 1));
+		runEdt();
+		assertEquals(Arrays.asList(Chat.Role.USER, Chat.Role.ERROR, Chat.Role.ASSISTANT), roles());
+		assertNull(RequestRunner.retryable(chat));
+		assertFalse(runner.retry(chat, setup()));
+	}
+
+	@Test
+	public void whatCanBeRetried()
+	{
+		assertNull("nothing yet", RequestRunner.retryable(chat));
+		Chat.Message q1 = new Chat.Message(Chat.Role.USER, "q1");
+		chat.messages.add(q1);
+		chat.messages.add(new Chat.Message(Chat.Role.ASSISTANT, "a1"));
+		assertNull("answered", RequestRunner.retryable(chat));
+
+		Chat.Message q2 = new Chat.Message(Chat.Role.USER, "q2");
+		q2.unanswered = true;
+		chat.messages.add(q2);
+		assertSame("RuneLite closed while it waited", q2, RequestRunner.retryable(chat));
+		chat.messages.add(new Chat.Message(Chat.Role.NOTE, "Couldn't summarise the earlier messages (busy), so the whole chat was sent this time."));
+		assertNull("a note that isn't a Stop", RequestRunner.retryable(chat));
+		chat.messages.add(new Chat.Message(Chat.Role.NOTE, "Stopped: AI requests were turned off."));
+		assertSame(q2, RequestRunner.retryable(chat));
+		chat.messages.add(new Chat.Message(Chat.Role.ERROR, "Couldn't reach Anthropic"));
+		assertSame(q2, RequestRunner.retryable(chat));
+
+		chat.pending = new ChatApi.Pending();
+		assertNull("busy", RequestRunner.retryable(chat));
+		chat.pending = null;
+		q2.unanswered = false;
+		assertNull(RequestRunner.retryable(chat));
+	}
+
+	@Test
+	public void aLongChatIsSummarisedFirstAndTheNoteGoesBeforeTheQuestion()
+	{
+		history(20);
+		Chat.Message question = send("Q21");
+		assertTrue(chat.isSummarizing());
+		ChatApi.Conversation summary = api.last();
+		assertEquals(ConversationBuilder.SUMMARY_PROMPT, summary.system);
+		assertEquals(ConversationBuilder.SUMMARY_MAX_TOKENS, summary.maxTokens);
+		assertTrue(summary.tools.isEmpty());
+		assertTrue(PanelText.status(chat, chat.runStartedAt).startsWith("Summarising earlier messages..."));
+		// The summary isn't shown as it streams in.
+		api.listener().onPartial("The player");
+		runEdt();
+		assertNull(chat.liveText);
+
+		long summarising = chat.runStartedAt;
+		api.listener().onReply(reply("The player is training Agility.", 5000, 100));
+		runEdt();
+		assertFalse(chat.isSummarizing());
+		assertTrue(chat.isRunning());
+		assertTrue(chat.runStartedAt >= summarising);
+		Chat.Message note = chat.messages.get(chat.messages.indexOf(question) - 1);
+		assertEquals(Chat.Role.NOTE, note.role);
+		assertTrue(note.text, note.text.startsWith("Summary of the 24 earlier messages, sent instead of them:"));
+		assertEquals(5100, note.usage.total());
+
+		// Then the question, with the summary instead of the oldest messages.
+		assertEquals(2, api.sent.size());
+		assertTrue(api.last().turns.get(0).text.startsWith("[Summary of earlier messages in this chat: The player is training Agility.]"));
+		assertEquals("Q21", lastTurn(api.last()));
+		assertFalse(api.last().tools.isEmpty());
+	}
+
+	@Test
+	public void stopWhileSummarisingSendsTheWholeChatInstead()
+	{
+		history(20);
+		Chat.Message question = send("Q21");
+		runner.stop(chat);
+		runEdt();
+		assertTrue(api.requests.get(0).isCancelled());
+		assertTrue("the question still goes", chat.isRunning());
+		assertFalse(question.unanswered);
+		Chat.Message note = chat.messages.get(chat.messages.indexOf(question) - 1);
+		assertEquals("Couldn't summarise the earlier messages (you pressed Stop), so the whole chat was sent this time.", note.text);
+		assertEquals(2, api.sent.size());
+		assertEquals(41, api.last().turns.size());
+
+		// A late answer to the summary changes nothing.
+		api.listeners.get(0).onReply(reply("late summary", 1, 1));
+		runEdt();
+		assertNull(chat.summary);
+	}
+
+	@Test
+	public void aFailedSummarySaysSoBeforeTheQuestion()
+	{
+		history(20);
+		Chat.Message question = send("Q21");
+		api.listener().onError("Anthropic is overloaded or having trouble right now. Try again shortly.");
+		runEdt();
+		Chat.Message note = chat.messages.get(chat.messages.indexOf(question) - 1);
+		assertTrue(note.text, note.text.startsWith("Couldn't summarise the earlier messages (Anthropic is overloaded"));
+		assertEquals(41, api.last().turns.size());
+	}
+
+	@Test
+	public void aRetryGoesThroughTheSummaryToo()
+	{
+		history(20);
+		Chat.Message question = new Chat.Message(Chat.Role.USER, "Q21");
+		question.unanswered = true;
+		chat.messages.add(question);
+		chat.messages.add(new Chat.Message(Chat.Role.NOTE, "Stopped."));
+		assertTrue(runner.retry(chat, setup()));
+		runEdt();
+		assertTrue(chat.isSummarizing());
+		assertEquals(ConversationBuilder.SUMMARY_PROMPT, api.last().system);
+	}
+
+	@Test
+	public void characterDetailsAreReadBeforeSending()
+	{
+		runner.send(chat, "What should I train?", setup(true, false, true));
+		runEdt();
+		assertTrue("waits for the game", api.sent.isEmpty());
+		host.characterRead.accept("[Character: Zezima, an ironman]");
+		runEdt();
+		assertEquals("[Character: Zezima, an ironman]\n\nWhat should I train?", lastTurn(api.last()));
+	}
+
+	@Test
+	public void nothingIsSentOnceAiRequestsAreOff()
+	{
+		runner.send(chat, "q", setup(true, false, true));
+		runEdt();
+		host.ai = false;
+		host.characterRead.accept(null);
+		runEdt();
+		assertTrue(api.sent.isEmpty());
+		assertFalse(chat.isRunning());
+		assertEquals("Stopped: AI requests are turned off.", chat.messages.get(chat.messages.size() - 1).text);
+		assertTrue(chat.messages.get(0).unanswered);
+	}
+
+	@Test
+	public void aRequestThatCantBeBuiltSaysSo()
+	{
+		api.failure = new IllegalArgumentException("Unexpected char in header value: sk-ant-secret");
+		Chat.Message question = send("q");
+		assertFalse(chat.isRunning());
+		assertTrue(question.unanswered);
+		Chat.Message error = chat.messages.get(1);
+		assertEquals(RequestRunner.COULDNT_SEND, error.text);
+		assertFalse("the key never shows", error.text.contains("sk-ant"));
+		assertSame(question, RequestRunner.retryable(chat));
+	}
+
+	private List<Chat.Role> roles()
+	{
+		List<Chat.Role> roles = new ArrayList<>();
+		for (Chat.Message m : chat.messages)
+		{
+			roles.add(m.role);
+		}
+		return roles;
+	}
+}

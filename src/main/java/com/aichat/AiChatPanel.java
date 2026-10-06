@@ -8,8 +8,15 @@ import java.awt.Font;
 import java.awt.Insets;
 import java.awt.Rectangle;
 import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.text.SimpleDateFormat;
+import java.util.Collections;
 import java.util.Date;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Map;
 import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
 import javax.swing.DefaultComboBoxModel;
@@ -25,7 +32,9 @@ import javax.swing.JPopupMenu;
 import javax.swing.JScrollBar;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
+import javax.swing.JToolTip;
 import javax.swing.KeyStroke;
+import javax.swing.ListSelectionModel;
 import javax.swing.ScrollPaneConstants;
 import javax.swing.Scrollable;
 import javax.swing.SwingConstants;
@@ -41,19 +50,29 @@ import net.runelite.client.ui.PluginPanel;
 class AiChatPanel extends PluginPanel
 {
 	private static final Font TEXT_FONT = new Font(Font.SANS_SERIF, Font.PLAIN, 12);
+	private static final Font SMALL_FONT = TEXT_FONT.deriveFont(11f);
 	private static final Color USER_COLOR = new Color(0x7fb8ff);
 	private static final Color ERROR_COLOR = new Color(0xff6b6b);
 	private static final Color OK_COLOR = new Color(0x5fd068);
+	private static final Color WARNING_COLOR = new Color(0xffb347);
+	private static final Color MUTED_COLOR = ColorScheme.LIGHT_GRAY_COLOR;
+	/** How close to the end of the transcript still counts as reading the end, in pixels. */
+	private static final int BOTTOM_SLACK = 24;
+	/** Rows the model list shows before it scrolls. */
+	private static final int MODEL_ROWS = 12;
 
 	private final AiChatPlugin plugin;
 
-	private final JLabel setupLabel = plainLabel();
+	private final JLabel setupLabel = new PlainLabel();
+	private final JButton testButton;
 	private final JTextArea setupHelp = textArea("");
+	/** Holds the "Choose model..." button, shown when a test listed models. */
+	private final JPanel chooseRow = new JPanel(new BorderLayout());
 	private final DefaultComboBoxModel<Chat> chatModel = new DefaultComboBoxModel<>();
 	private final JComboBox<Chat> chatSelect = new JComboBox<>(chatModel);
 	private final JPanel transcript = new TranscriptPanel();
 	private final JScrollPane transcriptScroll = new JScrollPane(transcript);
-	private final JLabel statusLabel = plainLabel();
+	private final JLabel statusLabel = new PlainLabel();
 	private final JTextArea noteArea = textArea("");
 	private final JTextArea input = new JTextArea(3, 1);
 	private final JButton sendButton = new JButton("Send");
@@ -63,12 +82,20 @@ class AiChatPanel extends PluginPanel
 	private boolean updatingCombo;
 	/** What the transcript currently shows, to skip rebuilding it when nothing changed. */
 	private String shownKey = "";
+	private Chat shownChat;
 	private String comboKey = "";
+	/** The models "Choose model" offers: from the latest "Test". */
+	private List<String> models = Collections.emptyList();
+	/** The transcript's bubbles, kept between rebuilds so a new message doesn't redraw every earlier one. */
+	private final Map<Chat.Message, Bubble> bubbles = new IdentityHashMap<>();
+	/** The reply on its way, at the end of the transcript; null when none is. */
+	private Bubble live;
 
 	AiChatPanel(AiChatPlugin plugin)
 	{
 		super(false);
 		this.plugin = plugin;
+		testButton = smallButton("Test", "Check your API key, and see which models it can use", e -> plugin.testConnection());
 
 		setLayout(new BorderLayout(0, 6));
 		setBorder(new EmptyBorder(8, 8, 8, 8));
@@ -93,12 +120,22 @@ class AiChatPanel extends PluginPanel
 		JPanel p = new JPanel(new StackLayout(4));
 		p.setOpaque(false);
 
+		JPanel setup = new JPanel(new BorderLayout(4, 0));
+		setup.setOpaque(false);
 		setupLabel.setFont(FontManager.getRunescapeSmallFont());
-		p.add(setupLabel);
-		setupHelp.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		setup.add(setupLabel, BorderLayout.CENTER);
+		setup.add(testButton, BorderLayout.EAST);
+		p.add(setup);
+
+		setupHelp.setForeground(MUTED_COLOR);
 		setupHelp.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		setupHelp.setFont(TEXT_FONT.deriveFont(11f));
+		setupHelp.setFont(SMALL_FONT);
 		p.add(setupHelp);
+
+		chooseRow.setOpaque(false);
+		chooseRow.add(smallButton("Choose model...", "Pick one of the models your key can use",
+			e -> showModelMenu((JComponent) e.getSource())), BorderLayout.WEST);
+		p.add(chooseRow);
 
 		JPanel row = new JPanel(new BorderLayout(4, 0));
 		row.setOpaque(false);
@@ -144,10 +181,9 @@ class AiChatPanel extends PluginPanel
 		p.setOpaque(false);
 
 		statusLabel.setFont(FontManager.getRunescapeSmallFont());
-		statusLabel.setForeground(ColorScheme.BRAND_ORANGE);
 		p.add(statusLabel);
 
-		noteArea.setFont(TEXT_FONT.deriveFont(11f));
+		noteArea.setFont(SMALL_FONT);
 		noteArea.setForeground(ERROR_COLOR);
 		noteArea.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		noteArea.setVisible(false);
@@ -212,22 +248,49 @@ class AiChatPanel extends PluginPanel
 		refreshStatus();
 	}
 
+	/**
+	 * Only the reply on its way changed: its text as it streams in, what it looked up, or the status line. Redraws the
+	 * live reply alone, and follows it down only if the player was reading the end of the transcript.
+	 */
+	void refreshLive(Chat chat)
+	{
+		if (chat == plugin.currentChat() && chat == shownChat && live != null)
+		{
+			boolean follow = atBottom();
+			showLive(chat);
+			transcript.revalidate();
+			transcript.repaint();
+			if (follow)
+			{
+				scrollToBottom();
+			}
+		}
+		refreshStatus();
+	}
+
 	private void refreshSetup()
 	{
 		String problem = plugin.setupProblem();
+		ConnectionCheck.Note note = problem == null ? plugin.connectionNote() : null;
 		if (problem == null)
 		{
 			setupLabel.setText(plugin.setupSummary());
 			setupLabel.setForeground(OK_COLOR);
-			setupHelp.setText("");
+			setupHelp.setText(note == null ? "" : note.text);
+			setupHelp.setForeground(note == null ? MUTED_COLOR : color(note.kind));
 		}
 		else
 		{
 			setupLabel.setText("Not set up yet");
 			setupLabel.setForeground(ERROR_COLOR);
 			setupHelp.setText(problem + " Open RuneLite's settings (the wrench) and search for AI Chat.");
+			setupHelp.setForeground(MUTED_COLOR);
 		}
 		setupHelp.setVisible(!setupHelp.getText().isEmpty());
+		// Nothing is sent while AI requests are off, a test included.
+		testButton.setEnabled(problem == null);
+		models = note == null ? Collections.emptyList() : note.models;
+		chooseRow.setVisible(!models.isEmpty());
 		boolean usable = plugin.currentChat() != null;
 		chatSelect.setEnabled(usable);
 		input.setEnabled(usable);
@@ -265,30 +328,98 @@ class AiChatPanel extends PluginPanel
 		}
 	}
 
+	/** What the transcript shows of a chat: when this changes, it's rebuilt. */
+	private static String transcriptKey(Chat chat)
+	{
+		if (chat == null)
+		{
+			return "";
+		}
+		int unanswered = 0;
+		int looked = 0;
+		for (Chat.Message m : chat.messages)
+		{
+			unanswered += m.unanswered ? 1 : 0;
+			looked += m.activity == null ? 0 : m.activity.size();
+		}
+		return chat.id + ":" + chat.messages.size() + ":" + chat.isRunning() + ":" + unanswered + ":" + looked;
+	}
+
 	private void refreshTranscript()
 	{
 		Chat chat = plugin.currentChat();
-		String key = chat == null ? "" : chat.id + ":" + chat.messages.size() + ":" + chat.isRunning();
+		String key = transcriptKey(chat);
 		if (key.equals(shownKey))
 		{
 			return;
 		}
+		boolean switched = chat != shownChat;
+		// Down to the end for another chat, a message just sent, or a player who was reading the end anyway.
+		boolean follow = switched || atBottom() || chat != null && !chat.messages.isEmpty()
+			&& chat.messages.get(chat.messages.size() - 1).role == Chat.Role.USER;
 		shownKey = key;
+		shownChat = chat;
 
 		transcript.removeAll();
+		live = null;
+		Map<Chat.Message, Bubble> kept = new IdentityHashMap<>();
 		if (chat == null || chat.messages.isEmpty())
 		{
 			transcript.add(hint());
 		}
 		else
 		{
+			Chat.Message retry = RequestRunner.retryable(chat);
+			Chat.Message last = chat.messages.get(chat.messages.size() - 1);
 			for (Chat.Message m : chat.messages)
 			{
-				transcript.add(bubble(m));
+				Bubble b = bubbles.get(m);
+				if (b == null)
+				{
+					b = new Bubble();
+				}
+				b.show(m, retry != null && m == last);
+				kept.put(m, b);
+				transcript.add(b);
+			}
+			if (chat.isRunning())
+			{
+				live = new Bubble();
+				transcript.add(live);
+				showLive(chat);
 			}
 		}
+		bubbles.clear();
+		bubbles.putAll(kept);
 		transcript.revalidate();
 		transcript.repaint();
+		if (follow)
+		{
+			scrollToBottom();
+		}
+	}
+
+	/** The reply on its way: shown once it has words or look-ups. */
+	private void showLive(Chat chat)
+	{
+		boolean any = chat.liveText != null || !chat.liveActivity.isEmpty();
+		live.setVisible(any);
+		if (any)
+		{
+			live.showLive(chat.answering, chat.liveText, chat.liveActivity);
+		}
+	}
+
+	/** Whether the player is reading the end of the transcript (or it all fits). */
+	private boolean atBottom()
+	{
+		JScrollBar bar = transcriptScroll.getVerticalScrollBar();
+		return bar.getValue() + bar.getVisibleAmount() >= bar.getMaximum() - BOTTOM_SLACK;
+	}
+
+	private void scrollToBottom()
+	{
+		// After the layout the change asked for, which is queued before this.
 		SwingUtilities.invokeLater(() ->
 		{
 			JScrollBar bar = transcriptScroll.getVerticalScrollBar();
@@ -296,7 +427,7 @@ class AiChatPanel extends PluginPanel
 		});
 	}
 
-	/** The "waiting" line; ticks every second while a reply is on its way. */
+	/** The status line: what the reply on its way is doing, ticking every second; or the chat's totals. */
 	void refreshStatus()
 	{
 		Chat chat = plugin.currentChat();
@@ -306,16 +437,21 @@ class AiChatPanel extends PluginPanel
 		if (!running)
 		{
 			ticker.stop();
-			statusLabel.setText(" ");
+			statusLabel.setToolTipText(null);
+			String totals = chat == null ? null : PanelText.chatTotals(chat.messages);
+			statusLabel.setForeground(MUTED_COLOR);
+			statusLabel.setText(totals == null ? " " : totals);
 			return;
 		}
 		if (!ticker.isRunning())
 		{
 			ticker.start();
 		}
-		long secs = Math.max(0, (System.currentTimeMillis() - chat.runStartedAt) / 1000);
-		String elapsed = secs < 60 ? secs + "s" : (secs / 60) + "m " + (secs % 60) + "s";
-		statusLabel.setText("Waiting for a reply... " + elapsed);
+		String status = PanelText.status(chat, System.currentTimeMillis());
+		statusLabel.setForeground(ColorScheme.BRAND_ORANGE);
+		statusLabel.setText(status);
+		// A long look-up doesn't fit on the line.
+		statusLabel.setToolTipText(chat.lookingUp ? status : null);
 	}
 
 	/** A short error under the transcript, e.g. when a message can't be sent yet; null clears it. */
@@ -350,20 +486,12 @@ class AiChatPanel extends PluginPanel
 		JTextArea t = textArea("Ask anything, then go back to playing. You'll get a game chat message (and a "
 			+ "notification, if enabled) when the reply is in.\n\n"
 			+ "From the chatbox: ::ai <message>, or ::ai alone for a prompt. You can also set a hotkey.\n\n"
+			+ "The assistant can check the OSRS Wiki and GE prices, and lists what it looked up under its reply. In the "
+			+ "settings you can also let it see your character, items and gear.\n\n"
 			+ "Choose Claude, ChatGPT or an OpenAI-compatible service, and add your API key, in the AI Chat settings.");
-		t.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		t.setForeground(MUTED_COLOR);
 		t.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		return t;
-	}
-
-	/** A label that never renders its text as HTML: much of what's shown comes from settings or replies. */
-	private static JLabel plainLabel()
-	{
-		JLabel l = new JLabel();
-		// Set before any text: the HTML renderer is picked when the text is set.
-		l.putClientProperty("html.disable", Boolean.TRUE);
-		l.setText(" ");
-		return l;
 	}
 
 	/** A confirmation dialog whose text is shown as plain text, never HTML. */
@@ -377,26 +505,98 @@ class AiChatPanel extends PluginPanel
 			== JOptionPane.OK_OPTION;
 	}
 
-	private JComponent bubble(Chat.Message m)
+	/** One message in the transcript: who and when, the text, and what was looked up for it. */
+	private final class Bubble extends JPanel
 	{
-		JPanel b = new JPanel(new BorderLayout(0, 2));
-		b.setBackground(m.role == Chat.Role.USER ? ColorScheme.DARKER_GRAY_COLOR : ColorScheme.DARKER_GRAY_HOVER_COLOR);
-		b.setBorder(new EmptyBorder(4, 6, 6, 6));
+		private final JLabel header = new PlainLabel();
+		private final JButton retry = smallButton("Retry", "Send this question again", e -> retry());
+		private final MessageView body = new MessageView();
+		private final JTextArea activity = textArea("");
 
-		JLabel who = new JLabel();
-		// The author can be a model name from the settings: never render it as HTML.
-		who.putClientProperty("html.disable", Boolean.TRUE);
-		who.setText(m.author() + "  " + new SimpleDateFormat("HH:mm").format(new Date(m.time))
-			+ (m.unanswered ? "  (not answered)" : ""));
-		who.setFont(FontManager.getRunescapeSmallFont());
-		who.setForeground(color(m.role));
-		b.add(who, BorderLayout.NORTH);
+		Bubble()
+		{
+			super(new BorderLayout(0, 2));
+			setBorder(new EmptyBorder(4, 6, 6, 6));
+			JPanel top = new JPanel(new BorderLayout(4, 0));
+			top.setOpaque(false);
+			header.setFont(FontManager.getRunescapeSmallFont());
+			top.add(header, BorderLayout.CENTER);
+			retry.setFont(FontManager.getRunescapeSmallFont());
+			top.add(retry, BorderLayout.EAST);
+			add(top, BorderLayout.NORTH);
+			body.setTextFont(TEXT_FONT);
+			add(body, BorderLayout.CENTER);
+			activity.setOpaque(false);
+			activity.setBorder(new EmptyBorder(3, 0, 0, 0));
+			activity.setFont(SMALL_FONT);
+			activity.setForeground(MUTED_COLOR);
+			add(activity, BorderLayout.SOUTH);
+		}
 
-		JTextArea body = textArea(m.text == null ? "" : m.text);
-		body.setBackground(b.getBackground());
-		body.setForeground(m.role == Chat.Role.ERROR ? ERROR_COLOR : Color.WHITE);
-		b.add(body, BorderLayout.CENTER);
-		return b;
+		/** {@code retryHere}: this message ends with an unanswered question, so Retry goes on it. */
+		void show(Chat.Message m, boolean retryHere)
+		{
+			setBackground(m.role == Chat.Role.USER ? ColorScheme.DARKER_GRAY_COLOR : ColorScheme.DARKER_GRAY_HOVER_COLOR);
+			header.setText(m.author() + "  " + new SimpleDateFormat("HH:mm").format(new Date(m.time))
+				+ (m.unanswered ? "  (not answered)" : ""));
+			header.setForeground(color(m.role));
+			header.setToolTipText(m.usage == null ? null : PanelText.usage(m.usage, m.model));
+			retry.setVisible(retryHere);
+			body.setVisible(true);
+			switch (m.role)
+			{
+				case USER:
+					body.setTextColor(Color.WHITE);
+					body.setPlainText(m.text);
+					break;
+				case ERROR:
+					body.setTextColor(ERROR_COLOR);
+					body.setPlainText(m.text);
+					break;
+				case NOTE:
+					body.setTextColor(MUTED_COLOR);
+					body.setMarkdown(m.text);
+					break;
+				default:
+					body.setTextColor(Color.WHITE);
+					body.setMarkdown(m.text);
+					break;
+			}
+			showActivity(m.activity);
+		}
+
+		/** The reply on its way. {@code text}: null until its first words. */
+		void showLive(String who, String text, List<String> lines)
+		{
+			setBackground(ColorScheme.DARKER_GRAY_HOVER_COLOR);
+			header.setText(who == null ? "Assistant" : who);
+			header.setForeground(ColorScheme.BRAND_ORANGE);
+			header.setToolTipText(null);
+			retry.setVisible(false);
+			body.setTextColor(Color.WHITE);
+			body.setMarkdown(text);
+			body.setVisible(text != null);
+			showActivity(lines);
+		}
+
+		/** The look-ups, one per line, in plain text: they can hold words the model chose. */
+		private void showActivity(List<String> lines)
+		{
+			String text = lines == null ? "" : String.join("\n", lines);
+			if (!text.equals(activity.getText()))
+			{
+				activity.setText(text);
+			}
+			activity.setVisible(!text.isEmpty());
+		}
+	}
+
+	private void retry()
+	{
+		if (shownChat != null)
+		{
+			plugin.retry(shownChat);
+		}
 	}
 
 	private void showChatMenu(JComponent anchor)
@@ -433,6 +633,68 @@ class AiChatPanel extends PluginPanel
 		menu.show(anchor, 0, anchor.getHeight());
 	}
 
+	/** The models from the latest "Test", in a list that scrolls: some services offer hundreds. */
+	private void showModelMenu(JComponent anchor)
+	{
+		if (models.isEmpty())
+		{
+			return;
+		}
+		JList<String> list = new JList<>(models.toArray(new String[0]));
+		list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+		list.setVisibleRowCount(Math.min(MODEL_ROWS, models.size()));
+		list.setCellRenderer(new DefaultListCellRenderer()
+		{
+			{
+				// Model names come from the provider: never let Swing render them as HTML.
+				putClientProperty("html.disable", Boolean.TRUE);
+			}
+		});
+		list.setSelectedValue(plugin.model(), true);
+		JScrollPane scroll = new JScrollPane(list);
+		scroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+		scroll.setBorder(null);
+		JPopupMenu menu = new JPopupMenu();
+		menu.add(scroll);
+		Runnable choose = () ->
+		{
+			String model = list.getSelectedValue();
+			menu.setVisible(false);
+			if (model != null)
+			{
+				plugin.chooseModel(model);
+			}
+		};
+		list.addMouseListener(new MouseAdapter()
+		{
+			@Override
+			public void mouseReleased(MouseEvent e)
+			{
+				int i = list.locationToIndex(e.getPoint());
+				Rectangle cell = i < 0 ? null : list.getCellBounds(i, i);
+				if (SwingUtilities.isLeftMouseButton(e) && cell != null && cell.contains(e.getPoint()))
+				{
+					list.setSelectedIndex(i);
+					choose.run();
+				}
+			}
+		});
+		list.getInputMap().put(KeyStroke.getKeyStroke("ENTER"), "ai-chat-choose");
+		list.getActionMap().put("ai-chat-choose", new AbstractAction()
+		{
+			@Override
+			public void actionPerformed(ActionEvent e)
+			{
+				choose.run();
+			}
+		});
+		// As wide as the panel's contents, whatever the names' lengths.
+		int width = Math.max(anchor.getWidth(), getWidth() - getInsets().left - getInsets().right);
+		scroll.setPreferredSize(new Dimension(width, scroll.getPreferredSize().height));
+		menu.show(anchor, 0, anchor.getHeight());
+		list.requestFocusInWindow();
+	}
+
 	private static Color color(Chat.Role role)
 	{
 		switch (role)
@@ -444,11 +706,26 @@ class AiChatPanel extends PluginPanel
 			case ERROR:
 				return ERROR_COLOR;
 			default:
-				return ColorScheme.LIGHT_GRAY_COLOR;
+				return MUTED_COLOR;
 		}
 	}
 
-	private static JButton smallButton(String text, String tip, java.awt.event.ActionListener action)
+	private static Color color(ConnectionCheck.Kind kind)
+	{
+		switch (kind)
+		{
+			case OK:
+				return OK_COLOR;
+			case WARNING:
+				return WARNING_COLOR;
+			case ERROR:
+				return ERROR_COLOR;
+			default:
+				return MUTED_COLOR;
+		}
+	}
+
+	private static JButton smallButton(String text, String tip, ActionListener action)
 	{
 		JButton b = new JButton(text);
 		b.setToolTipText(tip);
@@ -457,7 +734,7 @@ class AiChatPanel extends PluginPanel
 		return b;
 	}
 
-	/** A read-only, wrapping, selectable text block, so replies can be copied. */
+	/** A read-only, wrapping, selectable block of plain text (a text area never renders HTML). */
 	private static JTextArea textArea(String text)
 	{
 		JTextArea t = new JTextArea(text);
@@ -467,6 +744,28 @@ class AiChatPanel extends PluginPanel
 		t.setFont(TEXT_FONT);
 		t.setBorder(null);
 		return t;
+	}
+
+	/**
+	 * A label that never renders its text, or its tooltip, as HTML: much of what's shown comes from settings, providers
+	 * or replies.
+	 */
+	private static class PlainLabel extends JLabel
+	{
+		PlainLabel()
+		{
+			// Set before any text: the HTML renderer is picked when the text is set.
+			putClientProperty("html.disable", Boolean.TRUE);
+			setText(" ");
+		}
+
+		@Override
+		public JToolTip createToolTip()
+		{
+			JToolTip tip = super.createToolTip();
+			tip.putClientProperty("html.disable", Boolean.TRUE);
+			return tip;
+		}
 	}
 
 	/** Tracks the viewport width so the wrapped text areas inside get a real width. */

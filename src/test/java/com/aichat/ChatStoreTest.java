@@ -141,6 +141,7 @@ public class ChatStoreTest
 		assertNull(back.messages.get(1).activity);
 		assertNull(back.messages.get(1).usage);
 		assertNull(back.messages.get(1).model);
+		assertNull(PanelText.chatTotals(back.messages));
 	}
 
 	@Test

@@ -212,10 +212,11 @@ final class ConversationBuilder
 	}
 
 	/**
-	 * Sends {@code summary} instead of {@code old} from now on. A note right after them in the transcript says so and
-	 * shows the summary, so nothing leaves the conversation unseen.
+	 * Sends {@code summary} instead of {@code old} from now on. A note says so and shows the summary, so nothing leaves
+	 * the conversation unseen: just before {@code question}, the message it was made for, where the player sees it (the
+	 * messages it replaces can be far up the transcript). Returns the note.
 	 */
-	static void applySummary(Chat chat, List<Chat.Message> old, String summary)
+	static Chat.Message applySummary(Chat chat, List<Chat.Message> old, String summary, Chat.Message question)
 	{
 		chat.summary = summary.trim();
 		chat.summaryVersion++;
@@ -231,8 +232,16 @@ final class ConversationBuilder
 		}
 		String text = (count == 1 ? "Summary of the earlier message, sent instead of it:"
 			: "Summary of the " + count + " earlier messages, sent instead of them:") + "\n\n" + chat.summary;
-		int last = old.isEmpty() ? -1 : chat.messages.indexOf(old.get(old.size() - 1));
-		chat.messages.add(last < 0 ? chat.messages.size() : last + 1, new Chat.Message(Chat.Role.NOTE, text));
+		Chat.Message note = new Chat.Message(Chat.Role.NOTE, text);
+		addBefore(chat, question, note);
+		return note;
+	}
+
+	/** Adds {@code note} just before {@code message}, or at the end if that isn't in the chat (any more). */
+	static void addBefore(Chat chat, Chat.Message message, Chat.Message note)
+	{
+		int at = message == null ? -1 : chat.messages.indexOf(message);
+		chat.messages.add(at < 0 ? chat.messages.size() : at, note);
 	}
 
 	/** The note when there's no summary this time. {@code reason}: the provider's error, or why it was skipped. */
