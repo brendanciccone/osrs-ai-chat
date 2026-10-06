@@ -63,10 +63,14 @@ final class WikiClient
 	private static final Pattern FILE_LINK = Pattern.compile("(?i)\\[\\[\\s*(file|image|media|category)\\s*:");
 	/** Page layout switches such as __NOTOC__. */
 	private static final Pattern MAGIC_WORD = Pattern.compile("__[A-Z]+__");
-	private static final Pattern TRAILING_SPACES = Pattern.compile("(?m)[ \\t]+$");
+	/**
+	 * Spaces at the end of a line, matched only from where a run of them starts: tried from every space of a long run
+	 * that doesn't end the line (anyone can edit the Wiki), it would take seconds.
+	 */
+	private static final Pattern TRAILING_SPACES = Pattern.compile("(?m)(?<![ \\t])[ \\t]++$");
 	private static final Pattern BLANK_LINES = Pattern.compile("\n{3,}");
-	/** The heading a section's wikitext starts with: "== Drops ==". */
-	private static final Pattern HEADING = Pattern.compile("^(={1,6})\\s*([^\n]+?)\\s*\\1\\s*(\n|$)");
+	/** The deepest heading level: "====== Six ======". */
+	private static final int MAX_HEADING = 6;
 
 	/** What a look-up hears back: one of the two, once, on an OkHttp thread. */
 	interface Listener<T>
@@ -500,11 +504,29 @@ final class WikiClient
 			plainText(heading));
 	}
 
-	/** The heading a section's wikitext starts with, or null. */
+	/**
+	 * The heading a section's wikitext starts with ("== Drops ==", maybe with a comment after it), or null. Read by
+	 * hand: a pattern for it backtracks for seconds over a heading line with a long run of spaces in it.
+	 */
 	static String heading(String wikitext)
 	{
-		Matcher m = HEADING.matcher(wikitext.trim());
-		return m.find() ? m.group(2) : null;
+		String s = wikitext.trim();
+		int end = s.indexOf('\n');
+		String line = COMMENT.matcher(end < 0 ? s : s.substring(0, end)).replaceAll("").strip();
+		int open = 0;
+		while (open < line.length() && line.charAt(open) == '=')
+		{
+			open++;
+		}
+		int close = 0;
+		while (close < line.length() && line.charAt(line.length() - 1 - close) == '=')
+		{
+			close++;
+		}
+		// As MediaWiki reads it: the shorter run of "=" sets the level, and there's something between the two runs.
+		int level = Math.min(MAX_HEADING, Math.min(Math.min(open, close), (line.length() - 1) / 2));
+		String heading = level == 0 ? "" : line.substring(level, line.length() - level).strip();
+		return heading.isEmpty() ? null : heading;
 	}
 
 	/** Plain words only: a heading with links, templates or formatting gets an anchor this can't predict. */

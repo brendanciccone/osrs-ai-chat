@@ -601,6 +601,27 @@ public class LookupToolsTest
 	}
 
 	@Test
+	public void headingsAreReadAsTheWikiReadsThem()
+	{
+		assertEquals("Drops", WikiClient.heading("\n==Drops== \ntext"));
+		assertEquals("Six", WikiClient.heading("====== Six ======"));
+		assertEquals("= Seven =", WikiClient.heading("======= Seven ======="));
+		assertEquals("= Uneven", WikiClient.heading("=== Uneven =="));
+		assertEquals("A = B", WikiClient.heading("== A = B =="));
+		assertEquals("==", WikiClient.heading("===="));
+		assertNull(WikiClient.heading("== Not closed"));
+		assertNull(WikiClient.heading("= ="));
+		// A comment after the heading still leaves it a heading, however many spaces come before it (anyone can edit
+		// the Wiki): read in a moment, not in seconds.
+		long start = System.nanoTime();
+		assertEquals("Drops", WikiClient.heading("== Drops ==" + " ".repeat(20_000) + "<!-- x -->\ntext"));
+		assertEquals("Drops", WikiClient.heading("== Drops ==" + " ".repeat(20_000) + "<!-- x\n -->\ntext"));
+		assertEquals("a b", WikiClient.clean("a" + " ".repeat(60_000) + "b" + " ".repeat(60_000) + "\n").replaceAll(" +", " "));
+		long ms = (System.nanoTime() - start) / 1_000_000;
+		assertTrue(ms + "ms", ms < 1000);
+	}
+
+	@Test
 	public void cutsEndAtALineBreak()
 	{
 		assertEquals("short", LookupTools.cut("short", 10));
