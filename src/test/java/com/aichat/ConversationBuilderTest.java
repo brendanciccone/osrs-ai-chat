@@ -352,7 +352,7 @@ public class ConversationBuilderTest
 		ChatApi.Conversation c = ConversationBuilder.summaryConversation(chat, new ArrayList<>(chat.messages), "gpt-x");
 		assertEquals("gpt-x", c.model);
 		assertEquals(ConversationBuilder.SUMMARY_PROMPT, c.system);
-		assertEquals(1500, c.maxTokens);
+		assertEquals(ConversationBuilder.SUMMARY_MAX_TOKENS, c.maxTokens);
 		assertTrue(c.tools.isEmpty());
 		assertNull(c.toolRunner);
 		assertEquals(1, c.turns.size());

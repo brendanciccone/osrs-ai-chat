@@ -14,8 +14,11 @@ final class ConversationBuilder
 	static final int SUMMARY_HIGH = 40;
 	/** ...and at least this many of the newest are kept as they are. */
 	static final int SUMMARY_LOW = 16;
-	/** Plenty for a summary of at most 250 words. */
-	static final int SUMMARY_MAX_TOKENS = 1500;
+	/**
+	 * Plenty for a summary of at most 250 words. Thinking models count their reasoning against it too, so it leaves
+	 * room for that; only what's used is billed.
+	 */
+	static final int SUMMARY_MAX_TOKENS = 4000;
 	static final String SUMMARY_PROMPT = "Summarise this conversation between an Old School RuneScape player and an "
 		+ "assistant so the assistant can carry on without the original messages. Keep facts about the player's account, "
 		+ "goals, decisions, open questions, and anything the player asked to remember. Plain text, at most 250 words.";
