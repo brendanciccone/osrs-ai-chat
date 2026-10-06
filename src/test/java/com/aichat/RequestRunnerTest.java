@@ -506,6 +506,22 @@ public class RequestRunnerTest
 	}
 
 	@Test
+	public void closingRuneLiteMidReplyKeepsWhatWasShownForRetry()
+	{
+		Chat.Message question = send("How do I get to Zulrah?");
+		api.listener().onPartial("Take the Zul-Andra teleport, then");
+		runEdt();
+		// What the plugin does when RuneLite closes, before the last save.
+		runner.stop(chat, "Stopped: RuneLite was closed.");
+		assertTrue(api.requests.get(0).isCancelled());
+		Chat back = ChatStore.fromJson(new Gson(), ChatStore.toJson(new Gson(), List.of(chat), chat)).chats.get(0);
+		assertEquals(Arrays.asList(Chat.Role.USER, Chat.Role.ASSISTANT, Chat.Role.NOTE), roles(back));
+		assertEquals("Take the Zul-Andra teleport, then", back.messages.get(1).text);
+		assertTrue(back.messages.get(1).unfinished);
+		assertEquals(question.text, RequestRunner.retryable(back).text);
+	}
+
+	@Test
 	public void aReplyThatBreaksOffKeepsItsTextUnlessItWasTakenBack()
 	{
 		Chat.Message question = send("q");
@@ -941,8 +957,13 @@ public class RequestRunnerTest
 
 	private List<Chat.Role> roles()
 	{
+		return roles(chat);
+	}
+
+	private static List<Chat.Role> roles(Chat c)
+	{
 		List<Chat.Role> roles = new ArrayList<>();
-		for (Chat.Message m : chat.messages)
+		for (Chat.Message m : c.messages)
 		{
 			roles.add(m.role);
 		}

@@ -62,6 +62,7 @@ public class AiChatPlugin extends Plugin
 {
 	/** Typed in the chatbox: "::ai what should I train next?". */
 	private static final String PREFIX = "::ai";
+	private static final String CLOSED = "Stopped: RuneLite was closed.";
 
 	/**
 	 * What the assistant is told before every chat. The same words all session, whatever the settings (the tools say
@@ -255,10 +256,7 @@ public class AiChatPlugin extends Plugin
 	{
 		keyManager.unregisterKeyListener(askHotkey);
 		// The chats are kept for when the plugin is turned back on, but nothing is left waiting for a reply.
-		for (Chat c : chats)
-		{
-			runner.stop(c, "Stopped: AI Chat was turned off.");
-		}
+		stopAll("Stopped: AI Chat was turned off.");
 		tester.stop();
 		saver.saveNow();
 		// Not kept while AI Chat is off: a setting turned off meanwhile isn't heard about.
@@ -284,10 +282,7 @@ public class AiChatPlugin extends Plugin
 				// "Nothing is sent while this is off": that includes requests already on their way.
 				if ("aiRequests".equals(e.getKey()) && !config.aiRequests())
 				{
-					for (Chat c : chats)
-					{
-						runner.stop(c, "Stopped: AI requests were turned off.");
-					}
+					stopAll("Stopped: AI requests were turned off.");
 					tester.stop();
 				}
 				if ("rememberChats".equals(e.getKey()))
@@ -759,21 +754,38 @@ public class AiChatPlugin extends Plugin
 		}
 	}
 
-	/** RuneLite doesn't turn plugins off when it closes, so this is the last chance to save. */
+	/**
+	 * RuneLite doesn't turn plugins off when it closes, so this is the last chance to save. A reply on its way stops
+	 * as it does when AI Chat is turned off: what was shown of it is kept, and the question can be retried next time.
+	 */
 	@Subscribe
 	public void onClientShutdown(ClientShutdown e)
 	{
 		// RuneLite posts this from the Swing thread, where the chats live; anywhere else, save without waiting.
 		if (!SwingUtilities.isEventDispatchThread())
 		{
-			SwingUtilities.invokeLater(saver::close);
+			SwingUtilities.invokeLater(() ->
+			{
+				stopAll(CLOSED);
+				saver.close();
+			});
 			return;
 		}
+		stopAll(CLOSED);
 		ScheduledFuture<?> saved = saver.close();
 		if (saved != null)
 		{
 			// RuneLite waits for this (up to a few seconds) before exiting.
 			e.waitFor(saved);
+		}
+	}
+
+	/** EDT. Stops every chat's request, if any, with {@code note} saying why. */
+	private void stopAll(String note)
+	{
+		for (Chat c : chats)
+		{
+			runner.stop(c, note);
 		}
 	}
 
