@@ -2,6 +2,7 @@ package com.aichat;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.io.IOException;
 import java.util.List;
@@ -458,6 +459,34 @@ public class AnthropicApiTest
 		server.clear();
 		server.answer(PATH, events(begin("claude-opus-5-5"), event("content_block_delta", "{\"a\":".repeat(100_000) + "1" + "}".repeat(100_000))));
 		assertEquals("Anthropic sent an answer AI Chat couldn't read.", send(api(), conversation("claude-opus-5-5", "q")).error());
+	}
+
+	@Test
+	public void toolsWithoutInputAndUnknownBlocksGoBackAsTheyCame() throws Exception
+	{
+		// The game-data tools take no input: Claude sends an empty piece of it, or none at all. A block of a kind AI Chat
+		// doesn't read (redacted reasoning) and a text block that starts with text go back as they came all the same.
+		server.answer(PATH,
+			events(begin("claude-opus-5-5"), block(0, "{\"type\":\"redacted_thinking\",\"data\":\"abc\"}"), blockStop(0),
+				block(1, "{\"type\":\"text\",\"text\":\"Let me \"}"), delta(1, "{\"type\":\"text_delta\",\"text\":\"check.\"}"), blockStop(1),
+				toolUse(2, "t1", "get_equipment", ""), toolUse(3, "t2", "get_inventory"), end("tool_use", 3)),
+			answer("Done."));
+		ChatApi.Conversation c = conversation("claude-opus-5-5", "q");
+		c.tools.add(StandIn.tool("get_equipment"));
+		c.tools.add(StandIn.tool("get_inventory"));
+		StandIn.Tools tools = new StandIn.Tools();
+		c.toolRunner = tools;
+		StandIn.Heard heard = send(api(), c);
+		assertEquals("Let me check.\n\nDone.", heard.reply().text);
+		assertEquals(List.of("get_equipment {}", "get_inventory {}"), tools.calls);
+		for (JsonElement result : message(1, 2).getAsJsonArray("content"))
+		{
+			assertFalse(result.toString(), result.getAsJsonObject().has("is_error"));
+		}
+		assertEquals(gson.fromJson("[{\"type\":\"redacted_thinking\",\"data\":\"abc\"},{\"type\":\"text\",\"text\":\"Let me check.\"},"
+			+ "{\"type\":\"tool_use\",\"id\":\"t1\",\"name\":\"get_equipment\",\"input\":{}},"
+			+ "{\"type\":\"tool_use\",\"id\":\"t2\",\"name\":\"get_inventory\",\"input\":{}}]", JsonArray.class),
+			message(1, 1).getAsJsonArray("content"));
 	}
 
 	@Test
