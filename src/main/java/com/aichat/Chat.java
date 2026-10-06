@@ -32,12 +32,12 @@ class Chat
 		 */
 		int summaryVersion;
 		/**
-		 * Anthropic only: the reply's content blocks exactly as returned, with the model and system prompt that
-		 * produced them. Claude expects them back unchanged on the next turn, as long as nothing before them changed.
+		 * Anthropic only: the messages this reply was made of (its look-ups included), exactly as exchanged, and the
+		 * {@link ChatApi#promptKey} they were made under. Claude expects them back unchanged on the next turn, as long as
+		 * nothing before them changed. In memory only.
 		 */
-		JsonArray rawContent;
-		String rawModel;
-		String rawSystem;
+		JsonArray rawMessages;
+		String rawKey;
 
 		Message(Role role, String text)
 		{

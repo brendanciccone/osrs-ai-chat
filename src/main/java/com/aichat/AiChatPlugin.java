@@ -97,13 +97,19 @@ public class AiChatPlugin extends Plugin
 	@Inject
 	private OkHttpClient okHttpClient;
 
-	/** For reading and writing the saved chats, off the Swing and client threads. */
+	/**
+	 * For reading and writing the saved chats, off the Swing and client threads, and for the AI providers' waits before
+	 * a retry.
+	 */
 	@Inject
 	private ScheduledExecutorService executor;
 
 	/** For AI requests: they can take a while, and replies shouldn't land in RuneLite's disk cache. */
 	private OkHttpClient apiHttp;
-	/** Optional request settings each OpenAI-compatible service and model has refused, while the plugin runs. */
+	/**
+	 * Optional request settings each service and model has refused, while the plugin runs: OpenAI-compatible settings,
+	 * and Claude models that don't take server-side fallback.
+	 */
 	private final Map<String, Set<String>> refusedOptions = new ConcurrentHashMap<>();
 	/** The saved chats on disk ("Remember chats"); its file work runs on {@link #executor}. */
 	private ChatFile chatFile;
@@ -314,14 +320,14 @@ public class AiChatPlugin extends Plugin
 		switch (config.provider())
 		{
 			case CLAUDE:
-				return new AnthropicApi(apiHttp, gson, AnthropicApi.URL, ChatApi.cleanKey(config.claudeApiKey()));
+				return new AnthropicApi(apiHttp, gson, AnthropicApi.URL, ChatApi.cleanKey(config.claudeApiKey()), executor, refusedOptions);
 			case CHATGPT:
 				return new OpenAiApi(apiHttp, gson, OpenAiApi.OPENAI_URL, ChatApi.cleanKey(config.openaiApiKey()), "ChatGPT", true,
-					"low", refusedOptions);
+					"low", executor, refusedOptions);
 			default:
 				String model = config.compatibleModel().trim();
 				return new OpenAiApi(apiHttp, gson, OpenAiApi.parseBaseUrl(config.compatibleUrl()), ChatApi.cleanKey(config.compatibleApiKey()), model, false,
-					config.compatibleThinking().effort, refusedOptions);
+					config.compatibleThinking().effort, executor, refusedOptions);
 		}
 	}
 
@@ -655,13 +661,13 @@ public class AiChatPlugin extends Plugin
 				@Override
 				public void onReply(ChatApi.Reply reply)
 				{
-					SwingUtilities.invokeLater(() -> finished(chat, request[0], out.message, who, out.system, reply, null));
+					SwingUtilities.invokeLater(() -> finished(chat, request[0], out.message, who, reply, null));
 				}
 
 				@Override
 				public void onError(String error)
 				{
-					SwingUtilities.invokeLater(() -> finished(chat, request[0], out.message, who, out.system, null, error));
+					SwingUtilities.invokeLater(() -> finished(chat, request[0], out.message, who, null, error));
 				}
 			});
 		}
@@ -689,8 +695,8 @@ public class AiChatPlugin extends Plugin
 		}
 	}
 
-	private void finished(Chat chat, ChatApi.Pending request, Chat.Message question, String who, String system,
-		ChatApi.Reply reply, String error)
+	private void finished(Chat chat, ChatApi.Pending request, Chat.Message question, String who, ChatApi.Reply reply,
+		String error)
 	{
 		// Only the answer to the request still in flight counts: not one that was stopped, or a chat that's gone.
 		if (chat.pending != request || request.isCancelled() || !chats.contains(chat))
@@ -707,7 +713,7 @@ public class AiChatPlugin extends Plugin
 			}
 			Chat.Message m = new Chat.Message(Chat.Role.ASSISTANT, reply.text + (reply.cutShort ? "\n\n(The reply was cut short.)" : ""));
 			m.who = who;
-			ConversationBuilder.recordReply(m, question, reply, system);
+			ConversationBuilder.recordReply(m, question, reply);
 			chat.messages.add(m);
 			ping(chat, m);
 		}

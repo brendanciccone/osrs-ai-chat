@@ -11,6 +11,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import okhttp3.Call;
 import okhttp3.MediaType;
@@ -19,10 +24,19 @@ import okhttp3.MediaType;
 interface ChatApi
 {
 	MediaType JSON = MediaType.get("application/json; charset=utf-8");
+	/** Times a reply may stop to look things up before it has to answer. */
+	int MAX_TOOL_ROUNDS = 8;
+	/** Times a request is sent again when the provider is busy or couldn't be reached. */
+	int MAX_RETRIES = 2;
+	/** The longest wait before sending again; a provider that asks for longer gets an error instead. */
+	long MAX_RETRY_WAIT_MS = 60_000;
+	String TOO_MANY_ROUNDS = "The assistant kept looking things up without answering. Try asking more specifically.";
+	String CUT_OFF = "The reply was cut off: the connection closed early.";
 
 	/**
-	 * Starts the request; the listener hears back later on an OkHttp thread, exactly once, unless the request is
-	 * cancelled first (then not at all).
+	 * Starts the request: the reply streams in, with any tool calls and retries it takes. The listener hears back
+	 * later on OkHttp or executor threads: {@link Listener#onPartial} any number of times, then {@link Listener#onReply}
+	 * or {@link Listener#onError} exactly once, unless the request is cancelled first (then nothing more).
 	 */
 	Pending send(Conversation conversation, Listener listener);
 
@@ -131,10 +145,6 @@ interface ChatApi
 	{
 		final boolean user;
 		final String text;
-		/** Anthropic only: the reply's content blocks as returned, see {@link Chat.Message#rawContent}. */
-		JsonArray rawContent;
-		String rawModel;
-		String rawSystem;
 		/**
 		 * Anthropic only: the messages this reply was made of (tool calls and their results included), exactly as
 		 * exchanged. Sent back as they are only when {@link #rawKey} matches the request's {@link #promptKey}.
@@ -156,7 +166,6 @@ interface ChatApi
 		String model;
 		/** The reply hit the length limit. */
 		boolean cutShort;
-		JsonArray rawContent;
 		/**
 		 * Anthropic only: earlier replies had to be sent as plain text for this one (see AnthropicApi). They can't be
 		 * sent any other way from now on, or this reply's reasoning wouldn't match what it was built on.
@@ -176,7 +185,10 @@ interface ChatApi
 		{
 		}
 
-		/** The provider is busy; the request is sent again in {@code seconds}. */
+		/**
+		 * The provider is busy or couldn't be reached; the request is sent again in {@code seconds}. {@code message}
+		 * says why, without a full stop: "Anthropic is busy".
+		 */
 		default void onRetrying(String message, int seconds)
 		{
 		}
@@ -337,5 +349,205 @@ interface ChatApi
 		}
 		String t = s.trim();
 		return t.length() <= max ? t : t.substring(0, max).trim() + "...";
+	}
+
+	// ------------------------------------------------------------------
+	// Shared by both providers: retries and tool rounds
+	// ------------------------------------------------------------------
+
+	/**
+	 * Whether an HTTP error is worth sending the same request again for: a timeout, a conflict, a rate limit, or the
+	 * provider being overloaded or briefly broken. Not a 429 that says the account is out of credits or over its
+	 * quota: waiting won't fix that.
+	 */
+	static boolean retryableStatus(int code, String body)
+	{
+		switch (code)
+		{
+			case 429:
+				return !outOfCredits(body);
+			case 408:
+			case 409:
+			case 500:
+			case 502:
+			case 503:
+			case 504:
+			case 529:
+				return true;
+			default:
+				return false;
+		}
+	}
+
+	/** An error that says the account has run out of credits or hit a spending limit (OpenAI's insufficient_quota). */
+	static boolean outOfCredits(String body)
+	{
+		String lower = body == null ? "" : body.toLowerCase(Locale.ROOT);
+		return lower.contains("quota") || lower.contains("credit") || lower.contains("billing") || lower.contains("spend");
+	}
+
+	/**
+	 * How long to wait before sending a request again, in milliseconds: what the provider asked for in a
+	 * retry-after-ms or retry-after (seconds) header, or else 2 seconds before the first retry and 6 before the second.
+	 * A retry-after given as a date is rare and ignored.
+	 */
+	static long retryDelay(String retryAfterMs, String retryAfter, int retry)
+	{
+		Double ms = number(retryAfterMs);
+		if (ms != null)
+		{
+			return (long) Math.ceil(ms);
+		}
+		Double seconds = number(retryAfter);
+		if (seconds != null)
+		{
+			return (long) Math.ceil(seconds * 1000);
+		}
+		return retry <= 1 ? 2000 : 6000;
+	}
+
+	/** A header's non-negative number, or null. */
+	private static Double number(String header)
+	{
+		if (header == null)
+		{
+			return null;
+		}
+		try
+		{
+			double d = Double.parseDouble(header.trim());
+			return Double.isNaN(d) || Double.isInfinite(d) || d < 0 ? null : d;
+		}
+		catch (NumberFormatException e)
+		{
+			return null;
+		}
+	}
+
+	/** Whole seconds, rounded up, for "trying again in 6s". */
+	static int seconds(long ms)
+	{
+		return (int) Math.min(Integer.MAX_VALUE, (ms + 999) / 1000);
+	}
+
+	/** "45 seconds", "3 minutes", "2 hours": a wait, for messages. */
+	static String waitText(long ms)
+	{
+		long s = seconds(ms);
+		if (s <= 90)
+		{
+			return s + (s == 1 ? " second" : " seconds");
+		}
+		long minutes = (s + 59) / 60;
+		if (minutes < 120)
+		{
+			return minutes + " minutes";
+		}
+		return (minutes + 59) / 60 + " hours";
+	}
+
+	/**
+	 * Runs {@code again} after {@code ms}, unless the request is cancelled first. The wait goes on the plugin's
+	 * scheduler, never a sleeping thread, and Stop cancels it. False if the scheduler is shutting down.
+	 */
+	static boolean later(ScheduledExecutorService scheduler, Pending pending, long ms, Runnable again)
+	{
+		try
+		{
+			pending.setTimer(scheduler.schedule(() ->
+			{
+				if (!pending.isCancelled())
+				{
+					again.run();
+				}
+			}, ms, TimeUnit.MILLISECONDS));
+			return true;
+		}
+		catch (RejectedExecutionException e)
+		{
+			return false;
+		}
+	}
+
+	/**
+	 * Runs the tool calls of one reply at the same time and hands back their results in the same order once all are
+	 * in, on whichever thread finished last. {@code inputs}: null for a call whose arguments couldn't be read; it isn't
+	 * run, and the model is told why. A runner that breaks its promise (throws, or answers twice) can't stall the reply.
+	 */
+	static void runTools(ToolRunner runner, List<String> names, List<JsonObject> inputs, Consumer<List<ToolResult>> done)
+	{
+		int n = names.size();
+		ToolResult[] results = new ToolResult[n];
+		AtomicInteger left = new AtomicInteger(n);
+		if (n == 0)
+		{
+			done.accept(new ArrayList<>());
+			return;
+		}
+		for (int i = 0; i < n; i++)
+		{
+			int slot = i;
+			String name = names.get(i);
+			AtomicBoolean answered = new AtomicBoolean();
+			Consumer<ToolResult> one = r ->
+			{
+				if (!answered.compareAndSet(false, true))
+				{
+					return;
+				}
+				results[slot] = r != null ? r : ToolResult.error("The tool " + name + " sent nothing back.");
+				// The last one in carries on; the counter makes every result visible to it.
+				if (left.decrementAndGet() == 0)
+				{
+					List<ToolResult> all = new ArrayList<>();
+					for (ToolResult result : results)
+					{
+						all.add(result);
+					}
+					done.accept(all);
+				}
+			};
+			JsonObject input = inputs.get(i);
+			if (input == null)
+			{
+				one.accept(ToolResult.error("Arguments weren't valid JSON. Send them as a JSON object."));
+			}
+			else if (runner == null)
+			{
+				one.accept(ToolResult.error("There's no tool called " + name + "."));
+			}
+			else
+			{
+				try
+				{
+					runner.run(name, input, one);
+				}
+				catch (RuntimeException e)
+				{
+					one.accept(ToolResult.error("The tool " + name + " failed. Answer without it."));
+				}
+			}
+		}
+	}
+
+	/** The text of a reply made in several rounds (it stopped to look things up): each round's text, in order. */
+	static String joinRounds(List<String> rounds, String current)
+	{
+		StringBuilder sb = new StringBuilder();
+		for (String r : rounds)
+		{
+			append(sb, r);
+		}
+		append(sb, current);
+		return sb.toString();
+	}
+
+	private static void append(StringBuilder sb, String text)
+	{
+		String t = text == null ? "" : text.trim();
+		if (!t.isEmpty())
+		{
+			sb.append(sb.length() > 0 ? "\n\n" : "").append(t);
+		}
 	}
 }

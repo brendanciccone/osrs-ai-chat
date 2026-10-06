@@ -25,8 +25,8 @@ public class ChatStoreTest
 		first.messages.add(q);
 		Chat.Message a = new Chat.Message(Chat.Role.ASSISTANT, "Rooftop courses.");
 		a.who = "Claude";
-		a.rawContent = gson.fromJson("[{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"s\"}]", JsonArray.class);
-		a.rawModel = "claude-opus-5-5";
+		a.rawMessages = gson.fromJson("[{\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"s\"}]}]", JsonArray.class);
+		a.rawKey = "claude-opus-5-5";
 		first.messages.add(a);
 		Chat second = new Chat("Named");
 		second.namedByPlayer = true;
@@ -47,7 +47,8 @@ public class ChatStoreTest
 		assertEquals("[Character: Zezima, combat level 3]", back.messages.get(0).context);
 		assertEquals("Claude", back.messages.get(1).who);
 		// Claude's replayable reasoning isn't saved; the chat carries on as plain text.
-		assertNull(back.messages.get(1).rawContent);
+		assertNull(back.messages.get(1).rawMessages);
+		assertNull(back.messages.get(1).rawKey);
 		assertFalse(json.contains("signature"));
 	}
 

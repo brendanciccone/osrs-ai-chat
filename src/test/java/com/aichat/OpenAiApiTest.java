@@ -1,0 +1,587 @@
+package com.aichat;
+
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import okhttp3.HttpUrl;
+import okhttp3.OkHttpClient;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+import static com.aichat.StandIn.conversation;
+import static com.aichat.StandIn.events;
+import static com.aichat.StandIn.json;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+
+/** ChatGPT and OpenAI-compatible services against a stand-in server on 127.0.0.1: what's sent, and how answers are read. */
+public class OpenAiApiTest
+{
+	private static final String PATH = "/v1/chat/completions";
+	private static final String OK = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"Hi\"},\"finish_reason\":\"stop\"}]}";
+	private final Gson gson = new Gson();
+	private final OkHttpClient http = new OkHttpClient();
+	private ScheduledThreadPoolExecutor scheduler;
+	private StandIn server;
+
+	@Before
+	public void start() throws IOException
+	{
+		server = new StandIn();
+		scheduler = new ScheduledThreadPoolExecutor(1);
+		scheduler.setRemoveOnCancelPolicy(true);
+	}
+
+	@After
+	public void stop()
+	{
+		server.stop();
+		scheduler.shutdownNow();
+	}
+
+	private OpenAiApi openai(String key, Map<String, Set<String>> refused)
+	{
+		return new OpenAiApi(http, gson, server.url("/v1/"), key, "ChatGPT", true, "low", scheduler, refused);
+	}
+
+	private OpenAiApi compatible(String name, String effort, Map<String, Set<String>> refused)
+	{
+		return new OpenAiApi(http, gson, server.url("/v1/"), "", name, false, effort, scheduler, refused);
+	}
+
+	private OpenAiApi compatible(String name)
+	{
+		return compatible(name, "low", new ConcurrentHashMap<>());
+	}
+
+	private static StandIn.Heard send(ChatApi api, ChatApi.Conversation c)
+	{
+		StandIn.Heard heard = new StandIn.Heard();
+		api.send(c, heard);
+		return heard;
+	}
+
+	/** A streamed piece: "data: {...}" and its blank line. */
+	private static String chunk(String json)
+	{
+		return "data: " + json + "\n\n";
+	}
+
+	private static String content(String text)
+	{
+		JsonObject delta = new JsonObject();
+		delta.addProperty("content", text);
+		return chunk("{\"id\":\"c1\",\"model\":\"gpt-x\",\"choices\":[{\"index\":0,\"delta\":" + delta + ",\"finish_reason\":null}]}");
+	}
+
+	private static String finish(String reason)
+	{
+		return chunk("{\"id\":\"c1\",\"model\":\"gpt-x\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"" + reason + "\"}]}");
+	}
+
+	private static String toolCalls(String json)
+	{
+		return chunk("{\"id\":\"c1\",\"model\":\"gpt-x\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":" + json + "},\"finish_reason\":null}]}");
+	}
+
+	private static final String DONE = "data: [DONE]\n\n";
+
+	@Test
+	public void openAiRequestsAndReplies() throws Exception
+	{
+		server.answer(PATH, json(200, "{\"id\":\"c1\",\"model\":\"gpt-x\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Do Monkey Madness.\",\"refusal\":null},\"finish_reason\":\"stop\"}],"
+			+ "\"usage\":{\"prompt_tokens\":50,\"completion_tokens\":8,\"prompt_tokens_details\":{\"cached_tokens\":0}}}"));
+		ChatApi.Reply reply = send(openai("sk-o", new ConcurrentHashMap<>()), conversation("gpt-x", "Next quest?", "Dragon Slayer.", "After that?")).reply();
+		assertEquals("Do Monkey Madness.", reply.text);
+		assertEquals("gpt-x", reply.model);
+		assertEquals(50, reply.usage.input);
+		assertEquals(8, reply.usage.output);
+		assertNull("no replay for these services", reply.rawMessages);
+
+		JsonObject body = server.bodies.get(0);
+		JsonArray messages = body.getAsJsonArray("messages");
+		assertEquals("system", messages.get(0).getAsJsonObject().get("role").getAsString());
+		assertEquals("Be brief.", messages.get(0).getAsJsonObject().get("content").getAsString());
+		assertEquals("assistant", messages.get(2).getAsJsonObject().get("role").getAsString());
+		assertEquals("After that?", messages.get(3).getAsJsonObject().get("content").getAsString());
+		assertTrue(body.get("stream").getAsBoolean());
+		assertTrue(body.getAsJsonObject("stream_options").get("include_usage").getAsBoolean());
+		assertTrue(body.has("max_completion_tokens"));
+		assertFalse(body.has("max_tokens"));
+		assertFalse("no tools, no tools field", body.has("tools"));
+		assertEquals("low", body.get("reasoning_effort").getAsString());
+		assertFalse(body.get("store").getAsBoolean());
+		assertFalse(body.has("temperature"));
+		assertEquals("Bearer sk-o", server.headers.get(0).getFirst("Authorization"));
+	}
+
+	@Test
+	public void streamsAReplyAndCountsItsTokens() throws Exception
+	{
+		server.answer(PATH, events(chunk("{\"id\":\"c1\",\"model\":\"gpt-x\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\"},\"finish_reason\":null}]}"),
+			": keep-alive\n\n",
+			chunk("{\"id\":\"c1\",\"model\":\"gpt-x\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"hidden\"},\"finish_reason\":null}]}"),
+			content("Do "), content("Monkey Madness."), finish("stop"),
+			chunk("{\"id\":\"c1\",\"model\":\"gpt-x\",\"choices\":[],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":20,\"prompt_tokens_details\":{\"cached_tokens\":60}}}"),
+			DONE));
+		StandIn.Heard heard = send(openai("k", new ConcurrentHashMap<>()), conversation("gpt-x", "Next quest?"));
+		ChatApi.Reply reply = heard.reply();
+		assertEquals("Do Monkey Madness.", reply.text);
+		assertEquals(List.of("Do", "Do Monkey Madness."), heard.partials);
+		assertEquals("gpt-x", reply.model);
+		assertEquals(40, reply.usage.input);
+		assertEquals(60, reply.usage.cacheRead);
+		assertEquals(0, reply.usage.cacheWrite);
+		assertEquals(20, reply.usage.output);
+		assertFalse(reply.cutShort);
+	}
+
+	@Test
+	public void reasoningWrittenIntoTheStreamIsNeverShown() throws Exception
+	{
+		server.answer(PATH, events(content("<thi"), content("nk>\nhmm, the player"), content(" wants Varrock</think>\n\n"),
+			content("Go to "), content("Varrock."), finish("stop"), DONE));
+		StandIn.Heard heard = send(compatible("qwen"), conversation("qwen", "hi"));
+		assertEquals("Go to Varrock.", heard.reply().text);
+		assertEquals(List.of("Go to", "Go to Varrock."), heard.partials);
+	}
+
+	@Test
+	public void toolCallsStreamedInPiecesAreRunAndAnswered() throws Exception
+	{
+		server.answer(PATH,
+			events(toolCalls("[{\"index\":0,\"id\":\"call_a\",\"type\":\"function\",\"function\":{\"name\":\"wiki_search\",\"arguments\":\"\"}}]"),
+				toolCalls("[{\"index\":0,\"function\":{\"arguments\":\"{\\\"query\\\":\"}}]"),
+				toolCalls("[{\"index\":1,\"id\":\"call_b\",\"type\":\"function\",\"function\":{\"name\":\"ge_price\",\"arguments\":\"{\\\"query\\\"\"}}]"),
+				toolCalls("[{\"index\":0,\"function\":{\"arguments\":\"\\\"whip\\\"}\"}},{\"index\":1,\"function\":{\"arguments\":\":\\\"whip\\\"}\"}}]"),
+				toolCalls("[{\"index\":2,\"id\":\"call_c\",\"type\":\"function\",\"function\":{\"name\":\"wiki_page\",\"arguments\":\"{oops\"}}]"),
+				finish("tool_calls"), DONE),
+			events(content("About 1.5m."), finish("stop"), DONE));
+		ChatApi.Conversation c = conversation("gpt-x", "Whip price?");
+		c.tools.add(StandIn.tool("wiki_search"));
+		c.tools.add(StandIn.tool("ge_price"));
+		c.tools.add(StandIn.tool("wiki_page"));
+		StandIn.Tools tools = new StandIn.Tools();
+		c.toolRunner = tools;
+		ChatApi.Reply reply = send(openai("k", new ConcurrentHashMap<>()), c).reply();
+		assertEquals("About 1.5m.", reply.text);
+		assertEquals("the call with broken arguments isn't run",
+			List.of("wiki_search {\"query\":\"whip\"}", "ge_price {\"query\":\"whip\"}"), tools.calls);
+
+		JsonObject tool = server.bodies.get(0).getAsJsonArray("tools").get(0).getAsJsonObject();
+		assertEquals("function", tool.get("type").getAsString());
+		assertEquals("wiki_search", tool.getAsJsonObject("function").get("name").getAsString());
+		assertEquals(StandIn.tool("wiki_search").inputSchema, tool.getAsJsonObject("function").get("parameters"));
+
+		JsonArray messages = server.bodies.get(1).getAsJsonArray("messages");
+		assertEquals("system, question, the calls, three results", 6, messages.size());
+		JsonObject asked = messages.get(2).getAsJsonObject();
+		assertEquals("assistant", asked.get("role").getAsString());
+		assertEquals("", asked.get("content").getAsString());
+		assertEquals(gson.fromJson("[{\"id\":\"call_a\",\"type\":\"function\",\"function\":{\"name\":\"wiki_search\",\"arguments\":\"{\\\"query\\\":\\\"whip\\\"}\"}},"
+			+ "{\"id\":\"call_b\",\"type\":\"function\",\"function\":{\"name\":\"ge_price\",\"arguments\":\"{\\\"query\\\":\\\"whip\\\"}\"}},"
+			+ "{\"id\":\"call_c\",\"type\":\"function\",\"function\":{\"name\":\"wiki_page\",\"arguments\":\"{oops\"}}]", JsonArray.class),
+			asked.getAsJsonArray("tool_calls"));
+		assertEquals(gson.fromJson("{\"role\":\"tool\",\"tool_call_id\":\"call_a\",\"content\":\"result of wiki_search\"}", JsonObject.class), messages.get(3));
+		assertEquals("call_b", messages.get(4).getAsJsonObject().get("tool_call_id").getAsString());
+		JsonObject broken = messages.get(5).getAsJsonObject();
+		assertEquals("call_c", broken.get("tool_call_id").getAsString());
+		assertTrue(broken.get("content").getAsString().startsWith("Arguments weren't valid JSON"));
+	}
+
+	@Test
+	public void toolsAreLeftOutForModelsThatCantUseThem() throws Exception
+	{
+		Map<String, Set<String>> refused = new ConcurrentHashMap<>();
+		server.answer(PATH, json(400, "{\"error\":{\"message\":\"registry.ollama.ai/library/llama3:latest does not support tools\",\"type\":\"api_error\"}}"),
+			events(content("Hi"), finish("stop"), DONE));
+		ChatApi.Conversation c = conversation("llama3", "hi");
+		c.tools.add(StandIn.tool("wiki_search"));
+		c.toolRunner = new StandIn.Tools();
+		assertEquals("Hi", send(compatible("llama3", "low", refused), c).reply().text);
+		assertTrue(server.bodies.get(0).has("tools"));
+		assertFalse(server.bodies.get(1).has("tools"));
+		assertTrue("the rest is unchanged", server.bodies.get(1).has("reasoning_effort"));
+		assertTrue(refused.values().iterator().next().contains("tools"));
+
+		send(compatible("llama3", "low", refused), c).reply();
+		assertFalse("remembered", server.bodies.get(2).has("tools"));
+	}
+
+	@Test
+	public void streamOptionsAreLeftOutWhenRefused() throws Exception
+	{
+		Map<String, Set<String>> refused = new ConcurrentHashMap<>();
+		server.answer(PATH, json(400, "{\"error\":{\"message\":\"Unrecognized request argument supplied: stream_options\",\"type\":\"invalid_request_error\"}}"),
+			events(content("Hi"), finish("stop"), DONE));
+		assertEquals("Hi", send(compatible("m", "low", refused), conversation("m", "hi")).reply().text);
+		assertTrue(server.bodies.get(0).has("stream_options"));
+		assertFalse(server.bodies.get(1).has("stream_options"));
+		assertTrue(server.bodies.get(1).get("stream").getAsBoolean());
+		send(compatible("m", "low", refused), conversation("m", "again")).reply();
+		assertFalse(server.bodies.get(2).has("stream_options"));
+	}
+
+	@Test
+	public void aBusyServiceIsAskedAgainButAnEmptyAccountIsNot() throws Exception
+	{
+		// Not a 503: OkHttp itself asks again at once when one says "Retry-After: 0".
+		server.answer(PATH, json(502, "{\"error\":{\"message\":\"Bad gateway\"}}").header("retry-after", "0"), json(200, OK));
+		StandIn.Heard heard = send(openai("k", new ConcurrentHashMap<>()), conversation("gpt-x", "hi"));
+		assertEquals("Hi", heard.reply().text);
+		assertEquals(List.of(server.url("/").host() + ":" + server.url("/").port() + " is busy 0"), heard.retries);
+		assertEquals(2, server.bodies.size());
+
+		server.clear();
+		server.answer(PATH, json(429, "{\"error\":{\"message\":\"You exceeded your current quota, please check your plan and billing details.\",\"type\":\"insufficient_quota\",\"code\":\"insufficient_quota\"}}")
+			.header("retry-after", "0"));
+		heard = send(openai("k", new ConcurrentHashMap<>()), conversation("gpt-x", "hi"));
+		assertTrue(heard.error(), heard.error.contains("out of credits"));
+		assertTrue(heard.retries.isEmpty());
+		assertEquals(1, server.bodies.size());
+	}
+
+	@Test
+	public void aStreamThatStopsWithoutFinishingIsAnError() throws Exception
+	{
+		server.answer(PATH, events(content("Half a")));
+		StandIn.Heard heard = send(compatible("m"), conversation("m", "hi"));
+		assertEquals(ChatApi.CUT_OFF, heard.error());
+		assertEquals(List.of("Half a"), heard.partials);
+
+		// A finish reason without [DONE] is a whole answer: some services stop there.
+		server.answer(PATH, events(content("Whole"), finish("stop")));
+		assertEquals("Whole", send(compatible("m"), conversation("m", "hi")).reply().text);
+	}
+
+	@Test
+	public void anErrorPartWayThroughTheStreamIsReported() throws Exception
+	{
+		server.answer(PATH, events(content("Partly"), chunk("{\"error\":{\"code\":502,\"message\":\"Provider returned error\"}}"), DONE));
+		assertTrue(send(compatible("m"), conversation("m", "hi")).error().contains("Provider returned error"));
+		server.answer(PATH, events(chunk("{\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"error\",\"error\":{\"message\":\"Upstream timed out\"}}]}"), DONE));
+		assertTrue(send(compatible("m"), conversation("m", "hi")).error().contains("Upstream timed out"));
+		server.answer(PATH, events(content("Some"), finish("content_filter"), DONE));
+		assertTrue(send(compatible("m"), conversation("m", "hi")).error().contains("content filter"));
+	}
+
+	@Test
+	public void aReplyThatKeepsCallingToolsIsStopped() throws Exception
+	{
+		server.answer(PATH, events(toolCalls("[{\"index\":0,\"id\":\"c\",\"type\":\"function\",\"function\":{\"name\":\"wiki_search\",\"arguments\":\"{}\"}}]"),
+			finish("tool_calls"), DONE));
+		ChatApi.Conversation c = conversation("m", "q");
+		c.tools.add(StandIn.tool("wiki_search"));
+		c.toolRunner = new StandIn.Tools();
+		assertEquals(ChatApi.TOO_MANY_ROUNDS, send(compatible("m"), c).error());
+		assertEquals(ChatApi.MAX_TOOL_ROUNDS + 1, server.bodies.size());
+	}
+
+	@Test
+	public void aLowerLengthLimitIsKept() throws Exception
+	{
+		server.answer(PATH, json(200, OK));
+		ChatApi.Conversation c = conversation("m", "hi");
+		c.maxTokens = 4000;
+		send(openai("k", new ConcurrentHashMap<>()), c).reply();
+		send(compatible("m"), c).reply();
+		assertEquals(4000, server.bodies.get(0).get("max_completion_tokens").getAsInt());
+		assertEquals(4000, server.bodies.get(1).get("max_tokens").getAsInt());
+	}
+
+	@Test
+	public void listsModels() throws Exception
+	{
+		server.answer("/v1/models", json(200, "{\"object\":\"list\",\"data\":[{\"id\":\"gpt-x\",\"object\":\"model\"},{\"id\":\"text-embedding-3-small\",\"object\":\"model\"}]}"));
+		AnthropicApiTest.Models models = new AnthropicApiTest.Models();
+		openai("sk-o", new ConcurrentHashMap<>()).listModels(models);
+		assertEquals(List.of("gpt-x", "text-embedding-3-small"), models.await().ids);
+		assertEquals("Bearer sk-o", server.headers.get(0).getFirst("Authorization"));
+
+		// A service without a model list.
+		server.answer("/v1/models", json(404, "{\"error\":\"not found\"}"));
+		models = new AnthropicApiTest.Models();
+		compatible("m").listModels(models);
+		assertEquals(OpenAiApi.NO_MODEL_LIST, models.await().error);
+		assertNull("no key, no header", server.headers.get(1).getFirst("Authorization"));
+
+		server.answer("/v1/models", json(401, "{\"error\":{\"message\":\"Incorrect API key provided\"}}"));
+		models = new AnthropicApiTest.Models();
+		openai("sk-bad", new ConcurrentHashMap<>()).listModels(models);
+		assertTrue(models.await().error.contains("didn't accept the API key"));
+	}
+
+	@Test
+	public void aModelThatRefusesAnOptionalSettingIsAskedAgainWithoutIt() throws Exception
+	{
+		server.answer(PATH,
+			json(400, "{\"error\":{\"message\":\"Unrecognized request argument supplied: reasoning_effort\",\"type\":\"invalid_request_error\"}}"),
+			json(200, OK));
+		ChatApi.Reply reply = send(openai("k", new ConcurrentHashMap<>()), conversation("gpt-4o-mini", "hi")).reply();
+		assertEquals("Hi", reply.text);
+		assertTrue(server.bodies.get(0).has("reasoning_effort"));
+		assertFalse(server.bodies.get(1).has("reasoning_effort"));
+		assertTrue(server.bodies.get(1).has("store"));
+	}
+
+	@Test
+	public void compatibleServicesGetNoKeyUnlessGivenAndNoOpenAiOnlyFields() throws Exception
+	{
+		server.answer(PATH, json(200, "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Hi\"}]},\"finish_reason\":\"length\"}]}"));
+		OpenAiApi api = new OpenAiApi(http, gson, OpenAiApi.parseBaseUrl(server.url("/v1").toString()), "", "llama3.2", false, "low", scheduler, new ConcurrentHashMap<>());
+		ChatApi.Reply reply = send(api, conversation("llama3.2", "hi")).reply();
+		assertEquals("Hi", reply.text);
+		assertTrue(reply.cutShort);
+		assertNull(server.headers.get(0).getFirst("Authorization"));
+		assertFalse(server.bodies.get(0).has("max_completion_tokens"));
+		assertEquals("low", server.bodies.get(0).get("reasoning_effort").getAsString());
+		assertFalse(server.bodies.get(0).has("store"));
+		assertTrue(server.bodies.get(0).has("max_tokens"));
+	}
+
+	@Test
+	public void servicesThatDontThinkAreAskedAgainWithoutReasoningEffort() throws Exception
+	{
+		OpenAiApi api = compatible("llama3.2");
+		// Ollama, for a model that can't think.
+		server.answer(PATH, json(400, "{\"error\":{\"message\":\"\\\"llama3.2\\\" does not support thinking\",\"type\":\"api_error\"}}"), json(200, OK));
+		assertEquals("Hi", send(api, conversation("llama3.2", "hi")).reply().text);
+		assertTrue(server.bodies.get(0).has("reasoning_effort"));
+		assertFalse(server.bodies.get(1).has("reasoning_effort"));
+		assertTrue("the rest is unchanged", server.bodies.get(1).has("max_tokens"));
+
+		// Mistral: a 422 listing the field it doesn't accept.
+		server.clear();
+		server.answer(PATH, json(422, "{\"detail\":[{\"type\":\"extra_forbidden\",\"loc\":[\"body\",\"reasoning_effort\"],\"msg\":\"Extra inputs are not permitted\"}]}"), json(200, OK));
+		assertEquals("Hi", send(api, conversation("mistral-small-latest", "hi")).reply().text);
+		assertFalse(server.bodies.get(1).has("reasoning_effort"));
+
+		// Ollama 0.11.8-0.17.6, for a thinking model other than gpt-oss.
+		server.clear();
+		server.answer(PATH, json(400, "{\"error\":{\"message\":\"think value \\\"low\\\" is not supported for this model\",\"type\":\"invalid_request_error\",\"param\":null,\"code\":null}}"), json(200, OK));
+		assertEquals("Hi", send(api, conversation("qwen3:8b", "hi")).reply().text);
+		assertFalse(server.bodies.get(1).has("reasoning_effort"));
+
+		// Any other problem is reported, not retried.
+		server.clear();
+		server.answer(PATH, json(400, "{\"error\":{\"message\":\"context length exceeded\"}}"));
+		assertTrue(send(api, conversation("m", "hi")).error().contains("context length exceeded"));
+		assertEquals(1, server.bodies.size());
+	}
+
+	@Test
+	public void aRefusedSettingIsLeftOutNextTimeButOnlyOnceItsCertain() throws Exception
+	{
+		String refusal = "{\"error\":{\"message\":\"\\\"llama3.2\\\" does not support thinking\"}}";
+		Map<String, Set<String>> refused = new ConcurrentHashMap<>();
+
+		// A retry that fails too proves nothing: nothing is remembered.
+		server.answer(PATH, json(400, refusal), json(500, "{\"error\":{\"message\":\"boom\"}}").header("retry-after", "0"));
+		send(compatible("llama3.2", "low", refused), conversation("llama3.2", "hi")).error();
+		assertTrue(refused.isEmpty());
+
+		// Refused, then answered without it: remembered, so the next message (a new client object, as the plugin
+		// makes per message) leaves it out from the start. Three requests for two messages, not four.
+		server.clear();
+		server.answer(PATH, json(400, refusal), json(200, OK));
+		send(compatible("llama3.2", "low", refused), conversation("llama3.2", "one")).reply();
+		send(compatible("llama3.2", "low", refused), conversation("llama3.2", "two")).reply();
+		assertEquals(3, server.bodies.size());
+		assertFalse(server.bodies.get(2).has("reasoning_effort"));
+		assertTrue(server.bodies.get(2).has("max_tokens"));
+
+		// Another model on the same service is asked normally.
+		server.clear();
+		server.answer(PATH, json(200, OK));
+		send(compatible("qwen3:8b", "low", refused), conversation("qwen3:8b", "hi")).reply();
+		assertEquals("low", server.bodies.get(0).get("reasoning_effort").getAsString());
+	}
+
+	@Test
+	public void modelDefaultThinkingSendsNoEffort() throws Exception
+	{
+		server.answer(PATH, json(200, OK));
+		send(compatible("qwen/qwen3.8-27b", AiChatConfig.Thinking.DEFAULT.effort, new ConcurrentHashMap<>()), conversation("qwen/qwen3.8-27b", "hi")).reply();
+		assertFalse(server.bodies.get(0).has("reasoning_effort"));
+		assertEquals("low", AiChatConfig.Thinking.SHORT.effort);
+	}
+
+	@Test
+	public void compatibleQuirks() throws Exception
+	{
+		OpenAiApi api = new OpenAiApi(http, gson, server.url("/v1/"), "k", "qwen", false, "low", scheduler, new ConcurrentHashMap<>());
+		// Reasoning inside the reply is dropped.
+		server.answer(PATH, json(200, "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"<think>\\nhmm\\n</think>\\n\\nGo to Varrock.\"},\"finish_reason\":\"stop\"}]}"));
+		assertEquals("Go to Varrock.", send(api, conversation("qwen", "hi")).reply().text);
+		// Gemini: a bad key is a 400 with the error in a list.
+		server.answer(PATH, json(400, "[{\"error\":{\"code\":400,\"message\":\"Please pass a valid API key\",\"status\":\"INVALID_ARGUMENT\"}}]"));
+		assertTrue(send(api, conversation("qwen", "hi")).error().contains("didn't accept the API key"));
+		// OpenRouter: a failure can come back as a 200 with only an error.
+		server.answer(PATH, json(200, "{\"error\":{\"code\":502,\"message\":\"Provider returned error\"}}"));
+		assertTrue(send(api, conversation("qwen", "hi")).error().contains("Provider returned error"));
+		// Mistral: {"detail": ...}.
+		server.answer(PATH, json(401, "{\"detail\":\"Invalid API Key\"}"));
+		assertTrue(send(api, conversation("qwen", "hi")).error().contains("Invalid API Key"));
+		// Thinking parts of a list are skipped.
+		server.answer(PATH, json(200, "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":[{\"type\":\"text\",\"text\":\"hmm\"}]},{\"type\":\"text\",\"text\":\"Answer\"}]},\"finish_reason\":\"stop\"}]}"));
+		assertEquals("Answer", send(api, conversation("qwen", "hi")).reply().text);
+		// Reasoning that ran out of room before its closing tag isn't an answer.
+		server.answer(PATH, json(200, "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"<think>\\nOkay, the user wants\"},\"finish_reason\":\"length\"}]}"));
+		assertTrue(send(api, conversation("qwen", "hi")).error().contains("reply length"));
+		// Out of room before saying anything.
+		server.answer(PATH, json(200, "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"\"},\"finish_reason\":\"length\"}]}"));
+		assertTrue(send(api, conversation("qwen", "hi")).error().contains("reply length"));
+	}
+
+	@Test
+	public void openAiProblemsAreExplained() throws Exception
+	{
+		OpenAiApi api = openai("sk-bad", new ConcurrentHashMap<>());
+		server.answer(PATH, json(401, "{\"error\":{\"message\":\"Incorrect API key provided\",\"type\":\"invalid_request_error\",\"code\":\"invalid_api_key\"}}"));
+		assertTrue(send(api, conversation("gpt-x", "hi")).error().contains("API key"));
+		server.answer(PATH, json(429, "{\"error\":{\"message\":\"You exceeded your current quota\",\"type\":\"insufficient_quota\"}}"));
+		assertTrue(send(api, conversation("gpt-x", "hi")).error().contains("quota"));
+		server.answer(PATH, json(200, "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":null,\"refusal\":\"I can't help with that.\"},\"finish_reason\":\"stop\"}]}"));
+		assertTrue(send(api, conversation("gpt-x", "hi")).error().contains("declined"));
+		server.answer(PATH, events(chunk("{\"choices\":[{\"index\":0,\"delta\":{\"refusal\":\"I can't \"},\"finish_reason\":null}]}"),
+			chunk("{\"choices\":[{\"index\":0,\"delta\":{\"refusal\":\"help with that.\"},\"finish_reason\":\"stop\"}]}"), DONE));
+		assertEquals("ChatGPT declined: I can't help with that.", send(api, conversation("gpt-x", "hi")).error());
+
+		// Nothing listening on this computer: says so at once, and asks whether the service is running.
+		OpenAiApi down = new OpenAiApi(http, gson, HttpUrl.get("http://127.0.0.1:1/v1/"), "", "m", false, "low", scheduler, new ConcurrentHashMap<>());
+		StandIn.Heard heard = send(down, conversation("m", "hi"));
+		assertTrue(heard.error().contains("running"));
+		assertTrue(heard.retries.isEmpty());
+	}
+
+	@Test
+	public void baseUrls()
+	{
+		assertEquals("http://localhost:11434/v1/", OpenAiApi.parseBaseUrl(" http://localhost:11434/v1 ").toString());
+		assertEquals("https://openrouter.ai/api/v1/", OpenAiApi.parseBaseUrl("https://openrouter.ai/api/v1/chat/completions").toString());
+		assertEquals("https://openrouter.ai/api/v1/chat/completions", OpenAiApi.parseBaseUrl("https://openrouter.ai/api/v1/").resolve("chat/completions").toString());
+		assertNull(OpenAiApi.parseBaseUrl(""));
+		assertNull(OpenAiApi.parseBaseUrl("localhost:11434"));
+		assertEquals("localhost:11434", OpenAiApi.describeUrl("http://localhost:11434/v1"));
+		assertEquals("openrouter.ai", OpenAiApi.describeUrl("https://openrouter.ai/api/v1"));
+		assertEquals("https://generativelanguage.googleapis.com/v1beta/openai/",
+			OpenAiApi.parseBaseUrl("https://generativelanguage.googleapis.com/v1beta/openai/").toString());
+	}
+
+	@Test
+	public void plainHttpOnlyStaysOnThisComputerOrNetwork()
+	{
+		for (String host : new String[]{"localhost", "127.0.0.1", "192.168.1.20", "10.0.0.5", "172.16.0.1", "172.31.255.1",
+			"169.254.1.1", "studio.local", "[::1]", "::1", "fd12:3456::1", "fe80::1"})
+		{
+			assertTrue(host, OpenAiApi.isPrivate(host));
+		}
+		// Names that only look like private addresses could point anywhere.
+		for (String host : new String[]{"openrouter.ai", "172.32.0.1", "8.8.8.8", "api.example.com", "10.attacker.example",
+			"192.168.evil.com", "10.0.0.1.evil.com", "999.1.1.1", "2001:db8::1"})
+		{
+			assertFalse(host, OpenAiApi.isPrivate(host));
+		}
+	}
+
+	@Test
+	public void thinkingIsRemovedHoweverItsWritten()
+	{
+		assertEquals("Answer", OpenAiApi.withoutThinking("<think>a</think>Answer"));
+		assertEquals("", OpenAiApi.withoutThinking("<think>\nstill thinking when it ran out"));
+		assertEquals("Answer", OpenAiApi.withoutThinking("reasoning from a prompt that opened the tag</think>\nAnswer"));
+		assertEquals("Plain answer", OpenAiApi.withoutThinking(" Plain answer "));
+	}
+
+	@Test
+	public void onlyTheRefusedSettingIsDroppedAndNeverStore()
+	{
+		JsonObject body = gson.fromJson("{\"model\":\"m\",\"store\":false,\"reasoning_effort\":\"low\",\"max_completion_tokens\":8000,"
+			+ "\"stream\":true,\"stream_options\":{\"include_usage\":true},\"tools\":[]}", JsonObject.class);
+		assertEquals("reasoning_effort", OpenAiApi.rejectedOption(gson, body,
+			"{\"error\":{\"message\":\"Unsupported value\",\"param\":\"reasoning_effort\"}}"));
+		assertNull(OpenAiApi.rejectedOption(gson, body, "{\"error\":{\"message\":\"store is not supported\",\"param\":\"store\"}}"));
+		assertNull(OpenAiApi.rejectedOption(gson, body, "{\"error\":{\"message\":\"Conversation could not be restored\"}}"));
+		assertNull("stream itself isn't optional", OpenAiApi.rejectedOption(gson, body, "{\"error\":{\"message\":\"stream is not supported\"}}"));
+		assertEquals("max_completion_tokens", OpenAiApi.rejectedOption(gson, body,
+			"{\"error\":{\"message\":\"Unsupported parameter: 'max_completion_tokens'\"}}"));
+		assertEquals("stream_options", OpenAiApi.rejectedOption(gson, body,
+			"{\"error\":{\"message\":\"Unrecognized request argument supplied: stream_options\"}}"));
+		assertEquals("tools", OpenAiApi.rejectedOption(gson, body,
+			"{\"error\":{\"message\":\"registry.ollama.ai/library/gemma:2b does not support tools\"}}"));
+	}
+
+	@Test
+	public void modelListsAreRead()
+	{
+		assertEquals(List.of("a", "b"), OpenAiApi.modelIds(gson, "{\"data\":[{\"id\":\"a\"},{\"id\":\"b\"}]}"));
+		assertEquals(List.of("a"), OpenAiApi.modelIds(gson, "[{\"id\":\"a\"}]"));
+		assertNull(OpenAiApi.modelIds(gson, "<html>"));
+		assertNull(OpenAiApi.modelIds(gson, "{\"models\":[]}"));
+	}
+
+	@Test
+	public void stoppingARequestMeansNoAnswer() throws Exception
+	{
+		CountDownLatch release = new CountDownLatch(1);
+		server.server().createContext("/slow", exchange ->
+		{
+			try
+			{
+				release.await(10, TimeUnit.SECONDS);
+			}
+			catch (InterruptedException e)
+			{
+				Thread.currentThread().interrupt();
+			}
+			exchange.sendResponseHeaders(500, -1);
+			exchange.close();
+		});
+		OpenAiApi api = new OpenAiApi(http, gson, server.url("/slow/"), "", "m", false, "low", scheduler, new ConcurrentHashMap<>());
+		StandIn.Heard heard = new StandIn.Heard();
+		ChatApi.Pending p = api.send(conversation("m", "hi"), heard);
+		p.cancel();
+		release.countDown();
+		assertFalse(heard.answeredWithin(1000));
+	}
+
+	@Test
+	public void stoppingPartWayThroughAStreamMeansNoAnswer() throws Exception
+	{
+		CountDownLatch sent = new CountDownLatch(1);
+		CountDownLatch release = new CountDownLatch(1);
+		server.server().createContext("/stream", exchange ->
+		{
+			exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
+			exchange.sendResponseHeaders(200, 0);
+			try (java.io.OutputStream os = exchange.getResponseBody())
+			{
+				os.write(content("Partly").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+				os.flush();
+				sent.countDown();
+				release.await(10, TimeUnit.SECONDS);
+			}
+			catch (InterruptedException | IOException e)
+			{
+				// The client went away.
+			}
+		});
+		OpenAiApi api = new OpenAiApi(http, gson, server.url("/stream/"), "", "m", false, "low", scheduler, new ConcurrentHashMap<>());
+		StandIn.Heard heard = new StandIn.Heard();
+		ChatApi.Pending p = api.send(conversation("m", "hi"), heard);
+		assertTrue(sent.await(10, TimeUnit.SECONDS));
+		p.cancel();
+		release.countDown();
+		assertFalse(heard.answeredWithin(1000));
+	}
+}

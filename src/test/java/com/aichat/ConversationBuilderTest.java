@@ -14,8 +14,8 @@ import static org.junit.Assert.assertTrue;
 /** What a chat sends: the messages, character notes, replayed replies, and the summary of a long chat's oldest messages. */
 public class ConversationBuilderTest
 {
-	private static final JsonArray RAW = new Gson().fromJson("[{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"s\"},"
-		+ "{\"type\":\"text\",\"text\":\"A1\"}]", JsonArray.class);
+	private static final JsonArray RAW = new Gson().fromJson("[{\"role\":\"assistant\",\"content\":["
+		+ "{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"s\"},{\"type\":\"text\",\"text\":\"A1\"}]}]", JsonArray.class);
 
 	private static Chat.Message add(Chat chat, Chat.Role role, String text)
 	{
@@ -146,20 +146,18 @@ public class ConversationBuilderTest
 		Chat.Message q1 = user(chat, "Q1");
 		q1.context = "[C1]";
 		Chat.Message a1 = reply(chat, "A1");
-		a1.rawContent = RAW;
-		a1.rawModel = "claude-opus-5-5";
-		a1.rawSystem = "Be brief.";
+		a1.rawMessages = RAW;
+		a1.rawKey = "key";
 		Chat.Message q2 = user(chat, "Q2");
 
 		ChatApi.Conversation off = send(chat, q2, false, null);
 		assertEquals(List.of("user: Q1", "assistant: A1", "user: Q2"), texts(off));
-		assertNull("Q1 changed, so A1 can't go back as it came", off.turns.get(1).rawContent);
+		assertNull("Q1 changed, so A1 can't go back as it came", off.turns.get(1).rawMessages);
 
 		ChatApi.Conversation on = send(chat, q2, true, "[C1]");
 		assertEquals(List.of("user: [C1]\n\nQ1", "assistant: A1", "user: Q2"), texts(on));
-		assertSame(RAW, on.turns.get(1).rawContent);
-		assertEquals("claude-opus-5-5", on.turns.get(1).rawModel);
-		assertEquals("Be brief.", on.turns.get(1).rawSystem);
+		assertSame(RAW, on.turns.get(1).rawMessages);
+		assertEquals("the provider checks the key", "key", on.turns.get(1).rawKey);
 	}
 
 	@Test
@@ -170,41 +168,40 @@ public class ConversationBuilderTest
 		ChatApi.Reply r = new ChatApi.Reply();
 		r.text = "A1";
 		r.model = "claude-opus-5-5";
-		r.rawContent = RAW;
+		r.rawMessages = RAW;
+		r.rawKey = "key";
 		send(chat, q1, false, null);
 		Chat.Message a1 = reply(chat, "A1");
-		ConversationBuilder.recordReply(a1, q1, r, "Be brief.");
-		assertSame(RAW, a1.rawContent);
-		assertEquals("claude-opus-5-5", a1.rawModel);
-		assertEquals("Be brief.", a1.rawSystem);
+		ConversationBuilder.recordReply(a1, q1, r);
+		assertSame(RAW, a1.rawMessages);
+		assertEquals("key", a1.rawKey);
 		assertEquals(0, a1.summaryVersion);
 
 		assertTrue(ConversationBuilder.replayable(chat, a1, false));
 		assertFalse("character notes left out", ConversationBuilder.replayable(chat, a1, true));
 		Chat.Message q2 = user(chat, "Q2");
-		assertSame(RAW, send(chat, q2, false, null).turns.get(1).rawContent);
+		assertSame(RAW, send(chat, q2, false, null).turns.get(1).rawMessages);
 
 		// A newer summary changed what came before A1.
 		chat.summaryVersion = 1;
 		assertFalse(ConversationBuilder.replayable(chat, a1, false));
-		assertNull(send(chat, q2, false, null).turns.get(1).rawContent);
+		assertNull(send(chat, q2, false, null).turns.get(1).rawMessages);
 		assertEquals("the question records the summary it went with", 1, q2.summaryVersion);
 
 		// A reply made since then goes back as it came.
 		Chat.Message a2 = reply(chat, "A2");
-		ConversationBuilder.recordReply(a2, q2, r, "Be brief.");
+		ConversationBuilder.recordReply(a2, q2, r);
 		assertEquals(1, a2.summaryVersion);
 		Chat.Message q3 = user(chat, "Q3");
 		ChatApi.Conversation c = send(chat, q3, false, null);
-		assertNull(c.turns.get(1).rawContent);
-		assertSame(RAW, c.turns.get(3).rawContent);
+		assertNull(c.turns.get(1).rawMessages);
+		assertSame(RAW, c.turns.get(3).rawMessages);
 
 		// A reply built on plain-text history: everything goes as text from now on.
 		ConversationBuilder.forgetRaw(chat);
-		assertNull(a2.rawContent);
-		assertNull(a2.rawModel);
-		assertNull(a2.rawSystem);
-		assertNull(send(chat, q3, false, null).turns.get(3).rawContent);
+		assertNull(a2.rawMessages);
+		assertNull(a2.rawKey);
+		assertNull(send(chat, q3, false, null).turns.get(3).rawMessages);
 	}
 
 	@Test

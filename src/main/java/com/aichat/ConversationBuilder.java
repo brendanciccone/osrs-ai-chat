@@ -122,7 +122,7 @@ final class ConversationBuilder
 
 	/**
 	 * Whether an earlier reply may go back exactly as it came, reasoning included (the provider also checks it was
-	 * made with the same model and instructions). Claude accepts that only when everything before it is unchanged: not
+	 * made with the same model, instructions and tools). Claude accepts that only when everything before it is unchanged: not
 	 * once a newer summary is sent in place of older messages, and not with character notes left out.
 	 */
 	static boolean replayable(Chat chat, Chat.Message m, boolean notesLeftOut)
@@ -132,17 +132,15 @@ final class ConversationBuilder
 
 	private static void replay(ChatApi.Turn t, Chat.Message m)
 	{
-		t.rawContent = m.rawContent;
-		t.rawModel = m.rawModel;
-		t.rawSystem = m.rawSystem;
+		t.rawMessages = m.rawMessages;
+		t.rawKey = m.rawKey;
 	}
 
 	/** Keeps on a new reply what's needed to send it back exactly as it came next time. */
-	static void recordReply(Chat.Message answer, Chat.Message question, ChatApi.Reply reply, String system)
+	static void recordReply(Chat.Message answer, Chat.Message question, ChatApi.Reply reply)
 	{
-		answer.rawContent = reply.rawContent;
-		answer.rawModel = reply.model;
-		answer.rawSystem = system;
+		answer.rawMessages = reply.rawMessages;
+		answer.rawKey = reply.rawKey;
 		answer.summaryVersion = question.summaryVersion;
 	}
 
@@ -151,9 +149,8 @@ final class ConversationBuilder
 	{
 		for (Chat.Message m : chat.messages)
 		{
-			m.rawContent = null;
-			m.rawModel = null;
-			m.rawSystem = null;
+			m.rawMessages = null;
+			m.rawKey = null;
 		}
 	}
 
