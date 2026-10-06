@@ -38,6 +38,14 @@ class Chat
 		 */
 		JsonArray rawMessages;
 		String rawKey;
+		/**
+		 * What was looked up or shared while this was being answered, one line each ("Searched the Wiki for ..."): on
+		 * the reply, or on the error or note that ended the request. Empty or null when nothing was.
+		 */
+		List<String> activity;
+		/** The tokens an ASSISTANT reply (or the summary in a NOTE) used, and the model that answered; null if unknown. */
+		ChatApi.Usage usage;
+		String model;
 
 		Message(Role role, String text)
 		{
