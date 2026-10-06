@@ -90,7 +90,7 @@ public interface AiChatConfig extends Config
 
 	@ConfigSection(
 		name = "Your character",
-		description = "Optionally tell the assistant about your character",
+		description = "Optionally let the assistant know your character, and see your items and gear",
 		position = 4
 	)
 	String CHARACTER = "character";
@@ -105,7 +105,7 @@ public interface AiChatConfig extends Config
 	@ConfigItem(
 		keyName = "aiRequests",
 		name = "Enable AI requests",
-		description = "Send your messages to the AI provider you choose. Nothing is sent while this is off.",
+		description = "Send your messages to the AI provider you choose. Nothing is sent anywhere while this is off, Wiki look-ups included.",
 		warning = "This feature submits your IP address and the messages you type to the AI provider you choose: a 3rd-party server not controlled or verified by RuneLite developers.",
 		section = ASSISTANT,
 		position = 0
@@ -239,14 +239,39 @@ public interface AiChatConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "wikiLookups",
+		name = "Wiki look-ups",
+		description = "Let the assistant search and read the OSRS Wiki while it answers, and link the pages it used. The Wiki gets the search words and page titles, and your IP address; nothing about your account.",
+		section = ASSISTANT,
+		position = 3
+	)
+	default boolean wikiLookups()
+	{
+		return true;
+	}
+
+	@ConfigItem(
 		keyName = "sendCharacter",
 		name = "Send character info",
-		description = "Send your character name, levels and quest progress with your messages, for answers that fit your account. Off by default.",
-		warning = "This feature submits your IP address, character name, skill levels and quest progress with your messages to the AI provider you choose: a 3rd-party server not controlled or verified by RuneLite developers.",
+		description = "Send your character name, account type (ironman or not), levels and quest progress with your messages, and let the assistant look up your Slayer task and achievement diaries, for answers that fit your account. Off by default.",
+		warning = "This feature submits your IP address, character name, account type, skill levels, quest progress, Slayer task and achievement diaries with your messages to the AI provider you choose: a 3rd-party server not controlled or verified by RuneLite developers.",
 		section = CHARACTER,
 		position = 0
 	)
 	default boolean sendCharacter()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "shareItems",
+		name = "Share items and gear",
+		description = "Let the assistant look at your equipment, inventory and bank (as it was when you last had it open) when a question needs them. Each look is listed under the reply. Off by default.",
+		warning = "This feature submits your IP address and the items you wear, carry and keep in your bank, with their prices, to the AI provider you choose when the assistant looks at them: a 3rd-party server not controlled or verified by RuneLite developers.",
+		section = CHARACTER,
+		position = 1
+	)
+	default boolean shareItems()
 	{
 		return false;
 	}
