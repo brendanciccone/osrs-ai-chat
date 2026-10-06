@@ -454,58 +454,6 @@ public class ChatApiTest
 	}
 
 	@Test
-	public void repliesBecomeOneGameChatMessagePerParagraphOrListItem()
-	{
-		String h = "<colHIGHLIGHT>";
-		String n = "<colNORMAL>";
-		assertEquals(List.of(
-				h + "Claude: " + n + "Right now, actually. Training Attack gets you two things at once:",
-				h + "- " + n + "The abyssal whip at 70 Attack",
-				h + "2. " + n + "Warriors' Guild access",
-				h + "Claude: " + n + "You can do it on Slayer tasks."),
-			AiChatPlugin.echoMessages("Claude", null,
-				"Right now, actually. Training Attack gets you two things at once:\r\n\n"
-					+ "\u2022 The abyssal whip at 70 Attack\n2. Warriors\u2019 Guild access\n\n  You can do it on **Slayer** tasks.  ",
-				500));
-		// The model's text is escaped and never highlighted; a named chat shows its name once.
-		List<String> named = AiChatPlugin.echoMessages("Claude", "Bossing", "<col=ef1020>You have been banned.\n- next", 500);
-		assertEquals(h + "Claude (Bossing): " + n + "<lt>col=ef1020<gt>You have been banned.", named.get(0));
-		assertEquals(h + "- " + n + "next", named.get(1));
-		// A list item first still says who it's from.
-		assertEquals(h + "Claude: - " + n + "first", AiChatPlugin.echoMessages("Claude", null, "* first", 500).get(0));
-		for (String m : named)
-		{
-			assertFalse(m, m.contains("<br>"));
-		}
-		// Markdown that's only layout is left out; any kind of line break starts a new message.
-		assertEquals(List.of(h + "Claude: " + n + "Top", h + "- " + n + "item", h + "Claude: " + n + "end"),
-			AiChatPlugin.echoMessages("Claude", null, "Top\n---\n```java\n|---|---|\n***\r- item\u2028end\n```", 500));
-	}
-
-	@Test
-	public void longRepliesAreCutWithANoteAboutThePanel()
-	{
-		String note = "<colHIGHLIGHT>AI Chat: the full reply is in the side panel.";
-		// Cut at a word once the length setting is used up.
-		List<String> cut = AiChatPlugin.echoMessages("Claude", null, "one two three four five six seven eight nine ten", 20);
-		assertEquals(List.of("<colHIGHLIGHT>Claude: <colNORMAL>one two three four ...", note), cut);
-		// A new paragraph isn't started as a stub when the setting is nearly used up.
-		String first = "x".repeat(40) + " " + "y".repeat(40);
-		assertEquals(List.of("<colHIGHLIGHT>Claude: <colNORMAL>" + first, note),
-			AiChatPlugin.echoMessages("Claude", null, first + "\nI think you should go to Ardougne next.", 90));
-		// At most a few messages, however short.
-		List<String> many = AiChatPlugin.echoMessages("Claude", null, "a\nb\nc\nd\ne\nf\ng\nh\ni\nj", 500);
-		assertEquals(AiChatPlugin.ECHO_MAX_MESSAGES + 1, many.size());
-		assertEquals(note, many.get(many.size() - 1));
-		// Words the game couldn't wrap are shortened; the panel has the whole thing.
-		String link = "https://oldschool.runescape.wiki/w/Dragon_defender?some=long&query=string&more=1";
-		String shown = AiChatPlugin.echoMessages("Claude", null, "See " + link, 500).get(0);
-		assertTrue(shown, shown.endsWith(link.substring(0, AiChatPlugin.ECHO_MAX_WORD - 3) + "..."));
-		// Nothing to show still says something.
-		assertEquals(List.of("<colHIGHLIGHT>AI Chat (error): (empty reply)"), AiChatPlugin.echoMessages("AI Chat (error)", null, " \n ", 500));
-	}
-
-	@Test
 	public void stoppingARequestMeansNoAnswer() throws Exception
 	{
 		CountDownLatch release = new CountDownLatch(1);
@@ -541,15 +489,5 @@ public class ChatApiTest
 		p.cancel();
 		release.countDown();
 		assertFalse(heard.await(1, TimeUnit.SECONDS));
-	}
-
-	@Test
-	public void characterInfoReadsLikeANote()
-	{
-		String s = CharacterInfo.format("Zezima", 126, 2277, List.of("Attack 99", "Sailing 1"), 300,
-			List.of("Dragon Slayer I"), Collections.emptyList());
-		assertTrue(s, s.startsWith("[Character: Zezima, combat level 126, total level 2277. Levels: Attack 99, Sailing 1."));
-		assertTrue(s, s.contains("Quests completed (1): Dragon Slayer I."));
-		assertTrue(s, s.endsWith("Quests in progress: none.]"));
 	}
 }

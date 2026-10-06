@@ -13,8 +13,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
 import lombok.Getter;
@@ -27,8 +25,6 @@ import net.runelite.api.events.ScriptCallbackEvent;
 import net.runelite.api.gameval.VarClientID;
 import net.runelite.client.Notifier;
 import net.runelite.client.callback.ClientThread;
-import net.runelite.client.chat.ChatColorType;
-import net.runelite.client.chat.ChatMessageBuilder;
 import net.runelite.client.chat.ChatMessageManager;
 import net.runelite.client.chat.QueuedMessage;
 import net.runelite.client.config.ConfigManager;
@@ -61,16 +57,6 @@ public class AiChatPlugin extends Plugin
 {
 	/** Typed in the chatbox: "::ai what should I train next?". */
 	private static final String PREFIX = "::ai";
-	/** Game chat messages per reply (the game wraps each one), not counting the note that it was cut. */
-	static final int ECHO_MAX_MESSAGES = 8;
-	/** Longer words (links) are shortened in game chat: the game wraps only at spaces and hyphens. */
-	static final int ECHO_MAX_WORD = 60;
-	/** "- item", "* item", "+ item", bullet, "1. item", "2) item". */
-	private static final Pattern LIST_ITEM = Pattern.compile("([-*+\u2022]|\\d{1,3}[.)])\\s+(.+)");
-	/** Markdown that's only layout (rules, code fences, table borders): left out of game chat. */
-	private static final Pattern LAYOUT_ONLY = Pattern.compile("```.*|[-*_=#|`~:+ ]+");
-	/** A paragraph isn't started with less than this much of the length setting left: it'd be a stub. */
-	private static final int ECHO_MIN_PART = 20;
 	/** Earlier messages sent with each request; older ones are left out to keep requests (and costs) bounded. */
 	private static final int MAX_HISTORY = 40;
 
@@ -1027,117 +1013,15 @@ public class AiChatPlugin extends Plugin
 	/** Client thread. {@code chatName}: shown with the first message, or null. */
 	private void echo(String label, String chatName, String text)
 	{
-		for (String message : echoMessages(label, chatName, text, config.echoMaxChars()))
+		for (String message : GameChatEcho.echoMessages(label, chatName, text, config.echoMaxChars()))
 		{
 			queueChat(message);
 		}
 	}
 
-	/**
-	 * A reply as game chat: one message per paragraph or list item, which the game wraps to the chatbox's width.
-	 * Each starts with a marker drawn in the highlight colour (who it's from, or the list marker), so only the game's
-	 * own wrapped rows go unmarked. The model's text is escaped and never in the highlight colour: it can't draw a
-	 * marker, or pass for one of the game's red warnings.
-	 */
-	static List<String> echoMessages(String label, String chatName, String text, int maxChars)
-	{
-		List<String> messages = new ArrayList<>();
-		int left = maxChars;
-		boolean cut = false;
-		for (String raw : text.split("\\r\\n|[\\n\\r\u2028\u2029]"))
-		{
-			String line = chatText(raw);
-			if (line.isEmpty() || LAYOUT_ONLY.matcher(line).matches())
-			{
-				continue;
-			}
-			if (messages.size() == ECHO_MAX_MESSAGES || left <= 0)
-			{
-				cut = true;
-				break;
-			}
-			String marker = null;
-			Matcher item = LIST_ITEM.matcher(line);
-			if (item.matches())
-			{
-				marker = Character.isDigit(line.charAt(0)) ? item.group(1) : "-";
-				line = item.group(2);
-			}
-			if (line.length() > left && left < ECHO_MIN_PART && !messages.isEmpty())
-			{
-				cut = true;
-				break;
-			}
-			if (line.length() > left)
-			{
-				line = cutAtSpace(line, left) + " ...";
-				cut = true;
-			}
-			left -= line.length();
-			String lead;
-			if (messages.isEmpty())
-			{
-				lead = label + (chatName == null ? "" : " (" + ChatApi.shorten(chatName, 30) + ")") + ":"
-					+ (marker == null ? "" : " " + marker);
-			}
-			else
-			{
-				lead = marker != null ? marker : label + ":";
-			}
-			messages.add(new ChatMessageBuilder()
-				.append(ChatColorType.HIGHLIGHT).append(lead + " ")
-				.append(ChatColorType.NORMAL).append(line)
-				.build());
-			if (cut)
-			{
-				break;
-			}
-		}
-		if (messages.isEmpty())
-		{
-			messages.add(highlighted(label + ": (empty reply)"));
-		}
-		if (cut)
-		{
-			messages.add(highlighted("AI Chat: the full reply is in the side panel."));
-		}
-		return messages;
-	}
-
-	/** A line of a reply for the chat font: plain punctuation, no Markdown bold or headings, no overlong words. */
-	static String chatText(String raw)
-	{
-		String s = raw
-			.replace('\u2018', '\'').replace('\u2019', '\'')
-			.replace('\u201C', '"').replace('\u201D', '"')
-			.replace('\u2013', '-').replace('\u2014', '-')
-			.replace("\u2026", "...").replace("**", "")
-			.replaceAll("[\\s\\p{Z}\\p{Cc}]+", " ").trim()
-			.replaceFirst("^#{1,6} ", "");
-		StringBuilder out = new StringBuilder();
-		for (String word : s.split(" "))
-		{
-			out.append(out.length() == 0 ? "" : " ")
-				.append(word.length() <= ECHO_MAX_WORD ? word : word.substring(0, ECHO_MAX_WORD - 3) + "...");
-		}
-		return out.toString();
-	}
-
-	/** {@code s} cut to at most {@code max} characters, at a space if there's one in the second half. */
-	static String cutAtSpace(String s, int max)
-	{
-		int space = s.lastIndexOf(' ', max);
-		return (space > max / 2 ? s.substring(0, space) : s.substring(0, max)).trim();
-	}
-
-	private static String highlighted(String text)
-	{
-		return new ChatMessageBuilder().append(ChatColorType.HIGHLIGHT).append(text).build();
-	}
-
 	private void gameMessage(String text)
 	{
-		queueChat(highlighted(text));
+		queueChat(GameChatEcho.highlighted(text));
 	}
 
 	/** Thread-safe: the queue is flushed on the client thread. ChatMessageBuilder.append(String) escapes tags. */
