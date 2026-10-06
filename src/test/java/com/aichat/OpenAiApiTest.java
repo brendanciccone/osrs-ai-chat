@@ -277,6 +277,40 @@ public class OpenAiApiTest
 		assertEquals("Be brief.", systemOf(3));
 	}
 
+	@Test
+	public void servicesThatRefuseToolsInTheirOwnWordsGetNone() throws Exception
+	{
+		String[][] refusals = {
+			{"404", "{\"error\":{\"message\":\"No endpoints found that support tool use. Try disabling \\\"wiki_search\\\". "
+				+ "To learn more about provider routing, visit: https://openrouter.ai/docs/provider-routing\",\"code\":404}}"},
+			{"400", "{\"error\":{\"message\":\"\\\"auto\\\" tool choice requires --enable-auto-tool-choice and "
+				+ "--tool-call-parser to be set\",\"type\":\"BadRequestError\",\"param\":null,\"code\":400}}"},
+			{"400", "{\"object\":\"error\",\"message\":\"\\\"auto\\\" tool choice requires --enable-auto-tool-choice and "
+				+ "--tool-call-parser to be set\",\"type\":\"BadRequestError\",\"param\":null,\"code\":400}"},
+		};
+		for (String[] refusal : refusals)
+		{
+			server.clear();
+			server.answer(PATH, json(Integer.parseInt(refusal[0]), refusal[1]), events(content("Hi"), finish("stop"), DONE));
+			ChatApi.Conversation c = conversation("m", "hi");
+			c.tools.add(StandIn.tool("wiki_search"));
+			c.toolRunner = new StandIn.Tools();
+			Map<String, Set<String>> refused = new ConcurrentHashMap<>();
+			ChatApi.Reply reply = send(compatible("m", "low", refused), c).reply();
+			assertTrue(refusal[1], reply.toolsUnavailable);
+			assertFalse(server.bodies.get(1).has("tools"));
+			assertEquals(Set.of("tools"), refused.values().iterator().next());
+		}
+
+		// A model that isn't there is still explained as one.
+		server.clear();
+		server.answer(PATH, json(404, "{\"error\":{\"message\":\"The model `m` does not exist\"}}"));
+		ChatApi.Conversation c = conversation("m", "hi");
+		c.tools.add(StandIn.tool("wiki_search"));
+		assertTrue(send(compatible("m"), c).error().startsWith("Not found at"));
+		assertEquals(1, server.bodies.size());
+	}
+
 	private String systemOf(int request)
 	{
 		return server.bodies.get(request).getAsJsonArray("messages").get(0).getAsJsonObject().get("content").getAsString();

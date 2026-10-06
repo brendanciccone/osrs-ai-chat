@@ -219,6 +219,20 @@ class OpenAiApi implements ChatApi
 		return null;
 	}
 
+	/** How a model or service says it can't take tools without naming the field: "tool use", "tool choice"... */
+	private static final Pattern NO_TOOLS_HERE = Pattern.compile(
+		"(?i)tool[ _-]?(use|choice|calling)|function[ _-]?calling|support(s|ed)? tools");
+
+	/**
+	 * Whether an error answer says tools can't be used at all, in other words than {@link #rejectedOption} looks for:
+	 * OpenRouter's 404 "No endpoints found that support tool use" (no host of the model takes them), and vLLM's
+	 * "auto" tool choice requiring --enable-auto-tool-choice (a server started without them).
+	 */
+	static boolean refusesTools(int code, String errorBody)
+	{
+		return (code == 400 || code == 404 || code == 422) && errorBody != null && NO_TOOLS_HERE.matcher(errorBody).find();
+	}
+
 	/** OpenAI names the offending parameter in error.param. */
 	private static String errorParam(Gson gson, String errorBody)
 	{
@@ -426,8 +440,10 @@ class OpenAiApi implements ChatApi
 		{
 			int code = response.code();
 			// A model that doesn't take one of our optional settings says so: once per setting, do without it.
-			// 400 from most services, 422 from those that validate the request's fields (Mistral).
-			String rejected = code == 400 || code == 422 ? rejectedOption(gson, sent, text) : null;
+			// 400 from most services, 422 from those that validate the request's fields (Mistral). One that can't take
+			// tools at all may say so in its own words, and OpenRouter with a 404.
+			String rejected = sent.has("tools") && refusesTools(code, text) ? "tools"
+				: code == 400 || code == 422 ? rejectedOption(gson, sent, text) : null;
 			// A model that has just called tools can use them: an error about them now is about something else.
 			if ("tools".equals(rejected) && produced.size() > 0)
 			{
