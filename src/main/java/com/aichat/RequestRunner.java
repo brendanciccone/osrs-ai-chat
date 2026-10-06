@@ -28,6 +28,12 @@ final class RequestRunner
 		boolean aiRequests();
 
 		/**
+		 * "Send character info" (and AI requests), right now. A message keeps the setting it was sent with, but a summary
+		 * first can take a while: turning it off meanwhile leaves the details out all the same.
+		 */
+		boolean shareCharacter();
+
+		/**
 		 * Reads the character details to send with a message and hands them to {@code done}, on any thread: null when
 		 * there are none (not logged in, or they couldn't be read).
 		 */
@@ -197,6 +203,12 @@ final class RequestRunner
 	private void summarise(Outgoing out, List<Chat.Message> old)
 	{
 		Chat chat = out.chat;
+		// The setting may have been turned off just now, with the stop it brings still waiting its turn on the EDT.
+		if (!host.aiRequests())
+		{
+			stop(chat, "Stopped: AI requests are turned off.");
+			return;
+		}
 		// Set before any answer can be handled: answers are handled on this (the EDT) thread, after this method.
 		ChatApi.Pending[] request = new ChatApi.Pending[1];
 		try
@@ -295,7 +307,7 @@ final class RequestRunner
 	/** Reads the character details first if they go with the message, then sends it. */
 	private void readCharacter(Outgoing out)
 	{
-		if (!out.setup.shareCharacter)
+		if (!shareCharacter(out))
 		{
 			dispatch(out, null);
 			return;
@@ -312,6 +324,12 @@ final class RequestRunner
 		}));
 	}
 
+	/** Whether character details go with the message: they did when it was sent, and still do. */
+	private boolean shareCharacter(Outgoing out)
+	{
+		return out.setup.shareCharacter && host.shareCharacter();
+	}
+
 	/** Sends the chat so far. {@code context}: the character details read for the message, if any. */
 	private void dispatch(Outgoing out, String context)
 	{
@@ -322,7 +340,7 @@ final class RequestRunner
 			return;
 		}
 		ChatApi.Conversation conversation = ConversationBuilder.conversation(chat, out.message, out.setup.model,
-			out.setup.system, out.setup.shareCharacter, context);
+			out.setup.system, shareCharacter(out), context);
 		if (out.message.context != null)
 		{
 			// The character details go with it: the transcript says so under the message, and the chat is saved with them.

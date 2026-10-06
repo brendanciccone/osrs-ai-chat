@@ -651,6 +651,12 @@ public class AiChatPlugin extends Plugin
 		}
 
 		@Override
+		public boolean shareCharacter()
+		{
+			return config.aiRequests() && config.sendCharacter();
+		}
+
+		@Override
 		public void readCharacter(Consumer<String> done)
 		{
 			// invokeLater: reading quest states runs a game script, which can't happen inside another one.
@@ -678,7 +684,7 @@ public class AiChatPlugin extends Plugin
 			// while a reply is being written stops the sharing at once.
 			GameDataTools game = new GameDataTools(gameData, clientThread::invoke, executor,
 				() -> setup.shareItems && canShareItems(),
-				() -> setup.shareCharacter && config.aiRequests() && config.sendCharacter(),
+				() -> setup.shareCharacter && shareCharacter(),
 				activity);
 			return new ToolBox(lookups, game, started);
 		}

@@ -93,6 +93,7 @@ public class RequestRunnerTest
 		final List<Chat> chats = new ArrayList<>();
 		final List<Chat.Message> ended = new ArrayList<>();
 		boolean ai = true;
+		boolean character = true;
 		int changed;
 		int live;
 		Consumer<String> characterRead;
@@ -103,6 +104,12 @@ public class RequestRunnerTest
 		public boolean aiRequests()
 		{
 			return ai;
+		}
+
+		@Override
+		public boolean shareCharacter()
+		{
+			return character;
 		}
 
 		@Override
@@ -818,6 +825,62 @@ public class RequestRunnerTest
 		assertFalse(chat.isRunning());
 		assertEquals("Stopped: AI requests are turned off.", chat.messages.get(chat.messages.size() - 1).text);
 		assertTrue(chat.messages.get(0).unanswered);
+	}
+
+	@Test
+	public void characterDetailsTurnedOffMeanwhileDontGo()
+	{
+		history(20);
+		chat.messages.get(38).context = "[Character: Old note]";
+		runner.send(chat, "Q21", setup(true, false, true));
+		runEdt();
+		assertTrue(chat.isSummarizing());
+		// "Send character info" is turned off while the summary is being made.
+		host.character = false;
+		api.listener().onReply(reply("The player is training Agility.", 50, 10));
+		runEdt();
+		assertNull("not even read", host.characterRead);
+		assertEquals(2, api.sent.size());
+		for (ChatApi.Turn t : api.last().turns)
+		{
+			assertFalse("earlier notes stay out too: " + t.text, t.text.contains("[Character:"));
+		}
+		assertNull(chat.messages.get(chat.messages.size() - 1).context);
+
+		// Or while they're being read.
+		api.listener().onReply(reply("a", 1, 1));
+		runEdt();
+		host.character = true;
+		runner.send(chat, "Q22", setup(true, false, true));
+		runEdt();
+		host.character = false;
+		host.characterRead.accept("[Character: Zezima, an ironman]");
+		runEdt();
+		assertEquals("Q22", lastTurn(api.last()));
+		assertNull(chat.messages.get(chat.messages.size() - 1).context);
+	}
+
+	@Test
+	public void noSummaryGoesOnceAiRequestsAreOff()
+	{
+		history(3);
+		Chat.Message question = send("Q4");
+		// Turned off just now: the stop that brings is still waiting its turn on the EDT when the provider answers.
+		host.ai = false;
+		api.listener().onError(ChatApi.tooLong("claude-opus-5-5", ""));
+		runEdt();
+		assertEquals("no summary request", 1, api.sent.size());
+		assertFalse(chat.isRunning());
+		assertTrue(question.unanswered);
+		assertEquals("Stopped: AI requests are turned off.", chat.messages.get(chat.messages.size() - 1).text);
+		assertSame(question, RequestRunner.retryable(chat));
+
+		// Nor for a chat that's long.
+		history(20);
+		runner.send(chat, "Q25", setup());
+		runEdt();
+		assertEquals(1, api.sent.size());
+		assertFalse(chat.isRunning());
 	}
 
 	@Test
