@@ -591,6 +591,26 @@ public class LookupToolsTest
 		assertEquals("A [[File:B.png|thumb| caption\n\nRest", WikiClient.clean("A [[File:B.png|thumb| caption\n\n\n\nRest"));
 		assertEquals("A.B.C.", WikiClient.clean("A.<ref>one</ref>B.<REF name=\"x\"/>C.<references />"));
 		assertEquals("{{Infobox Monster\n|combat = 124\n}}", WikiClient.clean("{{Infobox Monster\n|combat = 124\n}}\n__NOTOC__  "));
+		assertEquals("A.B.C.", WikiClient.clean("A.<references>\n<ref name=\"x\">one</ref>\n</references >B.<Gallery mode=x>\nC.png\n</GALLERY>C."));
+		// Only whole tag names: these aren't footnotes or galleries.
+		assertEquals("<refx>a</refx> <galleryish>b</galleryish>", WikiClient.clean("<refx>a</refx> <galleryish>b</galleryish>"));
+	}
+
+	@Test
+	public void pagesFullOfTagsLeftOpenAreStillCleanedQuickly()
+	{
+		// One vandalised page shouldn't hold up a look-up: a regex took seconds on a tenth of this.
+		StringBuilder page = new StringBuilder("Start ");
+		for (int i = 0; i < 20_000; i++)
+		{
+			page.append("<ref>x ").append("<gallery>y ").append("<references ");
+		}
+		long started = System.nanoTime();
+		String cleaned = WikiClient.clean(page.append("end").toString());
+		assertTrue("took " + (System.nanoTime() - started) / 1_000_000 + "ms", System.nanoTime() - started < TimeUnit.SECONDS.toNanos(2));
+		// Tags that are never closed are left as they are, and so is what follows them.
+		assertTrue(cleaned.startsWith("Start <ref>x"));
+		assertTrue(cleaned.endsWith("end"));
 	}
 
 	@Test

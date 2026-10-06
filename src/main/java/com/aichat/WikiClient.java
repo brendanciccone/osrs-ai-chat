@@ -53,12 +53,8 @@ final class WikiClient
 	private static final Pattern SPACES = Pattern.compile("\\s+");
 	/** An HTML comment, also one left open at the end. */
 	private static final Pattern COMMENT = Pattern.compile("(?s)<!--.*?(-->|$)");
-	/** A footnote: {@code <ref name="x" />}, or {@code <ref>...</ref>} with what's inside. */
-	private static final Pattern REF_EMPTY = Pattern.compile("(?i)<ref\\b[^>]*/\\s*>");
-	private static final Pattern REF = Pattern.compile("(?is)<ref\\b[^>]*>.*?</ref\\s*>");
-	/** Where the footnotes were listed, and image galleries: nothing left to read in either. */
-	private static final Pattern LEFTOVERS = Pattern.compile(
-		"(?is)<references\\b[^>]*/\\s*>|\\{\\{\\s*reflist\\s*}}|<gallery\\b.*?</gallery\\s*>");
+	/** Where the footnotes were listed. */
+	private static final Pattern REFLIST = Pattern.compile("(?i)\\{\\{\\s*reflist\\s*}}");
 	/** Images, sounds and the page's categories. A link to one starts with a colon instead and is left alone. */
 	private static final Pattern FILE_LINK = Pattern.compile("(?i)\\[\\[\\s*(file|image|media|category)\\s*:");
 	/** Page layout switches such as __NOTOC__. */
@@ -558,14 +554,100 @@ final class WikiClient
 	{
 		String s = wikitext.replace("\r\n", "\n").replace('\r', '\n');
 		s = COMMENT.matcher(s).replaceAll("");
-		s = REF_EMPTY.matcher(s).replaceAll("");
-		s = REF.matcher(s).replaceAll("");
-		s = LEFTOVERS.matcher(s).replaceAll("");
+		// Footnotes, where they were listed, and image galleries: nothing left to read in any of them.
+		s = withoutElements(s, "ref");
+		s = withoutElements(s, "references");
+		s = withoutElements(s, "gallery");
+		s = REFLIST.matcher(s).replaceAll("");
 		s = withoutFileLinks(s);
 		s = MAGIC_WORD.matcher(s).replaceAll("");
 		s = TRAILING_SPACES.matcher(s).replaceAll("");
 		s = BLANK_LINES.matcher(s).replaceAll("\n\n");
 		return s.trim();
+	}
+
+	/**
+	 * {@code s} without its {@code <name ...>...</name>} and {@code <name ... />} elements, any case. Done by hand: a
+	 * regex looks for the end of every tag left open all the way to the end of the page, which takes seconds on a page
+	 * full of them. A tag that's never closed, and what follows it, is left as it is.
+	 */
+	static String withoutElements(String s, String name)
+	{
+		StringBuilder out = new StringBuilder(s.length());
+		int from = 0;
+		int open = indexOfTag(s, "<" + name, 0);
+		while (open >= 0)
+		{
+			int tagEnd = s.indexOf('>', open);
+			if (tagEnd < 0)
+			{
+				break;
+			}
+			int end;
+			int last = tagEnd - 1;
+			while (last > open && Character.isWhitespace(s.charAt(last)))
+			{
+				last--;
+			}
+			if (s.charAt(last) == '/')
+			{
+				end = tagEnd + 1;
+			}
+			else
+			{
+				end = closeEnd(s, name, tagEnd + 1);
+				if (end < 0)
+				{
+					break;
+				}
+			}
+			out.append(s, from, open);
+			from = end;
+			open = indexOfTag(s, "<" + name, end);
+		}
+		return out.append(s, from, s.length()).toString();
+	}
+
+	/**
+	 * Where {@code <name} starts at or after {@code from}, any case, as a whole tag name ("<ref" but not "<references"),
+	 * or -1.
+	 */
+	private static int indexOfTag(String s, String open, int from)
+	{
+		for (int i = from; i + open.length() <= s.length(); i++)
+		{
+			if (s.charAt(i) == '<' && s.regionMatches(true, i, open, 0, open.length()))
+			{
+				int after = i + open.length();
+				if (after == s.length() || !Character.isLetterOrDigit(s.charAt(after)) && s.charAt(after) != '_')
+				{
+					return i;
+				}
+			}
+		}
+		return -1;
+	}
+
+	/** Just after the first {@code </name >} at or after {@code from}, any case, or -1 if there's none. */
+	private static int closeEnd(String s, String name, int from)
+	{
+		String close = "</" + name;
+		for (int i = from; i + close.length() <= s.length(); i++)
+		{
+			if (s.charAt(i) == '<' && s.regionMatches(true, i, close, 0, close.length()))
+			{
+				int j = i + close.length();
+				while (j < s.length() && Character.isWhitespace(s.charAt(j)))
+				{
+					j++;
+				}
+				if (j < s.length() && s.charAt(j) == '>')
+				{
+					return j + 1;
+				}
+			}
+		}
+		return -1;
 	}
 
 	/** Image links can hold links of their own in the caption: [[File:Whip.png|thumb|An [[abyssal demon]] drop]]. */
