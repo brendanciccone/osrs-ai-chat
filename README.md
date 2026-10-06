@@ -60,11 +60,12 @@ there's no server in between.
   as part of the reply it's for. Claude also gets the look-ups of earlier replies again with each new message in that
   chat, while RuneLite stays open. Every look-up is listed under the reply it was for, such as "Read the Wiki page
   "Vorkath"" or "Shared your bank", so you can always see what was sent.
-- **Only while "Send character info" is on:** your character name, account type (a regular account or which kind
-  of ironman), combat and total level, skill levels, quest points, and which quests you've completed or started.
-  Added to your first message in a chat and again when something changed, and sent along with the rest of that chat;
-  turning the setting off leaves it out again. The assistant can also look up your current Slayer task (with your
-  Slayer points and task streak) and which achievement diaries you've completed, when a question needs them.
+- **Only while "Send character info" is on:** your character name, account type (a regular account or which kind of
+  ironman), combat and total level, skill levels, quest points, and which quests you've completed or started. Added to
+  your first message in a chat and again when something changed (that message says "Sent your character details"; click
+  it to see them), and sent along with the rest of that chat; turning the setting off leaves it out again. The assistant
+  can also look up your current Slayer task (with your Slayer points and task streak) and which achievement diaries
+  you've completed, when a question needs them.
 - **Only while "Share items and gear" is on:** the assistant can look at your worn equipment, your inventory, and
   your bank as it was the last time you had it open (since RuneLite started, on the account you're logged in to),
   with Grand Exchange prices, when a question needs them. AI Chat keeps that last look at your bank in memory only,

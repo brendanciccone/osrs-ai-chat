@@ -786,9 +786,13 @@ public class RequestRunnerTest
 		runner.send(chat, "What should I train?", setup(true, false, true));
 		runEdt();
 		assertTrue("waits for the game", api.sent.isEmpty());
+		int changes = host.changed;
 		host.characterRead.accept("[Character: Zezima, an ironman]");
 		runEdt();
 		assertEquals("[Character: Zezima, an ironman]\n\nWhat should I train?", lastTurn(api.last()));
+		// The panel shows what went with the message, as soon as it's gone.
+		assertEquals("[Character: Zezima, an ironman]", chat.messages.get(0).context);
+		assertTrue(host.changed > changes);
 	}
 
 	@Test

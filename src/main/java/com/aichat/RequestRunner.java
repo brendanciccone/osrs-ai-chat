@@ -322,6 +322,11 @@ final class RequestRunner
 		}
 		ChatApi.Conversation conversation = ConversationBuilder.conversation(chat, out.message, out.setup.model,
 			out.setup.system, out.setup.shareCharacter, context);
+		if (out.message.context != null)
+		{
+			// The character details go with it: the transcript says so under the message, and the chat is saved with them.
+			host.changed(chat);
+		}
 		// This request's look-ups. They go with whatever ends it, so a look-up that finishes after a Stop is still shown.
 		List<String> activity = chat.liveActivity;
 		// Set before any answer can be handled: answers are handled on this (the EDT) thread, after this method.

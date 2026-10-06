@@ -3,6 +3,7 @@ package com.aichat;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.Insets;
@@ -347,12 +348,14 @@ class AiChatPanel extends PluginPanel
 		}
 		int unanswered = 0;
 		int looked = 0;
+		int shared = 0;
 		for (Chat.Message m : chat.messages)
 		{
 			unanswered += m.unanswered ? 1 : 0;
 			looked += m.activity == null ? 0 : m.activity.size();
+			shared += m.context != null ? 1 : 0;
 		}
-		return chat.id + ":" + chat.messages.size() + ":" + chat.isRunning() + ":" + unanswered + ":" + looked;
+		return chat.id + ":" + chat.messages.size() + ":" + chat.isRunning() + ":" + unanswered + ":" + looked + ":" + shared;
 	}
 
 	private void refreshTranscript()
@@ -515,13 +518,16 @@ class AiChatPanel extends PluginPanel
 			== JOptionPane.OK_OPTION;
 	}
 
-	/** One message in the transcript: who and when, the text, and what was looked up for it. */
+	/** One message in the transcript: who and when, the text, and what was looked up or shared for it. */
 	private final class Bubble extends JPanel
 	{
 		private final JLabel header = new PlainLabel();
 		private final JButton retry = smallButton("Retry", "Send this question again", e -> retry());
 		private final MessageView body = new MessageView();
 		private final JTextArea activity = textArea("");
+		/** Under a message sent with the character details: says so, and shows them when clicked. */
+		private final JLabel sharedLine = new PlainLabel();
+		private final JTextArea sharedText = textArea("");
 
 		Bubble()
 		{
@@ -536,11 +542,36 @@ class AiChatPanel extends PluginPanel
 			add(top, BorderLayout.NORTH);
 			body.setTextFont(TEXT_FONT);
 			add(body, BorderLayout.CENTER);
+			JPanel south = new JPanel(new StackLayout(2));
+			south.setOpaque(false);
 			activity.setOpaque(false);
 			activity.setBorder(new EmptyBorder(3, 0, 0, 0));
 			activity.setFont(SMALL_FONT);
 			activity.setForeground(MUTED_COLOR);
-			add(activity, BorderLayout.SOUTH);
+			south.add(activity);
+			sharedLine.setFont(SMALL_FONT);
+			sharedLine.setForeground(MUTED_COLOR);
+			sharedLine.setBorder(new EmptyBorder(3, 0, 0, 0));
+			sharedLine.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+			sharedLine.setToolTipText("Click to see what was sent with this message");
+			sharedLine.addMouseListener(new MouseAdapter()
+			{
+				@Override
+				public void mouseClicked(MouseEvent e)
+				{
+					if (SwingUtilities.isLeftMouseButton(e))
+					{
+						toggleShared();
+					}
+				}
+			});
+			south.add(sharedLine);
+			sharedText.setOpaque(false);
+			sharedText.setFont(SMALL_FONT);
+			sharedText.setForeground(MUTED_COLOR);
+			sharedText.setVisible(false);
+			south.add(sharedText);
+			add(south, BorderLayout.SOUTH);
 		}
 
 		/** {@code retryHere}: this message ends with an unanswered question, so Retry goes on it. */
@@ -574,6 +605,38 @@ class AiChatPanel extends PluginPanel
 					break;
 			}
 			showActivity(m.activity);
+			showShared(m.role == Chat.Role.USER ? m.context : null);
+		}
+
+		/**
+		 * The character details sent with a message, if any: the biggest thing a message can share, so it's listed
+		 * like a look-up, with the details themselves a click away (they're long). Plain text, like the rest.
+		 */
+		private void showShared(String context)
+		{
+			boolean any = context != null && !context.isEmpty();
+			sharedLine.setVisible(any);
+			if (!any)
+			{
+				sharedText.setVisible(false);
+				sharedText.setText("");
+				return;
+			}
+			if (!context.equals(sharedText.getText()))
+			{
+				sharedText.setText(context);
+				sharedText.setVisible(false);
+			}
+			sharedLine.setText("Sent your character details" + (sharedText.isVisible() ? " (hide)" : " (show)"));
+		}
+
+		private void toggleShared()
+		{
+			sharedText.setVisible(!sharedText.isVisible());
+			sharedLine.setText("Sent your character details" + (sharedText.isVisible() ? " (hide)" : " (show)"));
+			// Taller or shorter now: measured again, with the transcript around it.
+			revalidate();
+			repaint();
 		}
 
 		/** The reply on its way. {@code text}: null until its first words. */
@@ -588,6 +651,7 @@ class AiChatPanel extends PluginPanel
 			body.setMarkdown(text);
 			body.setVisible(text != null);
 			showActivity(lines);
+			showShared(null);
 		}
 
 		/** The look-ups, one per line, in plain text: they can hold words the model chose. */
