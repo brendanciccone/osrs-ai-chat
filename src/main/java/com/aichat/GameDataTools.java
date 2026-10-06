@@ -34,6 +34,9 @@ final class GameDataTools implements ChatApi.ToolRunner
 	private static final int MAX_SEARCH = 100;
 	private static final String FAILED = "Reading the game failed inside AI Chat. Answer without it.";
 	private static final String ITEMS_SETTING = "Share items and gear";
+	/** How the lines for what was shared start. */
+	private static final String SHARED = "Shared your ";
+	private static final String SEARCHED = "Searched your bank for ";
 	private static final String CHARACTER_SETTING = "Send character info";
 
 	/**
@@ -204,7 +207,22 @@ final class GameDataTools implements ChatApi.ToolRunner
 
 	private static Outcome shared(String what, String text)
 	{
-		return new Outcome("Shared your " + what, ChatApi.ToolResult.ok(text));
+		return new Outcome(SHARED + what, ChatApi.ToolResult.ok(text));
+	}
+
+	/**
+	 * The line for a call whose result was never sent: the request had stopped by the time the game answered, and a
+	 * stopped request sends nothing more. "Shared your bank" becomes "Read your bank, but didn't share it: the request
+	 * had stopped". Lines for calls that shared nothing anyway stay as they are.
+	 */
+	static String unshared(String line)
+	{
+		String why = ", but didn't share it: the request had stopped";
+		if (line.startsWith(SHARED))
+		{
+			return "Read your " + line.substring(SHARED.length()) + why;
+		}
+		return line.startsWith(SEARCHED) ? line + why : line;
 	}
 
 	private static Outcome bankOutcome(GameData.Bank bank, String search, long now)
@@ -214,7 +232,7 @@ final class GameDataTools implements ChatApi.ToolRunner
 			return new Outcome("Couldn't share your bank: it hasn't been opened yet",
 				ChatApi.ToolResult.error("The bank hasn't been opened since RuneLite started; ask the player to open it."));
 		}
-		String line = search == null ? "Shared your bank" : "Searched your bank for \"" + ChatApi.shorten(search, 60) + "\"";
+		String line = search == null ? SHARED + "bank" : SEARCHED + "\"" + ChatApi.shorten(search, 60) + "\"";
 		return new Outcome(line, ChatApi.ToolResult.ok(GameData.bankText(bank, search, now)));
 	}
 

@@ -439,9 +439,11 @@ final class RequestRunner
 	/** A tool call finished: {@code line} says what it looked up or shared. */
 	private void lookedUp(Chat chat, ChatApi.Pending request, List<String> activity, String line)
 	{
-		// Kept whatever happened to the request since: it was looked up, and the player sees what was.
-		activity.add(line);
-		if (current(chat, request))
+		// Kept whatever happened to the request since: it was looked up, and the player sees what was. But once it has
+		// stopped, the result goes nowhere: game data read too late wasn't shared after all.
+		boolean live = current(chat, request);
+		activity.add(live ? line : GameDataTools.unshared(line));
+		if (live)
 		{
 			if (chat.lookingUp)
 			{

@@ -504,10 +504,15 @@ public class RequestRunnerTest
 		runEdt();
 		runner.stop(chat);
 		int changes = host.changed;
+		host.activity.accept("Read the Wiki page \"Vorkath\"");
+		// The game answered too late: its result was dropped with the request, not sent.
 		host.activity.accept("Shared your bank");
+		host.activity.accept("Searched your bank for \"rune\"");
 		runEdt();
 		Chat.Message stopped = chat.messages.get(chat.messages.size() - 1);
-		assertEquals(Collections.singletonList("Shared your bank"), stopped.activity);
+		assertEquals(Arrays.asList("Read the Wiki page \"Vorkath\"",
+			"Read your bank, but didn't share it: the request had stopped",
+			"Searched your bank for \"rune\", but didn't share it: the request had stopped"), stopped.activity);
 		assertTrue("shown and saved", host.changed > changes);
 	}
 

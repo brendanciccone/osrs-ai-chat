@@ -324,4 +324,14 @@ public class GameDataToolsTest
 		Ended e = run(tools, "get_equipment", new JsonObject());
 		assertFalse(e.result.error);
 	}
+
+	@Test
+	public void aResultThatWasNeverSentIsntCalledShared()
+	{
+		assertEquals("Read your equipment, but didn't share it: the request had stopped",
+			GameDataTools.unshared("Shared your equipment"));
+		// Nothing was shared anyway.
+		String off = "Didn't share your bank: \"Share items and gear\" is off";
+		assertEquals(off, GameDataTools.unshared(off));
+	}
 }
