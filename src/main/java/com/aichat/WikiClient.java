@@ -40,7 +40,10 @@ final class WikiClient
 	/** The Wiki asks tools to say who they are and where to find them; RuneLite puts its own name in front. */
 	static final String USER_AGENT = "osrs-ai-chat (RuneLite plugin; https://github.com/brendanciccone/osrs-ai-chat)";
 	private static final long TIMEOUT_MILLIS = 15_000;
-	/** Seconds the Wiki and RuneLite's disk cache may keep an answer: asking again in the same chat costs nothing. */
+	/**
+	 * Seconds the Wiki's own servers may keep an answer, so asking again in the same chat costs it little. Nothing is
+	 * kept on this computer: the searches come from the player's questions.
+	 */
 	private static final String CACHE_SECONDS = "300";
 
 	private static final Pattern TAG = Pattern.compile("<[^>]*>");
@@ -160,6 +163,7 @@ final class WikiClient
 	WikiClient(OkHttpClient http, Gson gson, BooleanSupplier allowed, HttpUrl api, long timeoutMillis)
 	{
 		this.http = http.newBuilder()
+			.cache(null)
 			.connectTimeout(timeoutMillis, TimeUnit.MILLISECONDS)
 			.readTimeout(timeoutMillis, TimeUnit.MILLISECONDS)
 			.callTimeout(timeoutMillis, TimeUnit.MILLISECONDS)
