@@ -816,6 +816,9 @@ public class RequestRunnerTest
 		assertFalse(question.unanswered);
 		Chat.Message note = chat.messages.get(chat.messages.indexOf(question) - 1);
 		assertEquals("Couldn't summarise the earlier messages (you skipped it), so the whole chat was sent this time.", note.text);
+		// The summary request was on its way: some of it may have been answered, and billed, without being counted.
+		assertNotNull(note.usage);
+		assertTrue(note.usage.incomplete);
 		assertEquals(2, api.sent.size());
 		assertEquals(41, api.last().turns.size());
 
