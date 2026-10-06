@@ -241,7 +241,7 @@ public interface AiChatConfig extends Config
 	@ConfigItem(
 		keyName = "wikiLookups",
 		name = "Wiki look-ups",
-		description = "Let the assistant search and read the OSRS Wiki while it answers, and link the pages it used. The Wiki gets the search words and page titles, and your IP address; nothing about your account.",
+		description = "Let the assistant search and read the OSRS Wiki while it answers, and link the pages it used. The Wiki gets the search words and page titles, and your IP address. AI Chat adds nothing about your account, but the assistant writes the search words from your question and anything you've shared.",
 		section = ASSISTANT,
 		position = 3
 	)

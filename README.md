@@ -72,9 +72,10 @@ there's no server in between.
   and only while this setting and AI Chat itself are on.
 - Character, Slayer, diary and item look-ups only work while you're logged in.
 - **Sent to the OSRS Wiki while "Wiki look-ups" is on (it is by default):** the search words and page titles the
-  assistant looks up, and your IP address, go to oldschool.runescape.wiki. Nothing about your account goes there,
-  and nothing from the Wiki is stored on your computer. GE prices come from the price list RuneLite already keeps, so
-  checking one sends nothing anywhere.
+  assistant looks up, and your IP address, go to oldschool.runescape.wiki. AI Chat adds nothing about your account,
+  but the assistant writes the search words itself, from your question and anything you've shared with it, such as
+  an item from your bank. Nothing from the Wiki is stored on your computer. GE prices come from the price list
+  RuneLite already keeps, so checking one sends nothing anywhere.
 - **Test** asks your provider which models your API key can use: it sends the key and your IP address, nothing else.
 - **Never sent:** your account or login details, where you are in the game, what's around you, and anything about
   other players.
@@ -147,5 +148,5 @@ and OpenAI-compatible models are asked to keep their reasoning short (reasoning 
 thinking models answer much faster; a model that doesn't support that is asked normally. A few models that don't
 think by default will think a little; for those, set *Thinking* in the OpenAI-compatible section to *Model default*.
 
-Independent project, not affiliated with or endorsed by Anthropic, OpenAI, Jagex or RuneLite. The assistant can't see
-or control the game. BSD-2-Clause.
+Independent project, not affiliated with or endorsed by Anthropic, OpenAI, Jagex or RuneLite. The assistant can't
+control the game, and sees only what you choose to share (see [Privacy](#privacy)). BSD-2-Clause.
