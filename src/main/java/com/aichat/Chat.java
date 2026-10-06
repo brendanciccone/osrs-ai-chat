@@ -94,6 +94,14 @@ class Chat
 	String summary;
 	/** Goes up with every new summary. */
 	int summaryVersion;
+	/**
+	 * How many of the chat's oldest messages weren't kept when it was saved in an earlier session, and how many of those
+	 * the summary covers (see {@link ChatStore}). Messages still sent to the assistant are never among them.
+	 */
+	int leftOut;
+	int leftOutSummarized;
+	/** The note shown in their place, made when the chat was loaded; not saved itself. Null when none were left out. */
+	Message leftOutNote;
 
 	/** The request in flight, or null. */
 	ChatApi.Pending pending;

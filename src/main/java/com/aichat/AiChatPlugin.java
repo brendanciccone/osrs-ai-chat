@@ -648,6 +648,9 @@ public class AiChatPlugin extends Plugin
 		RequestRunner.cancel(chat);
 		chat.messages.clear();
 		chat.summary = null;
+		chat.leftOut = 0;
+		chat.leftOutSummarized = 0;
+		chat.leftOutNote = null;
 		saveSoon();
 		panel.refreshAll();
 	}

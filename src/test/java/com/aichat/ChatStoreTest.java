@@ -82,16 +82,66 @@ public class ChatStoreTest
 	}
 
 	@Test
-	public void longChatsKeepTheirLatestMessages()
+	public void longChatsKeepTheirLatestMessagesAndSaySo()
 	{
+		Chat c = new Chat("long");
+		c.summary = "The player is training Agility.";
+		for (int i = 0; i < 250; i++)
+		{
+			Chat.Message m = new Chat.Message(i % 2 == 0 ? Chat.Role.USER : Chat.Role.ASSISTANT, "m" + i);
+			m.summarized = i < 150;
+			c.messages.add(m);
+		}
+		Chat back = ChatStore.fromJson(gson, ChatStore.toJson(gson, List.of(c), c)).chats.get(0);
+		assertEquals(ChatStore.MAX_MESSAGES + 1, back.messages.size());
+		assertEquals("m50", back.messages.get(1).text);
+		assertEquals("m249", back.messages.get(back.messages.size() - 1).text);
+		Chat.Message note = back.messages.get(0);
+		assertEquals(Chat.Role.NOTE, note.role);
+		assertSame(note, back.leftOutNote);
+		assertEquals("The 50 oldest messages of this chat weren't kept when it was saved (AI Chat saves the latest 200 "
+			+ "of each chat). None of them were being sent to the assistant any more: the summary covers them.", note.text);
+		assertEquals("sent as before", 100, ConversationBuilder.history(back).size());
+
+		// Saved again: one note, for every message left out so far.
+		back.messages.add(new Chat.Message(Chat.Role.NOTE, "Stopped."));
+		Chat again = ChatStore.fromJson(gson, ChatStore.toJson(gson, List.of(back), back)).chats.get(0);
+		assertEquals(51, again.leftOut);
+		assertEquals(51, again.leftOutSummarized);
+		assertEquals(ChatStore.MAX_MESSAGES + 1, again.messages.size());
+		assertTrue(again.messages.get(0).text.startsWith("The 51 oldest messages"));
+
+		// The next summary still counts them.
+		List<Chat.Message> old = new ArrayList<>(ConversationBuilder.history(again).subList(0, 2));
+		Chat.Message summary = ConversationBuilder.applySummary(again, old, "Still Agility.", null);
+		assertTrue(summary.text, summary.text.startsWith("Summary of the 152 earlier messages"));
+	}
+
+	@Test
+	public void messagesStillSentAreAlwaysKept()
+	{
+		// A chat whose summaries kept failing: everything is still sent, so everything is kept.
 		Chat c = new Chat("long");
 		for (int i = 0; i < 250; i++)
 		{
 			c.messages.add(new Chat.Message(i % 2 == 0 ? Chat.Role.USER : Chat.Role.ASSISTANT, "m" + i));
 		}
 		Chat back = ChatStore.fromJson(gson, ChatStore.toJson(gson, List.of(c), c)).chats.get(0);
-		assertEquals(ChatStore.MAX_MESSAGES, back.messages.size());
-		assertEquals("m249", back.messages.get(back.messages.size() - 1).text);
+		assertEquals(250, back.messages.size());
+		assertEquals("m0", back.messages.get(0).text);
+		assertNull(back.leftOutNote);
+
+		// Old notes and errors go first, up to the first message still sent.
+		Chat noisy = new Chat("noisy");
+		for (int i = 0; i < 30; i++)
+		{
+			noisy.messages.add(new Chat.Message(Chat.Role.ERROR, "e" + i));
+		}
+		noisy.messages.addAll(c.messages.subList(0, 190));
+		back = ChatStore.fromJson(gson, ChatStore.toJson(gson, List.of(noisy), noisy)).chats.get(0);
+		assertEquals(ChatStore.MAX_MESSAGES + 1, back.messages.size());
+		assertEquals("e20", back.messages.get(1).text);
+		assertTrue(back.messages.get(0).text, back.messages.get(0).text.endsWith("None of them were being sent to the assistant any more."));
 	}
 
 	@Test

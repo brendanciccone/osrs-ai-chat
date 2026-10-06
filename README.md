@@ -78,13 +78,14 @@ there's no server in between.
 - **Your API key** is only sent to the provider it belongs to (never over plain `http://` to another computer on the
   internet). RuneLite keeps it with your other settings, unencrypted on your computer, and on RuneLite's servers if
   you use profile sync.
-- **Chats** are kept on this computer in `.runelite/plugin-data/osrs-ai-chat/chats.json` (the latest 200 messages
-  of each), so they're still there next time, including any character info that went with them, the list of what was
-  looked up for each reply, and the tokens it used (the look-ups' contents aren't kept). Clear and Delete remove them
-  from there too. Turn off **Remember chats** to keep chats only while RuneLite is open; that also deletes the saved
-  copy. API keys are never saved there. With several RuneLite windows open, the first one remembers its chats and the
-  others keep theirs only while open. Uninstalling AI Chat leaves the file: turn off **Remember chats** first, or
-  delete the `.runelite/plugin-data/osrs-ai-chat` folder afterwards.
+- **Chats** are kept on this computer in `.runelite/plugin-data/osrs-ai-chat/chats.json` (the latest 200 messages of
+  each, and any older ones still sent to the assistant; see [Long chats](#long-chats)), so they're still there next
+  time, including any character info that went with them, the list of what was looked up for each reply, and the tokens
+  it used (the look-ups' contents aren't kept). Clear and Delete remove them from there too. Turn off **Remember chats**
+  to keep chats only while RuneLite is open; that also deletes the saved copy. API keys are never saved there. With
+  several RuneLite windows open, the first one remembers its chats and the others keep theirs only while open.
+  Uninstalling AI Chat leaves the file: turn off **Remember chats** first, or delete the
+  `.runelite/plugin-data/osrs-ai-chat` folder afterwards.
 - **Notifications** say which assistant replied, not what you asked.
 
 The provider's own privacy policy applies to what you send them, and the OSRS Wiki's to what goes there.
@@ -101,6 +102,10 @@ A chat can also be too long for the model with fewer messages: long replies and 
 and smaller models take in less. When the provider says so, AI Chat summarises everything before your question and
 asks once more; if it's still too long, start a new chat or choose a model that can take more. Ollama doesn't say so:
 past the model's context size it quietly forgets the start of the chat, so raise that in Ollama for long chats.
+
+**Remember chats** saves the latest 200 messages of each chat. Older ones are left out of the saved copy only once
+they're no longer sent (the summary covers them, or they're notes and errors), and a note at the start of the chat
+says how many are missing.
 
 ## Tokens and cost
 

@@ -243,8 +243,9 @@ final class ConversationBuilder
 		{
 			m.summarized = true;
 		}
-		// The new summary covers the old one too, so it's sent instead of every message summarised so far.
-		int count = 0;
+		// The new summary covers the old one too, so it's sent instead of every message summarised so far, including
+		// any that weren't kept when the chat was saved.
+		int count = chat.leftOutSummarized;
 		for (Chat.Message m : chat.messages)
 		{
 			count += m.summarized ? 1 : 0;

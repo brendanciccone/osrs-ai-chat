@@ -14,7 +14,10 @@ import java.util.List;
 final class ChatStore
 {
 	static final String FILE_NAME = "chats.json";
-	/** Older messages of a long chat aren't kept. */
+	/**
+	 * Older messages of a long chat aren't kept, as long as they're no longer sent to the assistant (summarised, or
+	 * notes and errors); a note takes their place. Messages that are still sent are kept however many there are.
+	 */
 	static final int MAX_MESSAGES = 200;
 
 	private ChatStore()
@@ -37,6 +40,9 @@ final class ChatStore
 		boolean namedByPlayer;
 		String summary;
 		int summaryVersion;
+		/** See {@link Chat#leftOut}: over every save so far. */
+		int leftOut;
+		int leftOutSummarized;
 		List<SavedMessage> messages = new ArrayList<>();
 	}
 
@@ -82,8 +88,17 @@ final class ChatStore
 			sc.namedByPlayer = c.namedByPlayer;
 			sc.summary = c.summary;
 			sc.summaryVersion = c.summaryVersion;
-			List<Chat.Message> messages = c.messages.subList(Math.max(0, c.messages.size() - MAX_MESSAGES), c.messages.size());
-			for (Chat.Message m : messages)
+			List<Chat.Message> messages = new ArrayList<>(c.messages);
+			messages.remove(c.leftOutNote);
+			int cut = cut(messages);
+			int summarized = 0;
+			for (Chat.Message m : messages.subList(0, cut))
+			{
+				summarized += m.summarized ? 1 : 0;
+			}
+			sc.leftOut = c.leftOut + cut;
+			sc.leftOutSummarized = c.leftOutSummarized + summarized;
+			for (Chat.Message m : messages.subList(cut, messages.size()))
 			{
 				SavedMessage sm = new SavedMessage();
 				sm.role = m.role.name();
@@ -102,6 +117,21 @@ final class ChatStore
 			saved.chats.add(sc);
 		}
 		return gson.toJson(saved);
+	}
+
+	/**
+	 * How many of the oldest messages to leave out so that at most {@link #MAX_MESSAGES} are kept: only from the start
+	 * of the chat, and only up to the first message that's still sent.
+	 */
+	private static int cut(List<Chat.Message> messages)
+	{
+		int over = messages.size() - MAX_MESSAGES;
+		int cut = 0;
+		while (cut < over && !ConversationBuilder.stillSent(messages.get(cut)))
+		{
+			cut++;
+		}
+		return cut;
 	}
 
 	static final class Loaded
@@ -139,6 +169,8 @@ final class ChatStore
 			c.namedByPlayer = sc.namedByPlayer;
 			c.summary = sc.summary == null || sc.summary.trim().isEmpty() ? null : sc.summary;
 			c.summaryVersion = sc.summaryVersion;
+			c.leftOut = Math.max(0, sc.leftOut);
+			c.leftOutSummarized = Math.max(0, Math.min(c.leftOut, sc.leftOutSummarized));
 			if (sc.messages != null)
 			{
 				for (SavedMessage sm : sc.messages)
@@ -169,6 +201,13 @@ final class ChatStore
 			{
 				c.messages.get(c.messages.size() - 1).unanswered = true;
 			}
+			if (c.leftOut > 0)
+			{
+				// Where the start of the chat was, so the player knows it's gone and why.
+				long time = c.messages.isEmpty() ? System.currentTimeMillis() : c.messages.get(0).time;
+				c.leftOutNote = new Chat.Message(Chat.Role.NOTE, leftOutNote(c.leftOut, c.leftOutSummarized), time);
+				c.messages.add(0, c.leftOutNote);
+			}
 			loaded.chats.add(c);
 			if (sc.id.equals(saved.current))
 			{
@@ -176,6 +215,19 @@ final class ChatStore
 			}
 		}
 		return loaded;
+	}
+
+	/** What the note in place of the messages that weren't kept says. */
+	static String leftOutNote(int leftOut, int summarized)
+	{
+		String covered = summarized > 0 ? ": the summary covers " + (leftOut == 1 ? "it." : "them.") : ".";
+		if (leftOut == 1)
+		{
+			return "The oldest message of this chat wasn't kept when it was saved (AI Chat saves the latest "
+				+ MAX_MESSAGES + " of each chat). It wasn't being sent to the assistant any more" + covered;
+		}
+		return "The " + leftOut + " oldest messages of this chat weren't kept when it was saved (AI Chat saves the "
+			+ "latest " + MAX_MESSAGES + " of each chat). None of them were being sent to the assistant any more" + covered;
 	}
 
 	private static SavedUsage saved(ChatApi.Usage u, String model)
