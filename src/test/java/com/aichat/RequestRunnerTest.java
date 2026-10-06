@@ -686,6 +686,27 @@ public class RequestRunnerTest
 	}
 
 	@Test
+	public void aSummaryCutShortIsntUsed()
+	{
+		history(20);
+		Chat.Message question = send("Q21");
+		ChatApi.Reply cut = reply("The player is training Agility and wants to", 5000, 4000);
+		cut.cutShort = true;
+		api.listener().onReply(cut);
+		runEdt();
+		assertNull(chat.summary);
+		for (Chat.Message m : chat.messages)
+		{
+			assertFalse("nothing is left out", m.summarized);
+		}
+		Chat.Message note = chat.messages.get(chat.messages.indexOf(question) - 1);
+		assertEquals("Couldn't summarise the earlier messages (the summary was cut short), so the whole chat was sent this time.",
+			note.text);
+		assertEquals("what it used still counts", 9000, note.usage.total());
+		assertEquals(41, api.last().turns.size());
+	}
+
+	@Test
 	public void aRetryGoesThroughTheSummaryToo()
 	{
 		history(20);

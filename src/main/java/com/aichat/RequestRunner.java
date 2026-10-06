@@ -258,14 +258,18 @@ final class RequestRunner
 		chat.pending = new ChatApi.Pending();
 		chat.runStartedAt = System.currentTimeMillis();
 		chat.resetLive();
-		if (reply != null && reply.text != null && !reply.text.trim().isEmpty())
+		// A summary cut off by its length limit (a thinking model can spend most of it thinking) would lose the rest of
+		// what it was meant to keep, for good: none rather than that.
+		boolean whole = reply != null && reply.text != null && !reply.text.trim().isEmpty() && !reply.cutShort;
+		if (whole)
 		{
 			Chat.Message note = ConversationBuilder.applySummary(chat, old, reply.text, out.message);
 			counted(note, reply.usage, reply.model, out.setup.model);
 		}
 		else
 		{
-			String reason = failure != null ? failure.message : "the summary came back empty";
+			String reason = failure != null ? failure.message
+				: reply != null && reply.cutShort ? "the summary was cut short" : "the summary came back empty";
 			Chat.Message note = new Chat.Message(Chat.Role.NOTE, ConversationBuilder.summaryFailed(reason));
 			// What the summary request used is billed even though there's no summary to show for it.
 			if (failure != null)
