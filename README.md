@@ -98,7 +98,7 @@ The provider's own privacy policy applies to what you send them, and the OSRS Wi
 AI Chat never quietly drops the start of a chat. Once a chat would send more than 40 messages, it first asks the same
 provider and model for a short summary of the oldest ones (one extra request, shown as "Summarising earlier
 messages..."), then sends that summary instead of them, along with the newest 16 or so. A note just before your
-question shows the summary. If it couldn't be made, or you skip it (the Stop button says Skip while it's being made),
+question shows the summary, and the messages it covers say "(summarised)". If it couldn't be made, or you skip it (the Stop button says Skip while it's being made),
 a note says so and the whole chat is sent that time; the next message tries again.
 
 A chat can also be too long for the model with fewer messages: long replies and the Wiki pages read for them add up,

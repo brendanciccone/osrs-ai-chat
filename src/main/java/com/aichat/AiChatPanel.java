@@ -351,15 +351,18 @@ class AiChatPanel extends PluginPanel
 			return "";
 		}
 		int unanswered = 0;
+		int summarized = 0;
 		int looked = 0;
 		int shared = 0;
 		for (Chat.Message m : chat.messages)
 		{
 			unanswered += m.unanswered ? 1 : 0;
+			summarized += m.summarized ? 1 : 0;
 			looked += m.activity == null ? 0 : m.activity.size();
 			shared += m.context != null ? 1 : 0;
 		}
-		return chat.id + ":" + chat.messages.size() + ":" + chat.isRunning() + ":" + unanswered + ":" + looked + ":" + shared;
+		return chat.id + ":" + chat.messages.size() + ":" + chat.isRunning() + ":" + unanswered + ":" + summarized + ":"
+			+ looked + ":" + shared;
 	}
 
 	private void refreshTranscript()
@@ -586,8 +589,10 @@ class AiChatPanel extends PluginPanel
 		void show(Chat.Message m, boolean retryHere)
 		{
 			setBackground(m.role == Chat.Role.USER ? ColorScheme.DARKER_GRAY_COLOR : ColorScheme.DARKER_GRAY_HOVER_COLOR);
+			// What the assistant no longer sees as written: the summary note further down stands in for it.
 			header.setText(m.author() + "  " + new SimpleDateFormat("HH:mm").format(new Date(m.time))
-				+ (m.unanswered ? "  (not answered)" : "") + (m.unfinished ? "  (unfinished)" : ""));
+				+ (m.unanswered ? "  (not answered)" : "") + (m.unfinished ? "  (unfinished)" : "")
+				+ (m.summarized ? "  (summarised)" : ""));
 			header.setForeground(color(m.role));
 			// Not for a "Stopped" note that only knows tokens may have been used.
 			header.setToolTipText(m.usage == null || m.usage.total() == 0 ? null : PanelText.usage(m.usage, m.model));
