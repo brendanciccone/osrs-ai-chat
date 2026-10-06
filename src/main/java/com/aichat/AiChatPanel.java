@@ -374,9 +374,7 @@ class AiChatPanel extends PluginPanel
 			return;
 		}
 		boolean switched = chat != shownChat;
-		// Down to the end for another chat, a message just sent, or a player who was reading the end anyway.
-		boolean follow = switched || atBottom() || chat != null && !chat.messages.isEmpty()
-			&& chat.messages.get(chat.messages.size() - 1).role == Chat.Role.USER;
+		boolean follow = follow(chat, switched, atBottom(), bubbles);
 		shownKey = key;
 		shownChat = chat;
 
@@ -417,6 +415,25 @@ class AiChatPanel extends PluginPanel
 		{
 			scrollToBottom();
 		}
+	}
+
+	/**
+	 * Whether a rebuilt transcript goes down to its end: for another chat, a question just sent (the last message, not
+	 * shown before), or a player who was reading the end anyway. Not for a note put in above a question already shown
+	 * (a summary that came back), which would pull a player who has scrolled up away from what they're reading.
+	 */
+	static boolean follow(Chat chat, boolean switched, boolean atBottom, Map<Chat.Message, ?> shown)
+	{
+		if (switched || atBottom)
+		{
+			return true;
+		}
+		if (chat == null || chat.messages.isEmpty())
+		{
+			return false;
+		}
+		Chat.Message last = chat.messages.get(chat.messages.size() - 1);
+		return last.role == Chat.Role.USER && !shown.containsKey(last);
 	}
 
 	/** The reply on its way: shown once it has words or look-ups. */
