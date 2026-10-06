@@ -75,12 +75,6 @@ final class CharacterInfo
 		}
 	}
 
-	/** Without the account type, for when it isn't known. */
-	static String format(String name, int combat, int total, List<String> levels, int questPoints, List<String> done, List<String> started)
-	{
-		return format(name, null, combat, total, levels, questPoints, done, started);
-	}
-
 	/** {@code accountType}: from {@link #accountType}, or null to leave it out. */
 	static String format(String name, String accountType, int combat, int total, List<String> levels, int questPoints,
 		List<String> done, List<String> started)
