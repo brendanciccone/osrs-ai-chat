@@ -1,9 +1,14 @@
 package com.aichat;
 
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import org.junit.Test;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
-/** The panel's words for a reply on its way. */
+/** The panel's words for a reply on its way, and for what was looked up or shared for each message. */
 public class PanelTextTest
 {
 	private static final long NOW = 1_000_000;
@@ -55,5 +60,162 @@ public class PanelTextTest
 		assertEquals("0s", PanelText.elapsed(-5));
 		assertEquals("59s", PanelText.elapsed(59_999));
 		assertEquals("1m 0s", PanelText.elapsed(60_000));
+	}
+
+	private static PanelText.Activity fold(String... lines)
+	{
+		return PanelText.activity(Arrays.asList(lines));
+	}
+
+	@Test
+	public void wikiPagesReadAreListedByTitle()
+	{
+		PanelText.Activity shown = fold(
+			"Searched the Wiki for \"abyssal whip\"",
+			"Read the Wiki page \"Abyssal whip\"",
+			"Searched the Wiki for \"what drops the abyssal whip\"",
+			"Read the Wiki page \"Abyssal demon\" (Drops)");
+		assertEquals("Looked up: Abyssal whip, Abyssal demon (Wiki)", shown.lookups);
+		// The searches only found the pages, so they're left off the line; the tooltip still has them.
+		assertEquals("Wiki pages: Abyssal whip, Abyssal demon · Wiki searches: \"abyssal whip\", "
+			+ "\"what drops the abyssal whip\"", shown.tip);
+		assertEquals(Collections.emptyList(), shown.rest);
+		assertEquals(Collections.singletonList("Looked up: Abyssal whip, Abyssal demon (Wiki)"), shown.lines());
+
+		// A title with quotes or brackets of its own, with and without a section.
+		assertEquals("Looked up: \"Ernest\" the Chicken, Dragon (disambiguation) (Wiki)", fold(
+			"Read the Wiki page \"\"Ernest\" the Chicken\" (introduction)",
+			"Read the Wiki page \"Dragon (disambiguation)\"").lookups);
+	}
+
+	@Test
+	public void searchesAreListedWhenNoPageWasRead()
+	{
+		PanelText.Activity one = fold("Searched the Wiki for \"abyssal whip drop rate\"");
+		assertEquals("Looked up: \"abyssal whip drop rate\" (Wiki search)", one.lookups);
+		assertEquals("Wiki searches: \"abyssal whip drop rate\"", one.tip);
+
+		PanelText.Activity two = fold("Searched the Wiki for \"whip\"", "Searched the Wiki for \"abyssal whip\"");
+		assertEquals("Looked up: \"whip\", \"abyssal whip\" (Wiki searches)", two.lookups);
+	}
+
+	@Test
+	public void wikiAndGePricesShareTheLine()
+	{
+		PanelText.Activity shown = fold(
+			"Searched the Wiki for \"abyssal whip\"",
+			"Read the Wiki page \"Abyssal whip\"",
+			"Read the Wiki page \"Abyssal demon\"",
+			"Checked the GE price of Dragon bones");
+		assertEquals("Looked up: Abyssal whip, Abyssal demon (Wiki) · Dragon bones (GE price)", shown.lookups);
+		assertEquals("Wiki pages: Abyssal whip, Abyssal demon · Wiki searches: \"abyssal whip\" · GE prices: Dragon bones",
+			shown.tip);
+
+		assertEquals("Looked up: \"dragon bones\" (Wiki search) · Dragon bones, Big bones (GE prices)", fold(
+			"Checked the GE price of Dragon bones",
+			"Searched the Wiki for \"dragon bones\"",
+			"Checked the GE price of Big bones").lookups);
+		PanelText.Activity prices = fold("Checked the GE price of Dragon bones");
+		assertEquals("Looked up: Dragon bones (GE price)", prices.lookups);
+		assertEquals("GE prices: Dragon bones", prices.tip);
+	}
+
+	@Test
+	public void eachThingIsNamedOnce()
+	{
+		PanelText.Activity shown = fold(
+			"Read the Wiki page \"Vorkath\"",
+			"Read the Wiki page \"Vorkath\" (Drops)",
+			"Read the Wiki page \"Vorkath\" (Strategy)",
+			"Checked the GE price of Dragon bones",
+			"Checked the GE price of Dragon bones",
+			"Searched the Wiki for \"vorkath\"",
+			"Searched the Wiki for \"vorkath\"");
+		assertEquals("Looked up: Vorkath (Wiki) · Dragon bones (GE price)", shown.lookups);
+		assertEquals("Wiki pages: Vorkath · Wiki searches: \"vorkath\" · GE prices: Dragon bones", shown.tip);
+		assertEquals("Looked up: \"vorkath\" (Wiki search)",
+			fold("Searched the Wiki for \"vorkath\"", "Searched the Wiki for \"vorkath\"").lookups);
+	}
+
+	@Test
+	public void aLongListShowsThreeOfEachAndTheTooltipHasThemAll()
+	{
+		PanelText.Activity shown = fold(
+			"Read the Wiki page \"Abyssal whip\"",
+			"Read the Wiki page \"Abyssal demon\"",
+			"Read the Wiki page \"Abyssal Sire\"",
+			"Read the Wiki page \"Abyssal tentacle\"",
+			"Read the Wiki page \"Kraken\"",
+			"Checked the GE price of Abyssal whip",
+			"Checked the GE price of Kraken tentacle",
+			"Checked the GE price of Abyssal dagger",
+			"Checked the GE price of Abyssal bludgeon");
+		assertEquals("Looked up: Abyssal whip, Abyssal demon, Abyssal Sire +2 more (Wiki) · "
+			+ "Abyssal whip, Kraken tentacle, Abyssal dagger +1 more (GE prices)", shown.lookups);
+		assertEquals("Wiki pages: Abyssal whip, Abyssal demon, Abyssal Sire, Abyssal tentacle, Kraken · "
+			+ "GE prices: Abyssal whip, Kraken tentacle, Abyssal dagger, Abyssal bludgeon", shown.tip);
+
+		// A long name is cut on the line, and whole in the tooltip.
+		String search = "how much does an abyssal whip cost to imbue";
+		PanelText.Activity cut = fold("Searched the Wiki for \"" + search + "\"");
+		assertEquals("Looked up: \"how much does an abyssal whip...\" (Wiki search)", cut.lookups);
+		assertEquals("Wiki searches: \"" + search + "\"", cut.tip);
+	}
+
+	@Test
+	public void whatWasSharedFollowsTheLookUpLineInOrder()
+	{
+		PanelText.Activity shown = fold(
+			"Shared your equipment",
+			"Read the Wiki page \"Vorkath\"",
+			"Searched your bank for \"rune\"",
+			"Couldn't search the Wiki for \"vorkath\"",
+			"Checked the GE price of Rune platebody",
+			"Didn't share your inventory: \"Share items and gear\" is off",
+			"Found no Wiki page called \"Vorkath (monster)\"",
+			"Read your bank, but didn't share it: the request had stopped",
+			"Found no GE price for \"vorki\"",
+			"Skipped a Wiki search: Wiki look-ups are off");
+		assertEquals(Arrays.asList(
+			"Looked up: Vorkath (Wiki) · Rune platebody (GE price)",
+			"Shared your equipment",
+			"Searched your bank for \"rune\"",
+			"Couldn't search the Wiki for \"vorkath\"",
+			"Didn't share your inventory: \"Share items and gear\" is off",
+			"Found no Wiki page called \"Vorkath (monster)\"",
+			"Read your bank, but didn't share it: the request had stopped",
+			"Found no GE price for \"vorki\"",
+			"Skipped a Wiki search: Wiki look-ups are off"), shown.lines());
+	}
+
+	@Test
+	public void otherLinesAreShownAsTheyAre()
+	{
+		List<String> lines = Arrays.asList(
+			RequestRunner.NO_LOOKUPS,
+			"Shared your Slayer task",
+			"Something a later version writes",
+			"Read the Wiki page Vorkath",
+			"Read the Wiki page \"\"",
+			"Searched the Wiki for vorkath",
+			"Checked the GE price of ",
+			"Couldn't finish a look-up (wiki_page)");
+		PanelText.Activity shown = PanelText.activity(lines);
+		assertNull(shown.lookups);
+		assertNull(shown.tip);
+		assertEquals(lines, shown.rest);
+		assertEquals(lines, shown.lines());
+	}
+
+	@Test
+	public void nothingListedShowsNothing()
+	{
+		for (List<String> none : Arrays.asList(null, Collections.<String>emptyList(), Collections.<String>singletonList(null)))
+		{
+			PanelText.Activity shown = PanelText.activity(none);
+			assertNull(shown.lookups);
+			assertNull(shown.tip);
+			assertTrue(shown.lines().isEmpty());
+		}
 	}
 }

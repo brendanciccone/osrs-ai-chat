@@ -35,6 +35,13 @@ final class LookupTools implements ChatApi.ToolRunner
 	static final String WIKI_SEARCH = "wiki_search";
 	static final String WIKI_PAGE = "wiki_page";
 	static final String GE_PRICE = "ge_price";
+	/**
+	 * How the lines for look-ups that went through start. The panel folds them into one line (see
+	 * {@link PanelText#activity}), by these.
+	 */
+	static final String SEARCHED_WIKI = "Searched the Wiki for ";
+	static final String READ_WIKI_PAGE = "Read the Wiki page ";
+	static final String CHECKED_GE_PRICE = "Checked the GE price of ";
 
 	static final int SEARCH_RESULTS = 6;
 	/** Wikitext per wiki_page, about 3,000 tokens: most pages fit, and reading a few stays cheap. */
@@ -260,7 +267,7 @@ final class LookupTools implements ChatApi.ToolRunner
 			@Override
 			public void onResult(WikiClient.Search search)
 			{
-				report.write("Searched the Wiki for " + quote(query), () -> ChatApi.ToolResult.ok(searchText(query, search)));
+				report.write(SEARCHED_WIKI + quote(query), () -> ChatApi.ToolResult.ok(searchText(query, search)));
 			}
 
 			@Override
@@ -300,7 +307,7 @@ final class LookupTools implements ChatApi.ToolRunner
 			@Override
 			public void onResult(WikiClient.Page page)
 			{
-				report.write("Read the Wiki page " + quote(page.title) + sectionName(page, part),
+				report.write(READ_WIKI_PAGE + quote(page.title) + sectionName(page, part),
 					() -> ChatApi.ToolResult.ok(pageText(page, part)));
 			}
 
@@ -528,7 +535,7 @@ final class LookupTools implements ChatApi.ToolRunner
 			ids.add(p.getId());
 			each.add(prices.price(p));
 		}
-		String line = "Checked the GE price of " + ChatApi.shorten(best.get(0).getName(), 60);
+		String line = CHECKED_GE_PRICE + ChatApi.shorten(best.get(0).getName(), 60);
 		prices.highAlchemy(ids, alch -> report.write(line, () -> ChatApi.ToolResult.ok(
 			priceText(item, best, each, found.size(), alch == null ? Collections.emptyMap() : alch, quantity))));
 	}

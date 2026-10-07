@@ -59,8 +59,10 @@ there's no server in between.
   goes to whichever provider is selected when you send, so switching providers mid-chat sends it to the new one.
 - **What the assistant looks up** (Wiki pages, GE prices, and anything below that you share) is sent to the provider
   as part of the reply it's for. Claude also gets the look-ups of earlier replies again with each new message in that
-  chat, while RuneLite stays open. Every look-up is listed under the reply it was for, such as "Read the Wiki page
-  "Vorkath"" or "Shared your bank", so you can always see what was sent.
+  chat, while RuneLite stays open. Every look-up is listed under the reply it was for, so you can always see what was
+  sent: the Wiki pages and GE prices on one line, such as "Looked up: Vorkath (Wiki) · Dragon bones (GE price)" (hover
+  over it for the full list, searches included), and anything of yours on a line of its own, such as "Shared your
+  bank".
 - **Only while "Send character info" is on:** your character name, account type (a regular account or which kind of
   ironman), combat and total level, skill levels, quest points, and which quests you've completed or started. Added to
   your first message in a chat and again when something changed (that message says "Sent your character details"; click

@@ -313,6 +313,27 @@ public class LookupToolsTest
 	}
 
 	@Test
+	public void thePanelFoldsTheLinesOfLookUpsThatWentThrough() throws Exception
+	{
+		// The panel knows these lines by how they start (PanelText.activity): what is written here is what it reads.
+		LookupTools tools = new LookupTools(wiki(5000), whips(), activity::add);
+		answer("200", SEARCH);
+		run(tools, "wiki_search", "{\"query\":\"abyssal whip\"}");
+		answer("200", "{\"parse\":{\"title\":\"Abyssal whip\",\"wikitext\":\"==Drops==\\nDropped by demons.\"}}");
+		run(tools, "wiki_page", "{\"title\":\"abyssal whip\",\"section\":2}");
+		run(tools, "ge_price", "{\"item\":\"cannonballs\"}");
+		answer("200", MISSING);
+		run(tools, "wiki_page", "{\"title\":\"Abyssal wip\"}");
+		assertEquals(Arrays.asList("Searched the Wiki for \"abyssal whip\"", "Read the Wiki page \"Abyssal whip\" (Drops)",
+			"Checked the GE price of Cannonball", "Found no Wiki page called \"Abyssal wip\""), activity);
+
+		PanelText.Activity shown = PanelText.activity(activity);
+		assertEquals(Arrays.asList("Looked up: Abyssal whip (Wiki) · Cannonball (GE price)",
+			"Found no Wiki page called \"Abyssal wip\""), shown.lines());
+		assertEquals("Wiki pages: Abyssal whip · Wiki searches: \"abyssal whip\" · GE prices: Cannonball", shown.tip);
+	}
+
+	@Test
 	public void longPagesAreCutAndListTheirSections() throws Exception
 	{
 		StringBuilder text = new StringBuilder("Intro.");

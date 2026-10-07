@@ -57,6 +57,9 @@ class AiChatPanel extends PluginPanel
 	private static final Color OK_COLOR = new Color(0x5fd068);
 	private static final Color WARNING_COLOR = new Color(0xffb347);
 	private static final Color MUTED_COLOR = ColorScheme.LIGHT_GRAY_COLOR;
+	/** Above the lines under a message. */
+	private static final EmptyBorder LINES_GAP = new EmptyBorder(3, 0, 0, 0);
+	private static final EmptyBorder NO_GAP = new EmptyBorder(0, 0, 0, 0);
 	/** How close to the end of the transcript still counts as reading the end, in pixels. */
 	private static final int BOTTOM_SLACK = 24;
 	/** Rows the model list shows before it scrolls. */
@@ -550,6 +553,9 @@ class AiChatPanel extends PluginPanel
 		private final JLabel header = new PlainLabel();
 		private final JButton retry = smallButton("Retry", "Send this question again", e -> retry());
 		private final MessageView body = new MessageView();
+		/** What was looked up on the Wiki and the GE, on one line, with the whole list in its tooltip. */
+		private final JTextArea lookups = textArea("");
+		/** Everything else listed: what was shared, and what was skipped or went wrong. */
 		private final JTextArea activity = textArea("");
 		/** Under a message sent with the character details: says so, and shows them when clicked. */
 		private final JLabel sharedLine = new PlainLabel();
@@ -568,13 +574,17 @@ class AiChatPanel extends PluginPanel
 			add(top, BorderLayout.NORTH);
 			body.setTextFont(TEXT_FONT);
 			add(body, BorderLayout.CENTER);
-			JPanel south = new JPanel(new StackLayout(2));
+			// No gaps of its own: the look-up line and the lines after it read as one list.
+			JPanel south = new JPanel(new StackLayout(0));
 			south.setOpaque(false);
-			activity.setOpaque(false);
-			activity.setBorder(new EmptyBorder(3, 0, 0, 0));
-			activity.setFont(SMALL_FONT);
-			activity.setForeground(MUTED_COLOR);
-			south.add(activity);
+			for (JTextArea lines : new JTextArea[]{lookups, activity})
+			{
+				lines.setOpaque(false);
+				lines.setBorder(LINES_GAP);
+				lines.setFont(SMALL_FONT);
+				lines.setForeground(MUTED_COLOR);
+				south.add(lines);
+			}
 			sharedLine.setFont(SMALL_FONT);
 			sharedLine.setForeground(MUTED_COLOR);
 			sharedLine.setBorder(new EmptyBorder(3, 0, 0, 0));
@@ -593,6 +603,7 @@ class AiChatPanel extends PluginPanel
 			});
 			south.add(sharedLine);
 			sharedText.setOpaque(false);
+			sharedText.setBorder(new EmptyBorder(2, 0, 0, 0));
 			sharedText.setFont(SMALL_FONT);
 			sharedText.setForeground(MUTED_COLOR);
 			sharedText.setVisible(false);
@@ -679,15 +690,32 @@ class AiChatPanel extends PluginPanel
 			showShared(null);
 		}
 
-		/** The look-ups, one per line, in plain text: they can hold words the model chose. */
+		/**
+		 * What was looked up or shared, in plain text: the lines can hold words the model chose. The Wiki and GE price
+		 * look-ups share the first line (see {@link PanelText#activity}).
+		 */
 		private void showActivity(List<String> lines)
 		{
-			String text = lines == null ? "" : String.join("\n", lines);
-			if (!text.equals(activity.getText()))
+			PanelText.Activity shown = PanelText.activity(lines);
+			showLines(lookups, shown.lookups);
+			lookups.setToolTipText(shown.tip);
+			showLines(activity, String.join("\n", shown.rest));
+			// Right under the look-up line, as the next line of the same list.
+			EmptyBorder border = shown.lookups == null ? LINES_GAP : NO_GAP;
+			if (activity.getBorder() != border)
 			{
-				activity.setText(text);
+				activity.setBorder(border);
 			}
-			activity.setVisible(!text.isEmpty());
+		}
+
+		private void showLines(JTextArea area, String text)
+		{
+			String t = text == null ? "" : text;
+			if (!t.equals(area.getText()))
+			{
+				area.setText(t);
+			}
+			area.setVisible(!t.isEmpty());
 		}
 	}
 
@@ -834,10 +862,19 @@ class AiChatPanel extends PluginPanel
 		return b;
 	}
 
-	/** A read-only, wrapping, selectable block of plain text (a text area never renders HTML). */
+	/** A read-only, wrapping, selectable block of plain text (a text area never renders HTML, nor does its tooltip). */
 	private static JTextArea textArea(String text)
 	{
-		JTextArea t = new JTextArea(text);
+		JTextArea t = new JTextArea(text)
+		{
+			@Override
+			public JToolTip createToolTip()
+			{
+				JToolTip tip = super.createToolTip();
+				tip.putClientProperty("html.disable", Boolean.TRUE);
+				return tip;
+			}
+		};
 		t.setEditable(false);
 		t.setLineWrap(true);
 		t.setWrapStyleWord(true);
