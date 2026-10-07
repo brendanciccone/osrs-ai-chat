@@ -6,6 +6,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Sends a chat's messages and puts the answers in it: the summary a long chat needs first, the character details, the
@@ -13,6 +14,7 @@ import java.util.function.Consumer;
  * providers answer on their own threads; their answers come back through {@code edt} and count only while their
  * request is still the chat's current one (not stopped, not replaced, the chat not deleted).
  */
+@Slf4j
 final class RequestRunner
 {
 	/** The reply is redrawn at most this often while it streams in (about 15 times a second): each redraw is a layout. */
@@ -249,6 +251,7 @@ final class RequestRunner
 	private void summarised(Outgoing out, List<Chat.Message> old, ChatApi.Pending request, ChatApi.Reply reply,
 		ChatApi.Failure failure)
 	{
+		logUsage("summary", out, reply, failure);
 		if (current(out.chat, request))
 		{
 			afterSummary(out, old, reply, failure);
@@ -491,6 +494,7 @@ final class RequestRunner
 	 */
 	private void finished(Outgoing out, ChatApi.Pending request, ChatApi.Reply reply, ChatApi.Failure failure, String shown)
 	{
+		logUsage("reply", out, reply, failure);
 		Chat chat = out.chat;
 		// Only the answer to the request still in flight counts: not one that was stopped, or a chat that's gone.
 		if (!current(chat, request))
@@ -578,6 +582,20 @@ final class RequestRunner
 		m.who = who;
 		m.unfinished = true;
 		chat.messages.add(m);
+	}
+
+	/**
+	 * One debug line for each request that ends, whether its answer still counts or not: the tokens it used, and the
+	 * model that answered (or the one asked for). With ./gradlew run, which logs at debug, a developer can see that
+	 * prompt caching works. Counts and the model only: nothing that was said, and never the key.
+	 */
+	private static void logUsage(String what, Outgoing out, ChatApi.Reply reply, ChatApi.Failure failure)
+	{
+		ChatApi.Usage usage = reply != null ? reply.usage : failure.usage;
+		String model = reply != null ? reply.model : failure.model;
+		log.debug("{} from {}: {} input, {} from cache, {} written to cache, {} output tokens",
+			reply != null ? what : "failed " + what, model != null ? model : out.setup.model,
+			usage.input, usage.cacheRead, usage.cacheWrite, usage.output);
 	}
 
 	// ------------------------------------------------------------------

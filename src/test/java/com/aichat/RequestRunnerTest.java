@@ -1,5 +1,9 @@
 package com.aichat;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import java.util.ArrayList;
@@ -19,6 +23,7 @@ import okhttp3.OkHttpClient;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.slf4j.LoggerFactory;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -637,6 +642,54 @@ public class RequestRunnerTest
 		runEdt();
 		assertEquals(1, chat.messages.size());
 		assertTrue(host.ended.isEmpty());
+	}
+
+	@Test
+	public void eachRequestLogsTheTokensItUsed()
+	{
+		// For a developer checking that prompt caching works: one debug line per request, counts and the model only.
+		Logger logger = (Logger) LoggerFactory.getLogger(RequestRunner.class);
+		Level level = logger.getLevel();
+		ListAppender<ILoggingEvent> logged = new ListAppender<>();
+		logged.start();
+		logger.addAppender(logged);
+		logger.setLevel(Level.DEBUG);
+		try
+		{
+			history(20);
+			send("Q21");
+			ChatApi.Reply summary = reply("The player is training Agility.", 5000, 100);
+			summary.usage.cacheWrite = 30;
+			api.listener().onReply(summary);
+			runEdt();
+			ChatApi.Reply answer = reply("Train at Seers' Village.", 1204, 352);
+			answer.usage.cacheRead = 3410;
+			api.listener().onReply(answer);
+			runEdt();
+			// Its look-up rounds were billed though it failed; no model answered, so it's the one asked for.
+			send("Q22");
+			ChatApi.Failure failure = new ChatApi.Failure(ChatApi.TOO_MANY_ROUNDS);
+			failure.usage.input = 9000;
+			failure.usage.output = 300;
+			api.listener().onError(failure);
+			runEdt();
+
+			List<String> lines = new ArrayList<>();
+			for (ILoggingEvent e : logged.list)
+			{
+				assertEquals(Level.DEBUG, e.getLevel());
+				lines.add(e.getFormattedMessage());
+			}
+			assertEquals(List.of(
+				"summary from claude-opus-5-5-20261001: 5000 input, 0 from cache, 30 written to cache, 100 output tokens",
+				"reply from claude-opus-5-5-20261001: 1204 input, 3410 from cache, 0 written to cache, 352 output tokens",
+				"failed reply from claude-opus-5-5: 9000 input, 0 from cache, 0 written to cache, 300 output tokens"), lines);
+		}
+		finally
+		{
+			logger.detachAppender(logged);
+			logger.setLevel(level);
+		}
 	}
 
 	@Test

@@ -12,6 +12,14 @@ The developer client is RuneLite's own (see the
 [example-plugin](https://github.com/runelite/example-plugin) template this repo follows). To log in with a Jagex
 account there, follow RuneLite's [Using Jagex Accounts](https://github.com/runelite/runelite/wiki/Using-Jagex-Accounts).
 
+`./gradlew run` logs at debug level, and AI Chat writes one line there for each request that ends: the model and the
+tokens it used, never what was said. For example
+`reply from claude-opus-5-5: 1204 input, 3410 from cache, 0 written to cache, 352 output tokens` (or `summary from`
+for a long chat's summary, `failed reply from` for one that ended in an error). That's how to check that Claude's
+prompt caching works: a message writes the chat so far to the cache, and the next one, sent within a few minutes,
+reads it back (a very short chat can be under Claude's minimum and isn't cached). ChatGPT and OpenAI-compatible
+services only say what they read from their own cache.
+
 To try it without paying for API use, run a local model with [Ollama](https://ollama.com) (`ollama pull llama3.2`),
 then choose **OpenAI-compatible** with URL `http://localhost:11434/v1` and model `llama3.2`.
 
@@ -24,8 +32,8 @@ server on 127.0.0.1 (`StandIn`), which serves canned answers (streams included) 
   token counts, model lists, and the settings a service may refuse. `ChatApiTest`: what they share (keys, retry
   waits, running tools). `SseTest`: the event-stream reader.
 - `RequestRunnerTest`: a message's way out and its answer's way back, with a stand-in provider and EDT: summary
-  first, the reply as it streams in, look-ups, Stop (what was shown stays), Retry, a chat too long for its model, and
-  answers that come too late to count.
+  first, the reply as it streams in, look-ups, Stop (what was shown stays), Retry, a chat too long for its model, the
+  line each request logs, and answers that come too late to count.
   `ThrottleTest`: redrawing a streaming reply at most ~15 times a second. `ToolBoxTest`: which tools go with a
   request, in what order, and which runner answers each call.
 - `ConversationBuilderTest`: what a request sends (history, character notes, summaries, replaying Claude's replies).
