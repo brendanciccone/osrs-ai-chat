@@ -45,10 +45,10 @@ server on 127.0.0.1 (`StandIn`), which serves canned answers (streams included) 
 - `MarkdownTest` and `MessageViewTest`: reading replies' Markdown, and drawing it off screen (headless).
   `StackLayoutTest`: the transcript's layout.
   `GameChatEchoTest`: replies as game chat. `PanelTextTest`: the status line, and the Wiki and GE price look-ups
-  folded into one line under a reply.
+  folded into one line under a reply, with the full list when that line leaves some out.
   `ConnectionCheckTest` and `ProviderSetupTest`: "Test" and what the settings say about the provider.
   `ConnectionTesterTest`: which answers to "Test" count. `AiChatPanelTest`: when the transcript follows the chat
-  down. `PrefixTest`: the `::ai` command.
+  down, and the lines under a message that show more when clicked (headless). `PrefixTest`: the `::ai` command.
 
 ## Code
 

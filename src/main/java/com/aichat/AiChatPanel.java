@@ -553,13 +553,12 @@ class AiChatPanel extends PluginPanel
 		private final JLabel header = new PlainLabel();
 		private final JButton retry = smallButton("Retry", "Send this question again", e -> retry());
 		private final MessageView body = new MessageView();
-		/** What was looked up on the Wiki and the GE, on one line, with the whole list in its tooltip. */
-		private final JTextArea lookups = textArea("");
+		/** The Wiki and GE price look-ups on one line, with the full list a click away when it leaves some out. */
+		private final ShowMore lookups = new ShowMore("Click to see everything that was looked up for this message");
 		/** Everything else listed: what was shared, and what was skipped or went wrong. */
 		private final JTextArea activity = textArea("");
 		/** Under a message sent with the character details: says so, and shows them when clicked. */
-		private final JLabel sharedLine = new PlainLabel();
-		private final JTextArea sharedText = textArea("");
+		private final ShowMore shared = new ShowMore("Click to see what was sent with this message");
 
 		Bubble()
 		{
@@ -577,37 +576,13 @@ class AiChatPanel extends PluginPanel
 			// No gaps of its own: the look-up line and the lines after it read as one list.
 			JPanel south = new JPanel(new StackLayout(0));
 			south.setOpaque(false);
-			for (JTextArea lines : new JTextArea[]{lookups, activity})
-			{
-				lines.setOpaque(false);
-				lines.setBorder(LINES_GAP);
-				lines.setFont(SMALL_FONT);
-				lines.setForeground(MUTED_COLOR);
-				south.add(lines);
-			}
-			sharedLine.setFont(SMALL_FONT);
-			sharedLine.setForeground(MUTED_COLOR);
-			sharedLine.setBorder(new EmptyBorder(3, 0, 0, 0));
-			sharedLine.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-			sharedLine.setToolTipText("Click to see what was sent with this message");
-			sharedLine.addMouseListener(new MouseAdapter()
-			{
-				@Override
-				public void mouseClicked(MouseEvent e)
-				{
-					if (SwingUtilities.isLeftMouseButton(e))
-					{
-						toggleShared();
-					}
-				}
-			});
-			south.add(sharedLine);
-			sharedText.setOpaque(false);
-			sharedText.setBorder(new EmptyBorder(2, 0, 0, 0));
-			sharedText.setFont(SMALL_FONT);
-			sharedText.setForeground(MUTED_COLOR);
-			sharedText.setVisible(false);
-			south.add(sharedText);
+			south.add(lookups);
+			activity.setOpaque(false);
+			activity.setBorder(LINES_GAP);
+			activity.setFont(SMALL_FONT);
+			activity.setForeground(MUTED_COLOR);
+			south.add(activity);
+			south.add(shared);
 			add(south, BorderLayout.SOUTH);
 		}
 
@@ -651,29 +626,7 @@ class AiChatPanel extends PluginPanel
 		 */
 		private void showShared(String context)
 		{
-			boolean any = context != null && !context.isEmpty();
-			sharedLine.setVisible(any);
-			if (!any)
-			{
-				sharedText.setVisible(false);
-				sharedText.setText("");
-				return;
-			}
-			if (!context.equals(sharedText.getText()))
-			{
-				sharedText.setText(context);
-				sharedText.setVisible(false);
-			}
-			sharedLine.setText("Sent your character details" + (sharedText.isVisible() ? " (hide)" : " (show)"));
-		}
-
-		private void toggleShared()
-		{
-			sharedText.setVisible(!sharedText.isVisible());
-			sharedLine.setText("Sent your character details" + (sharedText.isVisible() ? " (hide)" : " (show)"));
-			// Taller or shorter now: measured again, with the transcript around it.
-			revalidate();
-			repaint();
+			shared.show(context == null || context.isEmpty() ? null : "Sent your character details", context);
 		}
 
 		/** The reply on its way. {@code text}: null until its first words. */
@@ -692,30 +645,112 @@ class AiChatPanel extends PluginPanel
 
 		/**
 		 * What was looked up or shared, in plain text: the lines can hold words the model chose. The Wiki and GE price
-		 * look-ups share the first line (see {@link PanelText#activity}).
+		 * look-ups share the first line, with the full list a click away when the line leaves some out (see
+		 * {@link PanelText#activity}).
 		 */
 		private void showActivity(List<String> lines)
 		{
 			PanelText.Activity shown = PanelText.activity(lines);
-			showLines(lookups, shown.lookups);
-			lookups.setToolTipText(shown.tip);
-			showLines(activity, String.join("\n", shown.rest));
-			// Right under the look-up line, as the next line of the same list.
+			lookups.show(shown.lookups, shown.full);
+			String rest = String.join("\n", shown.rest);
+			if (!rest.equals(activity.getText()))
+			{
+				activity.setText(rest);
+			}
+			activity.setVisible(!rest.isEmpty());
+			// Right under the look-up line (or its full list), as the next line of the same list.
 			EmptyBorder border = shown.lookups == null ? LINES_GAP : NO_GAP;
 			if (activity.getBorder() != border)
 			{
 				activity.setBorder(border);
 			}
 		}
+	}
 
-		private void showLines(JTextArea area, String text)
+	/**
+	 * A line under a message with more to it than fits there, such as "Sent your character details (show)": a click on
+	 * the line shows the rest in a block under it, and another click hides it again. Both are plain text, which wraps
+	 * in the narrow panel and never renders HTML: they can hold words the model chose. (Not private: AiChatPanelTest
+	 * clicks it.)
+	 */
+	static final class ShowMore extends JPanel
+	{
+		final JTextArea line = textArea("");
+		final JTextArea more = textArea("");
+		/** For the line, while it has more to show. */
+		private final String tip;
+		private String text = "";
+
+		ShowMore(String tip)
 		{
-			String t = text == null ? "" : text;
-			if (!t.equals(area.getText()))
+			super(new StackLayout(0));
+			this.tip = tip;
+			setOpaque(false);
+			setBorder(LINES_GAP);
+			setVisible(false);
+			for (JTextArea t : new JTextArea[]{line, more})
 			{
-				area.setText(t);
+				t.setOpaque(false);
+				t.setFont(SMALL_FONT);
+				t.setForeground(MUTED_COLOR);
+				add(t);
 			}
-			area.setVisible(!t.isEmpty());
+			// Set in a little, so it reads as the line's own and not as the lines after it.
+			more.setBorder(new EmptyBorder(2, 8, 2, 0));
+			more.setVisible(false);
+			line.addMouseListener(new MouseAdapter()
+			{
+				@Override
+				public void mouseClicked(MouseEvent e)
+				{
+					if (SwingUtilities.isLeftMouseButton(e) && hasMore())
+					{
+						more.setVisible(!more.isVisible());
+						showLine();
+						// Taller or shorter now: measured again, with the transcript around it.
+						revalidate();
+						repaint();
+					}
+				}
+			});
+		}
+
+		/**
+		 * Shows {@code text} (null: nothing at all), with {@code details} a click away (null: just the line). Shown or
+		 * hidden, the details stay as they were when they change: a list still growing under a reply on its way doesn't
+		 * close on the player.
+		 */
+		void show(String text, String details)
+		{
+			this.text = text == null ? "" : text;
+			String d = this.text.isEmpty() || details == null ? "" : details;
+			if (!d.equals(more.getText()))
+			{
+				more.setText(d);
+			}
+			if (d.isEmpty())
+			{
+				more.setVisible(false);
+			}
+			setVisible(!this.text.isEmpty());
+			showLine();
+		}
+
+		private boolean hasMore()
+		{
+			return !more.getText().isEmpty();
+		}
+
+		private void showLine()
+		{
+			boolean any = hasMore();
+			String t = any ? text + (more.isVisible() ? " (hide)" : " (show)") : text;
+			if (!t.equals(line.getText()))
+			{
+				line.setText(t);
+			}
+			line.setCursor(Cursor.getPredefinedCursor(any ? Cursor.HAND_CURSOR : Cursor.TEXT_CURSOR));
+			line.setToolTipText(any ? tip : null);
 		}
 	}
 

@@ -10,9 +10,9 @@ import java.util.List;
  */
 final class PanelText
 {
-	/** Names of each kind the look-up line shows; the others are counted, and its tooltip lists them all. */
+	/** Names of each kind the look-up line shows; the others are counted, and listed in full a click away. */
 	static final int NAMES_SHOWN = 3;
-	/** The panel is narrow: a longer name is cut on the look-up line, and kept whole in its tooltip. */
+	/** The panel is narrow: a longer name is cut on the look-up line, and kept whole in the full list. */
 	static final int NAME_CHARS = 30;
 
 	private PanelText()
@@ -50,15 +50,19 @@ final class PanelText
 	{
 		/** "Looked up: Abyssal whip (Wiki) · Dragon bones (GE price)"; null when nothing was. */
 		final String lookups;
-		/** Everything that was looked up, in full, for the look-up line's tooltip; null with it. */
-		final String tip;
+		/**
+		 * Everything that was looked up, in full and one kind per line ("Wiki pages: ...", "Wiki searches: ...", "GE
+		 * prices: ..."), for the panel to show under the look-up line when it's clicked. Null when that line already
+		 * names it all, or when there's no such line.
+		 */
+		final String full;
 		/** The other lines, as they were and in order: what was shared, and what was skipped or went wrong. */
 		final List<String> rest;
 
-		private Activity(String lookups, String tip, List<String> rest)
+		private Activity(String lookups, String full, List<String> rest)
 		{
 			this.lookups = lookups;
-			this.tip = tip;
+			this.full = full;
 			this.rest = rest;
 		}
 
@@ -78,9 +82,11 @@ final class PanelText
 	/**
 	 * Folds the Wiki and GE price look-ups among {@code lines} (a message's {@link Chat.Message#activity}; null for
 	 * none) into one line: the Wiki pages read (or, when none was, what was searched for), then the GE prices checked,
-	 * each named once. A line per look-up was too much to read under every reply. What the player shared of their own,
-	 * and look-ups that were skipped or went wrong, keep their own lines. Done only when shown: the saved lines keep
-	 * every look-up, and chats saved by earlier versions look the same.
+	 * each named once. A line per look-up was too much to read under every reply. When the line leaves something out
+	 * (names past the first few, a long name cut, or the searches behind the pages read), the full list comes with it:
+	 * it's the only place some of what was sent, such as the words searched for, can be read. What the player shared
+	 * of their own, and look-ups that were skipped or went wrong, keep their own lines. Done only when shown: the saved
+	 * lines keep every look-up, and chats saved by earlier versions look the same.
 	 */
 	static Activity activity(List<String> lines)
 	{
@@ -100,27 +106,31 @@ final class PanelText
 			return new Activity(null, null, rest);
 		}
 		List<String> shown = new ArrayList<>();
-		List<String> tip = new ArrayList<>();
-		// The pages say what the searches found; the searches still go in the tooltip, as they went to the Wiki too.
+		List<String> full = new ArrayList<>();
+		// The pages say what the searches found; the searches still go in the full list, as they went to the Wiki too.
+		boolean more = !pages.isEmpty() && !searches.isEmpty();
 		if (!pages.isEmpty())
 		{
 			shown.add(names(pages, false) + " (Wiki)");
-			tip.add("Wiki pages: " + String.join(", ", pages));
+			full.add("Wiki pages: " + String.join(", ", pages));
+			more |= !allNamed(pages);
 		}
 		else if (!searches.isEmpty())
 		{
 			shown.add(names(searches, true) + (searches.size() == 1 ? " (Wiki search)" : " (Wiki searches)"));
+			more |= !allNamed(searches);
 		}
 		if (!searches.isEmpty())
 		{
-			tip.add("Wiki searches: " + quoted(searches));
+			full.add("Wiki searches: " + quoted(searches));
 		}
 		if (!prices.isEmpty())
 		{
 			shown.add(names(prices, false) + (prices.size() == 1 ? " (GE price)" : " (GE prices)"));
-			tip.add("GE prices: " + String.join(", ", prices));
+			full.add("GE prices: " + String.join(", ", prices));
+			more |= !allNamed(prices);
 		}
-		return new Activity("Looked up: " + String.join(" · ", shown), String.join(" · ", tip), rest);
+		return new Activity("Looked up: " + String.join(" · ", shown), more ? String.join("\n", full) : null, rest);
 	}
 
 	/**
@@ -186,6 +196,23 @@ final class PanelText
 			out.append(" +").append(names.size() - NAMES_SHOWN).append(" more");
 		}
 		return out.toString();
+	}
+
+	/** Whether {@link #names} names each of {@code names}, whole. */
+	private static boolean allNamed(List<String> names)
+	{
+		if (names.size() > NAMES_SHOWN)
+		{
+			return false;
+		}
+		for (String name : names)
+		{
+			if (!ChatApi.shorten(name, NAME_CHARS).equals(name))
+			{
+				return false;
+			}
+		}
+		return true;
 	}
 
 	private static String quoted(List<String> names)

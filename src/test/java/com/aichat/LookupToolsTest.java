@@ -330,7 +330,7 @@ public class LookupToolsTest
 		PanelText.Activity shown = PanelText.activity(activity);
 		assertEquals(Arrays.asList("Looked up: Abyssal whip (Wiki) · Cannonball (GE price)",
 			"Found no Wiki page called \"Abyssal wip\""), shown.lines());
-		assertEquals("Wiki pages: Abyssal whip · Wiki searches: \"abyssal whip\" · GE prices: Cannonball", shown.tip);
+		assertEquals("Wiki pages: Abyssal whip\nWiki searches: \"abyssal whip\"\nGE prices: Cannonball", shown.full);
 	}
 
 	@Test

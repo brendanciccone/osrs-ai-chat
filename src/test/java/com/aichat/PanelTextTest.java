@@ -76,9 +76,9 @@ public class PanelTextTest
 			"Searched the Wiki for \"what drops the abyssal whip\"",
 			"Read the Wiki page \"Abyssal demon\" (Drops)");
 		assertEquals("Looked up: Abyssal whip, Abyssal demon (Wiki)", shown.lookups);
-		// The searches only found the pages, so they're left off the line; the tooltip still has them.
-		assertEquals("Wiki pages: Abyssal whip, Abyssal demon · Wiki searches: \"abyssal whip\", "
-			+ "\"what drops the abyssal whip\"", shown.tip);
+		// The searches only found the pages, so they're left off the line; the full list still has them.
+		assertEquals("Wiki pages: Abyssal whip, Abyssal demon\n"
+			+ "Wiki searches: \"abyssal whip\", \"what drops the abyssal whip\"", shown.full);
 		assertEquals(Collections.emptyList(), shown.rest);
 		assertEquals(Collections.singletonList("Looked up: Abyssal whip, Abyssal demon (Wiki)"), shown.lines());
 
@@ -93,10 +93,12 @@ public class PanelTextTest
 	{
 		PanelText.Activity one = fold("Searched the Wiki for \"abyssal whip drop rate\"");
 		assertEquals("Looked up: \"abyssal whip drop rate\" (Wiki search)", one.lookups);
-		assertEquals("Wiki searches: \"abyssal whip drop rate\"", one.tip);
+		// The line already says it all.
+		assertNull(one.full);
 
 		PanelText.Activity two = fold("Searched the Wiki for \"whip\"", "Searched the Wiki for \"abyssal whip\"");
 		assertEquals("Looked up: \"whip\", \"abyssal whip\" (Wiki searches)", two.lookups);
+		assertNull(two.full);
 	}
 
 	@Test
@@ -108,16 +110,18 @@ public class PanelTextTest
 			"Read the Wiki page \"Abyssal demon\"",
 			"Checked the GE price of Dragon bones");
 		assertEquals("Looked up: Abyssal whip, Abyssal demon (Wiki) · Dragon bones (GE price)", shown.lookups);
-		assertEquals("Wiki pages: Abyssal whip, Abyssal demon · Wiki searches: \"abyssal whip\" · GE prices: Dragon bones",
-			shown.tip);
+		assertEquals("Wiki pages: Abyssal whip, Abyssal demon\nWiki searches: \"abyssal whip\"\nGE prices: Dragon bones",
+			shown.full);
 
-		assertEquals("Looked up: \"dragon bones\" (Wiki search) · Dragon bones, Big bones (GE prices)", fold(
+		PanelText.Activity searched = fold(
 			"Checked the GE price of Dragon bones",
 			"Searched the Wiki for \"dragon bones\"",
-			"Checked the GE price of Big bones").lookups);
+			"Checked the GE price of Big bones");
+		assertEquals("Looked up: \"dragon bones\" (Wiki search) · Dragon bones, Big bones (GE prices)", searched.lookups);
+		assertNull(searched.full);
 		PanelText.Activity prices = fold("Checked the GE price of Dragon bones");
 		assertEquals("Looked up: Dragon bones (GE price)", prices.lookups);
-		assertEquals("GE prices: Dragon bones", prices.tip);
+		assertNull(prices.full);
 	}
 
 	@Test
@@ -132,13 +136,13 @@ public class PanelTextTest
 			"Searched the Wiki for \"vorkath\"",
 			"Searched the Wiki for \"vorkath\"");
 		assertEquals("Looked up: Vorkath (Wiki) · Dragon bones (GE price)", shown.lookups);
-		assertEquals("Wiki pages: Vorkath · Wiki searches: \"vorkath\" · GE prices: Dragon bones", shown.tip);
+		assertEquals("Wiki pages: Vorkath\nWiki searches: \"vorkath\"\nGE prices: Dragon bones", shown.full);
 		assertEquals("Looked up: \"vorkath\" (Wiki search)",
 			fold("Searched the Wiki for \"vorkath\"", "Searched the Wiki for \"vorkath\"").lookups);
 	}
 
 	@Test
-	public void aLongListShowsThreeOfEachAndTheTooltipHasThemAll()
+	public void aLongListShowsThreeOfEachAndTheFullListHasThemAll()
 	{
 		PanelText.Activity shown = fold(
 			"Read the Wiki page \"Abyssal whip\"",
@@ -152,14 +156,38 @@ public class PanelTextTest
 			"Checked the GE price of Abyssal bludgeon");
 		assertEquals("Looked up: Abyssal whip, Abyssal demon, Abyssal Sire +2 more (Wiki) · "
 			+ "Abyssal whip, Kraken tentacle, Abyssal dagger +1 more (GE prices)", shown.lookups);
-		assertEquals("Wiki pages: Abyssal whip, Abyssal demon, Abyssal Sire, Abyssal tentacle, Kraken · "
-			+ "GE prices: Abyssal whip, Kraken tentacle, Abyssal dagger, Abyssal bludgeon", shown.tip);
+		assertEquals("Wiki pages: Abyssal whip, Abyssal demon, Abyssal Sire, Abyssal tentacle, Kraken\n"
+			+ "GE prices: Abyssal whip, Kraken tentacle, Abyssal dagger, Abyssal bludgeon", shown.full);
+		// Too many of one kind is enough for the full list.
+		assertEquals("Wiki pages: Abyssal whip, Abyssal demon, Abyssal Sire, Abyssal tentacle\nGE prices: Kraken tentacle",
+			fold(
+				"Read the Wiki page \"Abyssal whip\"",
+				"Read the Wiki page \"Abyssal demon\"",
+				"Read the Wiki page \"Abyssal Sire\"",
+				"Read the Wiki page \"Abyssal tentacle\"",
+				"Checked the GE price of Kraken tentacle").full);
+		// Three of each is still all of them.
+		assertNull(fold(
+			"Read the Wiki page \"Abyssal whip\"",
+			"Read the Wiki page \"Abyssal demon\"",
+			"Read the Wiki page \"Abyssal Sire\"",
+			"Checked the GE price of Abyssal whip",
+			"Checked the GE price of Kraken tentacle",
+			"Checked the GE price of Abyssal dagger").full);
 
-		// A long name is cut on the line, and whole in the tooltip.
+		// A long name is cut on the line, and whole in the full list.
 		String search = "how much does an abyssal whip cost to imbue";
 		PanelText.Activity cut = fold("Searched the Wiki for \"" + search + "\"");
 		assertEquals("Looked up: \"how much does an abyssal whip...\" (Wiki search)", cut.lookups);
-		assertEquals("Wiki searches: \"" + search + "\"", cut.tip);
+		assertEquals("Wiki searches: \"" + search + "\"", cut.full);
+		String item = "Abyssal whip (or) ornament kit, noted";
+		PanelText.Activity price = fold("Checked the GE price of " + item);
+		assertEquals("Looked up: Abyssal whip (or) ornament kit... (GE price)", price.lookups);
+		assertEquals("GE prices: " + item, price.full);
+		// Exactly as long as fits isn't cut.
+		String fits = "Abyssal whip (or) ornament kit";
+		assertEquals(PanelText.NAME_CHARS, fits.length());
+		assertNull(fold("Checked the GE price of " + fits).full);
 	}
 
 	@Test
@@ -202,7 +230,7 @@ public class PanelTextTest
 			"Couldn't finish a look-up (wiki_page)");
 		PanelText.Activity shown = PanelText.activity(lines);
 		assertNull(shown.lookups);
-		assertNull(shown.tip);
+		assertNull(shown.full);
 		assertEquals(lines, shown.rest);
 		assertEquals(lines, shown.lines());
 	}
@@ -214,7 +242,7 @@ public class PanelTextTest
 		{
 			PanelText.Activity shown = PanelText.activity(none);
 			assertNull(shown.lookups);
-			assertNull(shown.tip);
+			assertNull(shown.full);
 			assertTrue(shown.lines().isEmpty());
 		}
 	}
