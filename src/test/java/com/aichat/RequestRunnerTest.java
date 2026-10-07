@@ -315,8 +315,6 @@ public class RequestRunnerTest
 		assertEquals(Chat.Role.ASSISTANT, answer.role);
 		assertEquals("Take the Zul-Andra teleport.", answer.text);
 		assertEquals("Claude", answer.who);
-		assertEquals(1280, answer.usage.total());
-		assertEquals("claude-opus-5-5-20261001", answer.model);
 		assertTrue(answer.activity.isEmpty());
 		assertFalse(question.unanswered);
 		// The notification and game chat: once, on completion.
@@ -374,16 +372,14 @@ public class RequestRunnerTest
 	}
 
 	@Test
-	public void aReplyWithoutCountsHasNoUsage()
+	public void aReplyCutShortSaysSo()
 	{
 		send("hi");
 		ChatApi.Reply r = reply("Hello!", 0, 0);
 		r.cutShort = true;
 		api.listener().onReply(r);
 		runEdt();
-		Chat.Message answer = chat.messages.get(1);
-		assertNull(answer.usage);
-		assertEquals("Hello!\n\n(The reply was cut short.)", answer.text);
+		assertEquals("Hello!\n\n(The reply was cut short.)", chat.messages.get(1).text);
 	}
 
 	@Test
@@ -644,39 +640,13 @@ public class RequestRunnerTest
 	}
 
 	@Test
-	public void whatAFailedRequestUsedIsCounted()
-	{
-		send("q");
-		ChatApi.Failure failure = new ChatApi.Failure(ChatApi.TOO_MANY_ROUNDS);
-		failure.usage.input = 9000;
-		failure.usage.output = 300;
-		failure.model = "claude-opus-5-5-20261001";
-		api.listener().onError(failure);
-		runEdt();
-		Chat.Message error = chat.messages.get(chat.messages.size() - 1);
-		assertEquals(Chat.Role.ERROR, error.role);
-		assertEquals(9300, error.usage.total());
-		assertEquals("claude-opus-5-5-20261001", error.model);
-		assertEquals("This chat: 9.3k tokens · about $0.04", PanelText.chatTotals(chat.messages));
-
-		// A request stopped on its way may have used more than anyone counted: the total is a minimum from then on.
-		assertTrue(runner.retry(chat, setup()));
-		runEdt();
-		runner.stop(chat);
-		Chat.Message stopped = chat.messages.get(chat.messages.size() - 1);
-		assertTrue(stopped.usage.incomplete);
-		assertEquals("This chat: at least 9.3k tokens", PanelText.chatTotals(chat.messages));
-	}
-
-	@Test
-	public void stoppingBeforeAnythingWasSentCostsNothing()
+	public void characterDetailsReadAfterStopDontSendTheQuestion()
 	{
 		runner.send(chat, "q", setup(true, false, true));
 		runEdt();
 		// Still reading the character details: nothing has gone to the provider.
 		Consumer<String> stale = host.characterRead;
 		runner.stop(chat);
-		assertNull(chat.messages.get(chat.messages.size() - 1).usage);
 
 		// The game answers after the Stop: the question stays where it was.
 		stale.accept("[Character: Zezima]");
@@ -695,22 +665,6 @@ public class RequestRunnerTest
 		runEdt();
 		assertEquals(1, api.sent.size());
 		assertSame(api.requests.get(0), chat.pending);
-	}
-
-	@Test
-	public void aFailedSummaryStillCountsWhatItUsed()
-	{
-		history(20);
-		send("Q21");
-		ChatApi.Failure failure = new ChatApi.Failure("Anthropic is overloaded or having trouble right now. Try again shortly.");
-		failure.usage.input = 5000;
-		failure.usage.incomplete = true;
-		api.listener().onError(failure);
-		runEdt();
-		Chat.Message note = chat.messages.get(chat.messages.size() - 2);
-		assertTrue(note.text, note.text.startsWith("Couldn't summarise"));
-		assertEquals(5000, note.usage.total());
-		assertTrue(note.usage.incomplete);
 	}
 
 	@Test
@@ -795,7 +749,6 @@ public class RequestRunnerTest
 		Chat.Message note = chat.messages.get(chat.messages.indexOf(question) - 1);
 		assertEquals(Chat.Role.NOTE, note.role);
 		assertTrue(note.text, note.text.startsWith("Summary of the 24 earlier messages, sent instead of them:"));
-		assertEquals(5100, note.usage.total());
 
 		// Then the question, with the summary instead of the oldest messages.
 		assertEquals(2, api.sent.size());
@@ -816,9 +769,6 @@ public class RequestRunnerTest
 		assertFalse(question.unanswered);
 		Chat.Message note = chat.messages.get(chat.messages.indexOf(question) - 1);
 		assertEquals("Couldn't summarise the earlier messages (you skipped it), so the whole chat was sent this time.", note.text);
-		// The summary request was on its way: some of it may have been answered, and billed, without being counted.
-		assertNotNull(note.usage);
-		assertTrue(note.usage.incomplete);
 		assertEquals(2, api.sent.size());
 		assertEquals(41, api.last().turns.size());
 
@@ -863,7 +813,6 @@ public class RequestRunnerTest
 		Chat.Message note = chat.messages.get(chat.messages.indexOf(question) - 1);
 		assertEquals("Couldn't summarise the earlier messages (the summary was cut short), so the whole chat was sent this time.",
 			note.text);
-		assertEquals("what it used still counts", 9000, note.usage.total());
 		assertEquals(41, api.last().turns.size());
 	}
 
@@ -875,17 +824,14 @@ public class RequestRunnerTest
 		Chat.Message question = send("Q4");
 		assertFalse("not long by count", chat.isSummarizing());
 		host.activity.accept("Read the Wiki page \"Vorkath\"");
-		ChatApi.Failure tooLong = ChatApi.tooLong("claude-opus-5-5", "");
-		tooLong.usage.input = 100;
-		api.listener().onError(tooLong);
+		api.listener().onError(ChatApi.tooLong("claude-opus-5-5", ""));
 		runEdt();
 		assertTrue("still busy, with the summary", chat.isSummarizing());
 		assertFalse(question.unanswered);
 		Chat.Message note = chat.messages.get(chat.messages.size() - 1);
 		assertEquals("This chat was too long for claude-opus-5-5, so the earlier messages are summarised first and the "
 			+ "question is sent again.", note.text);
-		assertEquals("what the attempt looked up and used stays listed", List.of("Read the Wiki page \"Vorkath\""), note.activity);
-		assertEquals(100, note.usage.total());
+		assertEquals("what the attempt looked up stays listed", List.of("Read the Wiki page \"Vorkath\""), note.activity);
 		assertEquals(ConversationBuilder.SUMMARY_PROMPT, api.last().system);
 		assertTrue(lastTurn(api.last()).contains("Player: Q3"));
 		assertFalse("not the question itself", lastTurn(api.last()).contains("Q4"));

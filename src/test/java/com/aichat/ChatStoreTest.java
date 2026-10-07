@@ -221,62 +221,59 @@ public class ChatStoreTest
 		assertEquals(2, back.messages.size());
 		assertFalse(back.messages.get(0).summarized);
 		assertEquals(2, ConversationBuilder.history(back).size());
-		// Nor what was looked up, or the tokens used.
+		// Nor what was looked up.
 		assertNull(back.messages.get(1).activity);
-		assertNull(back.messages.get(1).usage);
-		assertNull(back.messages.get(1).model);
-		assertNull(PanelText.chatTotals(back.messages));
 	}
 
 	@Test
-	public void lookUpsAndTokensAreRemembered()
+	public void lookUpsAreRemembered()
 	{
 		Chat c = new Chat("Vorkath");
 		c.messages.add(new Chat.Message(Chat.Role.USER, "Vorkath's weaknesses?"));
 		Chat.Message a = new Chat.Message(Chat.Role.ASSISTANT, "Stab and dragonbane.");
 		a.who = "Claude";
 		a.activity = new ArrayList<>(List.of("Searched the Wiki for \"vorkath\"", "Read the Wiki page \"Vorkath\""));
-		a.usage = new ChatApi.Usage();
-		a.usage.input = 1204;
-		a.usage.cacheRead = 3410;
-		a.usage.cacheWrite = 12;
-		a.usage.output = 352;
-		a.model = "claude-opus-5-5";
 		c.messages.add(a);
 		Chat.Message stopped = new Chat.Message(Chat.Role.NOTE, "Stopped.");
 		stopped.activity = new ArrayList<>();
-		stopped.usage = new ChatApi.Usage();
-		stopped.usage.incomplete = true;
 		c.messages.add(stopped);
 
 		String json = ChatStore.toJson(gson, List.of(c), c);
 		Chat.Message back = ChatStore.fromJson(gson, json).chats.get(0).messages.get(1);
 		assertEquals(a.activity, back.activity);
-		assertEquals(1204, back.usage.input);
-		assertEquals(3410, back.usage.cacheRead);
-		assertEquals(12, back.usage.cacheWrite);
-		assertEquals(352, back.usage.output);
-		assertEquals("claude-opus-5-5", back.model);
-		assertTrue(json, json.contains("\"usage\":{\"input\":1204,\"cacheRead\":3410,\"cacheWrite\":12,\"output\":352,\"incomplete\":false,\"model\":\"claude-opus-5-5\"}"));
-		assertFalse(back.usage.incomplete);
 		// Nothing looked up: nothing saved.
-		Chat.Message stoppedBack = ChatStore.fromJson(gson, json).chats.get(0).messages.get(2);
-		assertNull(stoppedBack.activity);
-		// A request stopped on its way: the chat's total stays a minimum.
-		assertTrue(stoppedBack.usage.incomplete);
+		assertNull(ChatStore.fromJson(gson, json).chats.get(0).messages.get(2).activity);
 	}
 
 	@Test
-	public void oddLookUpsAndCountsInAFileAreTidied()
+	public void filesWithTokenCountsStillLoad()
+	{
+		// As AI Chat wrote it while it kept each reply's tokens: they're skipped, and not written again.
+		String old = "{\"version\":1,\"current\":\"a\",\"chats\":[{\"id\":\"a\",\"name\":\"Vorkath\",\"messages\":["
+			+ "{\"role\":\"USER\",\"text\":\"Vorkath's weaknesses?\",\"time\":1},"
+			+ "{\"role\":\"ASSISTANT\",\"text\":\"Stab and dragonbane.\",\"time\":2,\"who\":\"Claude\","
+			+ "\"activity\":[\"Read the Wiki page \\\"Vorkath\\\"\"],\"usage\":{\"input\":1204,\"cacheRead\":3410,"
+			+ "\"cacheWrite\":12,\"output\":352,\"incomplete\":false,\"model\":\"claude-opus-5-5\"}},"
+			+ "{\"role\":\"NOTE\",\"text\":\"Stopped.\",\"time\":3,\"usage\":{\"input\":0,\"cacheRead\":0,"
+			+ "\"cacheWrite\":0,\"output\":0,\"incomplete\":true}}]}]}";
+		ChatStore.Loaded loaded = ChatStore.fromJson(gson, old);
+		Chat back = loaded.chats.get(0);
+		assertSame(back, loaded.current);
+		assertEquals(3, back.messages.size());
+		Chat.Message reply = back.messages.get(1);
+		assertEquals("Stab and dragonbane.", reply.text);
+		assertEquals("Claude", reply.who);
+		assertEquals(List.of("Read the Wiki page \"Vorkath\""), reply.activity);
+		assertEquals("Stopped.", back.messages.get(2).text);
+		assertFalse(ChatStore.toJson(gson, loaded.chats, back).contains("usage"));
+	}
+
+	@Test
+	public void oddLookUpsInAFileAreTidied()
 	{
 		ChatStore.Loaded loaded = ChatStore.fromJson(gson, "{\"chats\":[{\"id\":\"a\",\"name\":\"x\",\"messages\":["
-			+ "{\"role\":\"ASSISTANT\",\"text\":\"a\",\"activity\":[\"\",null,\"Shared your bank\"],"
-			+ "\"usage\":{\"input\":-5,\"output\":7}}]}]}");
-		Chat.Message m = loaded.chats.get(0).messages.get(0);
-		assertEquals(List.of("Shared your bank"), m.activity);
-		assertEquals(0, m.usage.input);
-		assertEquals(7, m.usage.output);
-		assertNull(m.model);
+			+ "{\"role\":\"ASSISTANT\",\"text\":\"a\",\"activity\":[\"\",null,\"Shared your bank\"]}]}]}");
+		assertEquals(List.of("Shared your bank"), loaded.chats.get(0).messages.get(0).activity);
 	}
 
 	@Test

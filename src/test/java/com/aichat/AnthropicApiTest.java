@@ -436,7 +436,6 @@ public class AnthropicApiTest
 			// Claude had the request and may have been answering it, and billing it: it isn't sent again.
 			assertTrue(heard.retries.isEmpty());
 			assertEquals(1, hits.get());
-			assertTrue(heard.failure.usage.incomplete);
 		}
 		finally
 		{
@@ -553,33 +552,29 @@ public class AnthropicApiTest
 		assertEquals((ChatApi.MAX_TOOL_ROUNDS + 1) * 200, used.cacheRead);
 		assertEquals((ChatApi.MAX_TOOL_ROUNDS + 1) * 30, used.cacheWrite);
 		assertEquals((ChatApi.MAX_TOOL_ROUNDS + 1) * 3, used.output);
-		assertFalse(used.incomplete);
 		assertEquals("claude-opus-5-5", heard.failure.model);
 	}
 
 	@Test
 	public void whatAFailedReplyUsedIsReported() throws Exception
 	{
-		// Cut off part way: what was counted so far, and a sign that more went uncounted.
+		// Cut off part way: what was counted so far.
 		server.answer(PATH, events(begin("claude-opus-5-5"), text(0, "Half")));
 		StandIn.Heard heard = send(api(), conversation("claude-opus-5-5", "hi"));
 		assertEquals(ChatApi.CUT_OFF, heard.error());
-		assertEquals(241, heard.failure.usage.total());
-		assertTrue(heard.failure.usage.incomplete);
+		assertEquals(241, StandIn.tokens(heard.failure.usage));
 
 		// Declined part way: billed, and counted in full.
 		server.answer(PATH, events(begin("claude-opus-5-5"), text(0, "Sure, here"), end("refusal", 3)));
 		heard = send(api(), conversation("claude-opus-5-5", "hi"));
 		assertEquals("Claude declined to answer that.", heard.error());
-		assertEquals(243, heard.failure.usage.total());
-		assertFalse(heard.failure.usage.incomplete);
+		assertEquals(243, StandIn.tokens(heard.failure.usage));
 
 		// Turned away before anything was answered: nothing used.
 		server.answer(PATH, json(401, "{\"type\":\"error\",\"error\":{\"type\":\"authentication_error\",\"message\":\"invalid x-api-key\"}}"));
 		heard = send(api(), conversation("claude-opus-5-5", "hi"));
 		assertTrue(heard.error().contains("Claude API key"));
-		assertEquals(0, heard.failure.usage.total());
-		assertFalse(heard.failure.usage.incomplete);
+		assertEquals(0, StandIn.tokens(heard.failure.usage));
 	}
 
 	@Test
@@ -728,20 +723,12 @@ public class AnthropicApiTest
 		assertEquals(400, reply.usage.cacheRead);
 		assertEquals(60, reply.usage.cacheWrite);
 		assertEquals(509, reply.usage.output);
-		// Each at its own model's prices: no cost is worked out.
-		assertTrue(reply.usage.incomplete);
 
-		// Without the attempts listed, the counts are only the last one's: a minimum.
+		// Without the attempts listed, the counts are only the last one's.
 		server.clear();
 		server.answer(PATH, events(begin("claude-opus-5-5"), text(0, "Part one. "), fallback, text(2, "Part two."), end("end_turn", 9)));
 		reply = send(api(), conversation("claude-opus-5-5", "q")).reply();
 		assertEquals(9, reply.usage.output);
-		assertTrue(reply.usage.incomplete);
-
-		// An ordinary reply's counts are whole.
-		server.clear();
-		server.answer(PATH, answer("Hi"));
-		assertFalse(send(api(), conversation("claude-opus-5-5", "q")).reply().usage.incomplete);
 	}
 
 	@Test

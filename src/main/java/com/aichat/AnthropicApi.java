@@ -276,8 +276,6 @@ class AnthropicApi implements ChatApi
 			}
 			if (ChatApi.tookTooLong(e))
 			{
-				// It got the request, so it may have been answering it.
-				usage.incomplete = true;
 				fail(TOO_LONG);
 				return;
 			}
@@ -629,13 +627,12 @@ class AnthropicApi implements ChatApi
 		}
 
 		/**
-		 * A response that broke off: what it counted so far is billed, and the rest of what it used was never counted.
-		 * (One that's asked again was turned away, and isn't counted.)
+		 * A response that broke off: what it counted so far is billed. (One that's asked again was turned away, and
+		 * isn't counted.)
 		 */
 		private void brokeOff(Message m)
 		{
 			usage.add(m.usage);
-			usage.incomplete = true;
 			model = m.model != null ? m.model : model;
 		}
 
@@ -699,10 +696,6 @@ class AnthropicApi implements ChatApi
 			model = string(o, "model");
 			stop = string(o, "stop_reason");
 			readUsage(object(o, "usage"), usage);
-			for (JsonElement block : whole)
-			{
-				usage.incomplete |= "fallback".equals(type(block));
-			}
 			complete = true;
 		}
 
@@ -719,9 +712,7 @@ class AnthropicApi implements ChatApi
 			{
 				text.append(string(block, "text"));
 			}
-			// Another model took over after this one declined: it's the one answering now. What the first one wrote is
-			// billed too, at its own prices, and may not be in the counts: the cost can't be told.
-			usage.incomplete |= "fallback".equals(type);
+			// Another model took over after this one declined: it's the one answering now.
 			JsonObject to = "fallback".equals(type) ? object(block, "to") : null;
 			if (to != null && string(to, "model") != null)
 			{
@@ -1015,8 +1006,6 @@ class AnthropicApi implements ChatApi
 			usage.cacheRead = all.cacheRead;
 			usage.cacheWrite = all.cacheWrite;
 			usage.output = all.output;
-			// More than one model's tokens, each at its own prices.
-			usage.incomplete |= iterations.getAsJsonArray().size() > 1;
 			return;
 		}
 		readCounts(u, usage);

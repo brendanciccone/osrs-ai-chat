@@ -445,7 +445,6 @@ public class OpenAiApiTest
 			"low", scheduler, new ConcurrentHashMap<>());
 		ChatApi.Reply reply = send(api, conversation("m", "hi")).reply();
 		assertEquals("Whole answer.", reply.text);
-		assertTrue("its counts never came", reply.usage.incomplete);
 
 		// Before it: cut off.
 		api = new OpenAiApi(http, gson, answerThenDrop(content("Half a")), "", "m", false, "low", scheduler,
@@ -524,7 +523,6 @@ public class OpenAiApiTest
 			// The service had the request and may have been answering it, and billing it: it isn't sent again.
 			assertTrue(heard.retries.isEmpty());
 			assertEquals(1, hits.get());
-			assertTrue(heard.failure.usage.incomplete);
 		}
 		finally
 		{
@@ -586,17 +584,15 @@ public class OpenAiApiTest
 		StandIn.Heard heard = send(compatible("m"), c);
 		assertEquals(ChatApi.TOO_MANY_ROUNDS, heard.error());
 		assertEquals(ChatApi.MAX_TOOL_ROUNDS + 1, server.bodies.size());
-		// This service sent no token counts, so whatever was used went uncounted.
-		assertEquals(0, heard.failure.usage.total());
-		assertTrue(heard.failure.usage.incomplete);
+		// This service sent no token counts.
+		assertEquals(0, StandIn.tokens(heard.failure.usage));
 
 		// One that does: every round counts.
 		server.answer(PATH, events(toolCalls("[{\"index\":0,\"id\":\"c\",\"type\":\"function\",\"function\":{\"name\":\"wiki_search\",\"arguments\":\"{}\"}}]"),
 			finish("tool_calls"), chunk("{\"choices\":[],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":5}}"), DONE));
 		heard = send(compatible("m"), c);
 		assertEquals(ChatApi.TOO_MANY_ROUNDS, heard.error());
-		assertEquals((ChatApi.MAX_TOOL_ROUNDS + 1) * 105, heard.failure.usage.total());
-		assertFalse(heard.failure.usage.incomplete);
+		assertEquals((ChatApi.MAX_TOOL_ROUNDS + 1) * 105, StandIn.tokens(heard.failure.usage));
 	}
 
 	@Test

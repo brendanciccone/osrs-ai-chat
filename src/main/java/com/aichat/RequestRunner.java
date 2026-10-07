@@ -236,16 +236,12 @@ final class RequestRunner
 			return;
 		}
 		chat.pending = request[0];
-		chat.requestSent = true;
 		// Stop (the panel calls it Skip meanwhile) skips the summary, not the message: this time the whole chat is sent
 		// instead. Pressed again, it stops the message.
 		chat.skipSummary = () ->
 		{
 			request[0].cancel();
-			ChatApi.Failure skipped = new ChatApi.Failure("you skipped it");
-			// It was on its way: some of it may have been answered, and billed.
-			skipped.usage.incomplete = true;
-			afterSummary(out, old, null, skipped);
+			afterSummary(out, old, null, new ChatApi.Failure("you skipped it"));
 		};
 	}
 
@@ -277,24 +273,13 @@ final class RequestRunner
 		boolean whole = reply != null && reply.text != null && !reply.text.trim().isEmpty() && !reply.cutShort;
 		if (whole)
 		{
-			Chat.Message note = ConversationBuilder.applySummary(chat, old, reply.text, out.message);
-			counted(note, reply.usage, reply.model, out.setup.model);
+			ConversationBuilder.applySummary(chat, old, reply.text, out.message);
 		}
 		else
 		{
 			String reason = failure != null ? failure.message
 				: reply != null && reply.cutShort ? "the summary was cut short" : "the summary came back empty";
-			Chat.Message note = new Chat.Message(Chat.Role.NOTE, ConversationBuilder.summaryFailed(reason));
-			// What the summary request used is billed even though there's no summary to show for it.
-			if (failure != null)
-			{
-				counted(note, failure.usage, failure.model, out.setup.model);
-			}
-			else if (reply != null)
-			{
-				counted(note, reply.usage, reply.model, out.setup.model);
-			}
-			ConversationBuilder.addBefore(chat, out.message, note);
+			ConversationBuilder.addBefore(chat, out.message, new Chat.Message(Chat.Role.NOTE, ConversationBuilder.summaryFailed(reason)));
 		}
 		host.changed(chat);
 		readCharacter(out);
@@ -407,7 +392,6 @@ final class RequestRunner
 		}
 		sent.set(request[0]);
 		chat.pending = request[0];
-		chat.requestSent = true;
 	}
 
 	/**
@@ -514,7 +498,7 @@ final class RequestRunner
 			return;
 		}
 		String before = shown != null ? shown : chat.liveText;
-		if (failure != null && failure.tooLong && !out.shortened && shorten(out, failure, before))
+		if (failure != null && failure.tooLong && !out.shortened && shorten(out, before))
 		{
 			return;
 		}
@@ -532,7 +516,6 @@ final class RequestRunner
 			m = new Chat.Message(Chat.Role.ASSISTANT, reply.text + (reply.cutShort ? "\n\n(The reply was cut short.)" : ""));
 			m.who = out.setup.api.displayName();
 			ConversationBuilder.recordReply(m, out.message, reply);
-			counted(m, reply.usage, reply.model, out.setup.model);
 			if (reply.toolsUnavailable)
 			{
 				activity.add(NO_LOOKUPS);
@@ -546,8 +529,6 @@ final class RequestRunner
 				keepUnfinished(chat, out.setup.api.displayName(), before);
 			}
 			m = new Chat.Message(Chat.Role.ERROR, failure.message);
-			// Look-up rounds before it failed, or a reply cut off part way, are billed all the same.
-			counted(m, failure.usage, failure.model, out.setup.model);
 		}
 		m.activity = activity;
 		chat.messages.add(m);
@@ -557,10 +538,10 @@ final class RequestRunner
 
 	/**
 	 * The chat was too long for the model: once per question, everything before it is summarised, however few
-	 * messages that is, and it goes again. A note says so, and keeps what this attempt looked up and used. False when
-	 * there's nothing before it to summarise.
+	 * messages that is, and it goes again. A note says so, and keeps what this attempt looked up. False when there's
+	 * nothing before it to summarise.
 	 */
-	private boolean shorten(Outgoing out, ChatApi.Failure failure, String shown)
+	private boolean shorten(Outgoing out, String shown)
 	{
 		Chat chat = out.chat;
 		List<Chat.Message> old = ConversationBuilder.planSummary(chat, true);
@@ -573,7 +554,6 @@ final class RequestRunner
 		Chat.Message note = new Chat.Message(Chat.Role.NOTE, "This chat was too long for " + out.setup.model
 			+ ", so the earlier messages are summarised first and the question is sent again.");
 		note.activity = activity;
-		counted(note, failure.usage, failure.model, out.setup.model);
 		chat.messages.add(note);
 		// Still busy: the summary is next, then the question again.
 		chat.pending = new ChatApi.Pending();
@@ -598,21 +578,6 @@ final class RequestRunner
 		m.who = who;
 		m.unfinished = true;
 		chat.messages.add(m);
-	}
-
-	/**
-	 * Keeps on {@code m} a copy of the tokens a request used, and the model that answered ({@code model}, or the one
-	 * asked for); nothing when the provider gave no counts and nothing says any were used.
-	 */
-	private static void counted(Chat.Message m, ChatApi.Usage usage, String model, String asked)
-	{
-		if (usage.total() == 0 && !usage.incomplete)
-		{
-			return;
-		}
-		m.usage = new ChatApi.Usage();
-		m.usage.add(usage);
-		m.model = model != null ? model : asked;
 	}
 
 	// ------------------------------------------------------------------
@@ -646,7 +611,6 @@ final class RequestRunner
 		// What the player was reading when they pressed Stop, often because they'd read enough.
 		String shown = chat.liveText;
 		String who = chat.answering;
-		boolean sent = chat.requestSent;
 		cancel(chat);
 		// The unanswered question stays in the transcript but isn't sent again.
 		for (int i = chat.messages.size() - 1; i >= 0; i--)
@@ -661,12 +625,6 @@ final class RequestRunner
 		keepUnfinished(chat, who, shown);
 		Chat.Message stopped = new Chat.Message(Chat.Role.NOTE, note);
 		stopped.activity = activity;
-		if (sent)
-		{
-			// What it used before it stopped never got counted: the chat's total can only be a minimum now.
-			stopped.usage = new ChatApi.Usage();
-			stopped.usage.incomplete = true;
-		}
 		chat.messages.add(stopped);
 		host.changed(chat);
 	}

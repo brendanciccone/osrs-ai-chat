@@ -128,11 +128,6 @@ interface ChatApi
 		long cacheRead;
 		long cacheWrite;
 		long output;
-		/**
-		 * More may have been used than is counted here: a response broke off (or was stopped) before its counts came,
-		 * the service doesn't send them, or another model took over part way (billed at its own prices).
-		 */
-		boolean incomplete;
 
 		void add(Usage u)
 		{
@@ -140,12 +135,6 @@ interface ChatApi
 			cacheRead += u.cacheRead;
 			cacheWrite += u.cacheWrite;
 			output += u.output;
-			incomplete |= u.incomplete;
-		}
-
-		long total()
-		{
-			return input + cacheRead + cacheWrite + output;
 		}
 	}
 

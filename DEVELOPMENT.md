@@ -22,10 +22,10 @@ server on 127.0.0.1 (`StandIn`), which serves canned answers (streams included) 
 
 - `AnthropicApiTest`, `OpenAiApiTest`: the two providers against `StandIn`: streaming, tool rounds, retries,
   token counts, model lists, and the settings a service may refuse. `ChatApiTest`: what they share (keys, retry
-  waits, running tools). `SseTest`: the event-stream reader. `PricingTest`: Claude cost estimates.
+  waits, running tools). `SseTest`: the event-stream reader.
 - `RequestRunnerTest`: a message's way out and its answer's way back, with a stand-in provider and EDT: summary
-  first, the reply as it streams in, look-ups, Stop (what was shown stays), Retry, what failed requests used, a chat
-  too long for its model, and answers that come too late to count.
+  first, the reply as it streams in, look-ups, Stop (what was shown stays), Retry, a chat too long for its model, and
+  answers that come too late to count.
   `ThrottleTest`: redrawing a streaming reply at most ~15 times a second. `ToolBoxTest`: which tools go with a
   request, in what order, and which runner answers each call.
 - `ConversationBuilderTest`: what a request sends (history, character notes, summaries, replaying Claude's replies).
@@ -36,7 +36,7 @@ server on 127.0.0.1 (`StandIn`), which serves canned answers (streams included) 
   `CharacterInfoTest`: the character note.
 - `MarkdownTest` and `MessageViewTest`: reading replies' Markdown, and drawing it off screen (headless).
   `StackLayoutTest`: the transcript's layout.
-  `GameChatEchoTest`: replies as game chat. `PanelTextTest`: the status line and token counts.
+  `GameChatEchoTest`: replies as game chat. `PanelTextTest`: the status line.
   `ConnectionCheckTest` and `ProviderSetupTest`: "Test" and what the settings say about the provider.
   `ConnectionTesterTest`: which answers to "Test" count. `AiChatPanelTest`: when the transcript follows the chat
   down. `PrefixTest`: the `::ai` command.
@@ -50,12 +50,12 @@ server on 127.0.0.1 (`StandIn`), which serves canned answers (streams included) 
   streaming reply.
 - `ChatApi` (shared types and helpers), `AnthropicApi`, `OpenAiApi`, `Sse`: the providers. `ProviderSetup`: the chosen
   provider as the settings describe it. `ConnectionTester`: "Test" while it runs. `ConnectionCheck`: what its answer
-  says, and "Choose model". `Pricing`: cost estimates.
+  says, and "Choose model".
 - `ToolBox`: the tools that go with a request. `LookupTools` and `WikiClient`: Wiki search and pages, GE prices.
   `GameDataTools` and `GameData`: the player's equipment, inventory, bank, Slayer task and diaries.
   `CharacterInfo`: the character note.
-- `AiChatPanel` (the sidebar), `MessageView` and `Markdown` (formatted messages), `PanelText` (the panel's status and
-  token lines), `StackLayout`. `GameChatEcho`: replies as game chat.
+- `AiChatPanel` (the sidebar), `MessageView` and `Markdown` (formatted messages), `PanelText` (the panel's status
+  line), `StackLayout`. `GameChatEcho`: replies as game chat.
 - `Chat` (a conversation), `ChatSaver` ("Remember chats": when to load, save and delete), `ChatStore` (what's saved),
   `ChatFile` (the file itself), `AiChatConfig`.
 

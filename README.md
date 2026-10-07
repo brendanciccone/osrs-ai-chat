@@ -26,7 +26,6 @@ look things up on the OSRS Wiki while it answers. Uses your own API key. Free an
 - Optional, off by default: share your character (name, account type, levels and quests, and your Slayer task and
   achievement diaries when a question needs them), and your equipment, inventory and bank, for answers that fit your
   account
-- The tokens each reply used, and the chat's total, with an estimate of the cost for Claude models
 - A busy provider is asked again automatically; a question that failed or was stopped can be sent again with
   **Retry**, and what was shown of its reply stays for you to read
 - Long chats are summarised instead of cut short (see [Long chats](#long-chats))
@@ -86,9 +85,9 @@ there's no server in between.
   you use profile sync.
 - **Chats** are kept on this computer in `.runelite/plugin-data/osrs-ai-chat/chats.json` (the latest 200 messages of
   each, and any older ones still sent to the assistant; see [Long chats](#long-chats)), so they're still there next
-  time, including any character info that went with them, the list of what was looked up for each reply, and the tokens
-  it used (the look-ups' contents aren't kept). Clear and Delete remove them from there too. Turn off **Remember chats**
-  to keep chats only while RuneLite is open; that also deletes the saved copy. API keys are never saved there. With
+  time, including any character info that went with them and the list of what was looked up for each reply (the
+  look-ups' contents aren't kept). Clear and Delete remove them from there too. Turn off **Remember chats** to keep
+  chats only while RuneLite is open; that also deletes the saved copy. API keys are never saved there. With
   several RuneLite windows open, the first one remembers its chats and the others keep theirs only while open.
   Uninstalling AI Chat leaves the file: turn off **Remember chats** first, or delete the
   `.runelite/plugin-data/osrs-ai-chat` folder afterwards.
@@ -112,15 +111,6 @@ past the model's context size it quietly forgets the start of the chat, so raise
 **Remember chats** saves the latest 200 messages of each chat. Older ones are left out of the saved copy only once
 they're no longer sent (the summary covers them, or they're notes and errors), and a note at the start of the chat
 says how many are missing.
-
-## Tokens and cost
-
-Hover over the name above a reply to see the tokens it used, for example "1,204 in · 3,410 cached · 352 out · about
-$0.01" (an error shows what its request used before it failed). When nothing is on its way, the line under the chat
-shows the chat's total. It says "at least", without a cost, once a request in the chat was stopped or broke off part
-way, since some of what it used was never counted, or when another Claude model finished a reply the first one
-declined, since each is billed at its own prices. The cost is an estimate from Anthropic's published prices, for
-Claude models only; your provider's bill is what counts.
 
 ## Settings
 

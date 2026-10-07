@@ -187,6 +187,7 @@ class AiChatPanel extends PluginPanel
 		p.setOpaque(false);
 
 		statusLabel.setFont(FontManager.getRunescapeSmallFont());
+		statusLabel.setForeground(ColorScheme.BRAND_ORANGE);
 		p.add(statusLabel);
 
 		noteArea.setFont(SMALL_FONT);
@@ -464,7 +465,7 @@ class AiChatPanel extends PluginPanel
 		});
 	}
 
-	/** The status line: what the reply on its way is doing, ticking every second; or the chat's totals. */
+	/** The status line: what the reply on its way is doing, ticking every second. */
 	void refreshStatus()
 	{
 		Chat chat = plugin.currentChat();
@@ -479,9 +480,7 @@ class AiChatPanel extends PluginPanel
 		{
 			ticker.stop();
 			statusLabel.setToolTipText(null);
-			String totals = chat == null ? null : PanelText.chatTotals(chat.messages);
-			statusLabel.setForeground(MUTED_COLOR);
-			statusLabel.setText(totals == null ? " " : totals);
+			statusLabel.setText(" ");
 			return;
 		}
 		if (!ticker.isRunning())
@@ -489,7 +488,6 @@ class AiChatPanel extends PluginPanel
 			ticker.start();
 		}
 		String status = PanelText.status(chat, System.currentTimeMillis());
-		statusLabel.setForeground(ColorScheme.BRAND_ORANGE);
 		statusLabel.setText(status);
 		// A long look-up doesn't fit on the line.
 		statusLabel.setToolTipText(chat.lookingUp ? status : null);
@@ -611,8 +609,6 @@ class AiChatPanel extends PluginPanel
 				+ (m.unanswered ? "  (not answered)" : "") + (m.unfinished ? "  (unfinished)" : "")
 				+ (m.summarized ? "  (summarised)" : ""));
 			header.setForeground(color(m.role));
-			// Not for a "Stopped" note that only knows tokens may have been used.
-			header.setToolTipText(m.usage == null || m.usage.total() == 0 ? null : PanelText.usage(m.usage, m.model));
 			retry.setVisible(retryHere);
 			body.setVisible(true);
 			switch (m.role)
@@ -675,7 +671,6 @@ class AiChatPanel extends PluginPanel
 			setBackground(ColorScheme.DARKER_GRAY_HOVER_COLOR);
 			header.setText(who == null ? "Assistant" : who);
 			header.setForeground(ColorScheme.BRAND_ORANGE);
-			header.setToolTipText(null);
 			retry.setVisible(false);
 			body.setTextColor(Color.WHITE);
 			body.setMarkdown(text);

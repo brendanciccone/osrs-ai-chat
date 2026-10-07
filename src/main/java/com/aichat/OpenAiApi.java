@@ -351,8 +351,6 @@ class OpenAiApi implements ChatApi
 			boolean local = isPrivate(base.host());
 			if (ChatApi.tookTooLong(e))
 			{
-				// It got the request, so it may have been answering it.
-				usage.incomplete = true;
 				fail(describe(base) + " took too long to answer."
 					+ (local ? " Models on your own computer can be slow; try a smaller one." : " Try again."));
 				return;
@@ -600,10 +598,8 @@ class OpenAiApi implements ChatApi
 				fail(m.whole ? describe(base) + " sent no reply." : CUT_OFF);
 				return;
 			}
-			// Counted before anything else can go wrong: this response is billed whatever happens next. Some services
-			// don't send counts at all.
+			// Counted before anything else can go wrong: this response is billed whatever happens next.
 			usage.add(m.usage);
-			usage.incomplete |= !m.counted;
 			model = m.model != null ? m.model : model;
 			String text = withoutThinking(m.content.toString());
 			boolean cutShort = "length".equals(m.finish);
@@ -726,11 +722,10 @@ class OpenAiApi implements ChatApi
 			fail(new Failure(message));
 		}
 
-		/** A response that broke off: what it counted so far is billed, and the rest of what it used was never counted. */
+		/** A response that broke off: what it counted so far is billed. */
 		private void brokeOff(Message m)
 		{
 			usage.add(m.usage);
-			usage.incomplete = true;
 			model = m.model != null ? m.model : model;
 		}
 
@@ -755,8 +750,6 @@ class OpenAiApi implements ChatApi
 		/** Tool calls by their index, their arguments still arriving in pieces. */
 		final TreeMap<Integer, ToolCall> calls = new TreeMap<>();
 		final Usage usage = new Usage();
-		/** The token counts came (only the last piece of a stream has them, and only when asked for). */
-		boolean counted;
 		String model;
 		String refusal;
 		String finish;
@@ -784,7 +777,6 @@ class OpenAiApi implements ChatApi
 				usage.cacheRead = cached;
 				usage.cacheWrite = 0;
 				usage.output = count(u, "completion_tokens");
-				counted = true;
 			}
 			JsonObject choice = firstChoice(o);
 			String f = choice == null ? null : string(choice, "finish_reason");

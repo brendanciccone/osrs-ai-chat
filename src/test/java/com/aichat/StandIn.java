@@ -161,6 +161,12 @@ final class StandIn
 			"{\"type\":\"object\",\"properties\":{\"query\":{\"type\":\"string\"}},\"required\":[\"query\"]}", JsonObject.class));
 	}
 
+	/** All the tokens a request used, however they were billed. */
+	static long tokens(ChatApi.Usage u)
+	{
+		return u.input + u.cacheRead + u.cacheWrite + u.output;
+	}
+
 	/** Everything a request told its listener. */
 	static final class Heard implements ChatApi.Listener
 	{

@@ -7,9 +7,10 @@ import java.util.List;
 
 /**
  * What's kept of the chats between RuneLite sessions, when "Remember chats" is on: names, messages (with what was
- * looked up for each reply, and the tokens it used), and the summary sent instead of a long chat's oldest messages;
- * nothing else. API keys aren't part of a chat, and Claude's replayable reasoning stays in memory only. Converting happens on the Swing EDT (where chats live); reading and writing the file
- * happen elsewhere. Files from before a field was added still load: it's just missing (null, 0 or false).
+ * looked up for each reply), and the summary sent instead of a long chat's oldest messages; nothing else. API keys
+ * aren't part of a chat, and Claude's replayable reasoning stays in memory only. Converting happens on the Swing EDT
+ * (where chats live); reading and writing the file happen elsewhere. Files from before a field was added still load:
+ * it's just missing (null, 0 or false). Fields that are no longer used (each reply's token counts) are skipped.
  */
 final class ChatStore
 {
@@ -58,19 +59,6 @@ final class ChatStore
 		boolean summarized;
 		/** Null when nothing was looked up or shared. */
 		List<String> activity;
-		/** Null when unknown. */
-		SavedUsage usage;
-	}
-
-	static final class SavedUsage
-	{
-		long input;
-		long cacheRead;
-		long cacheWrite;
-		long output;
-		/** Some tokens weren't counted (see {@link ChatApi.Usage#incomplete}). */
-		boolean incomplete;
-		String model;
 	}
 
 	/** EDT. */
@@ -111,7 +99,6 @@ final class ChatStore
 				sm.unfinished = m.unfinished;
 				sm.summarized = m.summarized;
 				sm.activity = m.activity == null || m.activity.isEmpty() ? null : new ArrayList<>(m.activity);
-				sm.usage = saved(m.usage, m.model);
 				sc.messages.add(sm);
 			}
 			saved.chats.add(sc);
@@ -188,11 +175,6 @@ final class ChatStore
 					// Without its summary, a summarised message is sent again rather than lost.
 					m.summarized = sm.summarized && c.summary != null;
 					m.activity = activity(sm.activity);
-					if (sm.usage != null)
-					{
-						m.usage = usage(sm.usage);
-						m.model = sm.usage.model;
-					}
 					c.messages.add(m);
 				}
 			}
@@ -228,34 +210,6 @@ final class ChatStore
 		}
 		return "The " + leftOut + " oldest messages of this chat weren't kept when it was saved (AI Chat saves the "
 			+ "latest " + MAX_MESSAGES + " of each chat). None of them were being sent to the assistant any more" + covered;
-	}
-
-	private static SavedUsage saved(ChatApi.Usage u, String model)
-	{
-		if (u == null)
-		{
-			return null;
-		}
-		SavedUsage su = new SavedUsage();
-		su.input = u.input;
-		su.cacheRead = u.cacheRead;
-		su.cacheWrite = u.cacheWrite;
-		su.output = u.output;
-		su.incomplete = u.incomplete;
-		su.model = model;
-		return su;
-	}
-
-	private static ChatApi.Usage usage(SavedUsage su)
-	{
-		ChatApi.Usage u = new ChatApi.Usage();
-		// A hand-edited count below zero would only make the totals wrong.
-		u.input = Math.max(0, su.input);
-		u.cacheRead = Math.max(0, su.cacheRead);
-		u.cacheWrite = Math.max(0, su.cacheWrite);
-		u.output = Math.max(0, su.output);
-		u.incomplete = su.incomplete;
-		return u;
 	}
 
 	/** The saved lines, without any a hand-edited file left empty; null for none. */

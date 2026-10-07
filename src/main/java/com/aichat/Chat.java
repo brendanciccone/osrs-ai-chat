@@ -48,9 +48,6 @@ class Chat
 		 * the reply, or on the error or note that ended the request. Empty or null when nothing was.
 		 */
 		List<String> activity;
-		/** The tokens an ASSISTANT reply (or the summary in a NOTE) used, and the model that answered; null if unknown. */
-		ChatApi.Usage usage;
-		String model;
 
 		Message(Role role, String text)
 		{
@@ -105,8 +102,6 @@ class Chat
 
 	/** The request in flight, or null. */
 	ChatApi.Pending pending;
-	/** The request in flight has gone to the provider, so it may be using tokens even if it's stopped now. */
-	boolean requestSent;
 	/** When the request in flight started: the summary, then the question itself. */
 	long runStartedAt;
 	/**
@@ -155,10 +150,9 @@ class Chat
 		return skipSummary != null;
 	}
 
-	/** A new request starts (or the last one ended): nothing of it to show yet, and nothing sent. */
+	/** A new request starts (or the last one ended): nothing of it to show yet. */
 	void resetLive()
 	{
-		requestSent = false;
 		liveText = null;
 		liveActivity = new ArrayList<>();
 		lookingUp = false;
