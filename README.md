@@ -6,11 +6,7 @@ Chat with Claude, ChatGPT or any OpenAI-compatible model without leaving Old Sch
 or the chatbox, keep playing, and get a game chat message and a notification when the answer is in. The assistant can
 look things up on the OSRS Wiki while it answers. Uses your own API key. Free and open source.
 
-<p>
-<img src="assets/screenshot.png" width="242" alt="The AI Chat panel: a question about what to bring to Vorkath, and Claude's reply with a table of supplies and a link to the Wiki's Vorkath strategy page">
-&nbsp;
-<img src="assets/screenshot-new-chat.png" width="242" alt="A new chat: What can I help with?, four ideas to start from, and the model menu open next to Send">
-</p>
+![AI Chat in RuneLite, in the Lumbridge Castle courtyard: Claude suggests what to train next in the side panel, and the reply also appears in the game chatbox](assets/screenshot.png)
 
 ## Features
 
@@ -37,6 +33,12 @@ look things up on the OSRS Wiki while it answers. Uses your own API key. Free an
 - A busy provider is asked again automatically; a question that failed or was stopped can be sent again with
   **Retry**, and what was shown of its reply stays for you to read
 - Long chats are summarised instead of cut short (see [Long chats](#long-chats))
+
+<p>
+<img src="assets/panel-chat.png" width="242" alt="The AI Chat panel: a question about what to bring to Vorkath, and Claude's reply with a table of supplies and a link to the Wiki's Vorkath strategy page">
+&nbsp;
+<img src="assets/panel-new-chat.png" width="242" alt="A new chat: What can I help with?, four ideas to start from, and the model menu open next to Send">
+</p>
 
 ## Setup
 
