@@ -154,6 +154,10 @@ final class Composer extends JPanel
 		controls.add(models, BorderLayout.CENTER);
 		action.addActionListener(e ->
 		{
+			if (!action.settled())
+			{
+				return;
+			}
 			if (action.mode == Mode.SEND)
 			{
 				send();
@@ -266,10 +270,14 @@ final class Composer extends JPanel
 	 */
 	static final class ActionButton extends JButton
 	{
+		/** A click this soon after the button changed what it does was meant for what it did before. */
+		static final long SETTLE_MILLIS = 500;
 		private static final int SIZE = 26;
 		private static final Color ON = new Color(235, 235, 235);
 		private static final Color INK = ColorScheme.DARKER_GRAY_COLOR;
 		Mode mode;
+		/** When the button last changed what it does, in {@link System#currentTimeMillis()} time; 0 before then. */
+		long changedAt;
 
 		ActionButton()
 		{
@@ -290,12 +298,27 @@ final class Composer extends JPanel
 			{
 				return;
 			}
+			if (this.mode != null)
+			{
+				changedAt = System.currentTimeMillis();
+			}
 			this.mode = mode;
 			// The words are for screen readers and tests: the button draws an icon for Send and Stop.
 			setText(mode == Mode.SEND ? "Send" : mode == Mode.STOP ? "Stop" : "Skip");
 			setToolTipText(mode == Mode.SEND ? SEND_TIP : mode == Mode.STOP ? STOP_TIP : SKIP_TIP);
 			revalidate();
 			repaint();
+		}
+
+		/**
+		 * Whether a click now is meant for what the button does now. Send turns into Stop the moment a question goes, and
+		 * Stop back into Send the moment the reply is in: without this, a double-click on Send would stop the question
+		 * it had just sent (which may be paid for by then), and Stop pressed just as the reply came in would send what's
+		 * in the box.
+		 */
+		boolean settled()
+		{
+			return System.currentTimeMillis() - changedAt >= SETTLE_MILLIS;
 		}
 
 		@Override

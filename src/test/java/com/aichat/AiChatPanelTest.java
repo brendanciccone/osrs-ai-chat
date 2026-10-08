@@ -234,6 +234,7 @@ public class AiChatPanelTest
 			panel.composer.input.setText("");
 			assertTrue("Stop has nothing to send", button.isEnabled());
 			int sent = host.sent.size();
+			settle(button);
 			button.doClick();
 			assertEquals(1, host.stops);
 			assertEquals(sent, host.sent.size());
@@ -246,6 +247,7 @@ public class AiChatPanelTest
 			assertEquals(Composer.Mode.SKIP, button.mode);
 			assertEquals("Skip", button.getText());
 			assertEquals(Composer.SKIP_TIP, button.getToolTipText());
+			settle(button);
 			button.doClick();
 			assertEquals(2, host.stops);
 
@@ -254,6 +256,51 @@ public class AiChatPanelTest
 			panel.refreshAll();
 			assertEquals(Composer.Mode.SEND, button.mode);
 			assertFalse(button.isEnabled());
+		});
+	}
+
+	/** As if the player waited a moment after the button changed, as anyone does before pressing it on purpose. */
+	private static void settle(Composer.ActionButton button)
+	{
+		button.changedAt -= Composer.ActionButton.SETTLE_MILLIS;
+	}
+
+	@Test
+	public void aClickAsTheButtonChangesIsntTakenForTheNewOne() throws Throwable
+	{
+		onEdt(() ->
+		{
+			AiChatPanel panel = new AiChatPanel(host);
+			Composer.ActionButton button = panel.composer.action;
+			panel.composer.input.setText("What drops a whip?");
+			button.doClick();
+			assertEquals(Arrays.asList("What drops a whip?"), host.sent);
+			// As the plugin does as the question goes: the button turns into Stop at once.
+			add(Chat.Role.USER, "What drops a whip?");
+			host.current.pending = new ChatApi.Pending();
+			panel.refreshAll();
+			assertEquals(Composer.Mode.STOP, button.mode);
+
+			// A double-click's second click was meant for Send: it doesn't stop the question just sent.
+			button.doClick();
+			assertEquals(0, host.stops);
+			// Pressed a moment later, Stop stops.
+			settle(button);
+			button.doClick();
+			assertEquals(1, host.stops);
+
+			// Stop pressed just as the reply comes in: what's in the box isn't sent.
+			host.current.pending = null;
+			add(Chat.Role.ASSISTANT, "Abyssal demons.");
+			panel.composer.input.setText("And a dragon pickaxe?");
+			panel.refreshAll();
+			assertEquals(Composer.Mode.SEND, button.mode);
+			assertTrue(button.isEnabled());
+			button.doClick();
+			assertEquals(1, host.sent.size());
+			settle(button);
+			button.doClick();
+			assertEquals(Arrays.asList("What drops a whip?", "And a dragon pickaxe?"), host.sent);
 		});
 	}
 
