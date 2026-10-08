@@ -722,7 +722,8 @@ public class AiChatPlugin extends Plugin
 		@Override
 		public String modelTip()
 		{
-			return ConnectionCheck.pickerTip(tester.check(provider.connection()), testProblem(), provider.service());
+			return ConnectionCheck.pickerTip(tester.check(provider.connection()), testProblem(), provider.service(),
+				provider.model());
 		}
 
 		@Override

@@ -1,6 +1,8 @@
 package com.aichat;
 
 import java.awt.Component;
+import java.awt.event.FocusEvent;
+import java.awt.event.FocusListener;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -138,6 +140,36 @@ public class ModelPickerTest
 			assertEquals("my-fine-tune", box(p).getText());
 		});
 		assertEquals(Arrays.asList("my-fine-tune"), chosen);
+	}
+
+	@Test
+	public void aLongNameShowsFromItsStart() throws Throwable
+	{
+		String model = "anthropic/claude-sonnet-5-5:thinking-extended-preview";
+		ModelPicker p = picker();
+		onEdt(() ->
+		{
+			p.setSize(150, 24);
+			p.doLayout();
+			p.show(model, Arrays.asList(model), "tip");
+		});
+		onEdt(() ->
+		{
+			assertEquals(model, box(p).getText());
+			int width = box(p).getWidth();
+			assertTrue("it doesn't fit", width > 0 && box(p).getFontMetrics(box(p).getFont()).stringWidth(model) > width);
+			assertEquals(0, box(p).getCaretPosition());
+			assertEquals("the box shows its start", 0, box(p).getScrollOffset());
+
+			// Typed in, then left: back to the start too.
+			box(p).setCaretPosition(model.length());
+			for (FocusListener l : box(p).getFocusListeners())
+			{
+				l.focusLost(new FocusEvent(box(p), FocusEvent.FOCUS_LOST));
+			}
+			assertEquals(0, box(p).getCaretPosition());
+		});
+		assertTrue("nothing new to save", chosen.isEmpty());
 	}
 
 	@Test

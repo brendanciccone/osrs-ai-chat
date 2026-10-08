@@ -215,13 +215,17 @@ final class ConnectionCheck
 	}
 
 	/**
-	 * The model picker's tooltip: how to choose, and why the list is short when it is. {@code check}: the latest list
-	 * asked for this setup, or null; {@code problem}: why the provider can't be reached (AI requests off included), or
-	 * null. Plain sentences of our own, starting with our own words, so they can never be read as HTML.
+	 * The model picker's tooltip: the model that's set, in full (a long one doesn't fit in the box), how to choose, and
+	 * why the list is short when it is. {@code check}: the latest list asked for this setup, or null; {@code problem}:
+	 * why the provider can't be reached (AI requests off included), or null. Plain sentences of our own, starting with
+	 * our own words, so they can never be read as HTML.
 	 */
-	static String pickerTip(ConnectionCheck check, String problem, String service)
+	static String pickerTip(ConnectionCheck check, String problem, String service, String model)
 	{
-		String how = "The model new messages go to. Pick one, or type its name and press Enter.";
+		String m = model == null ? "" : model.trim();
+		String how = m.isEmpty()
+			? "The model new messages go to. Pick one, or type its name and press Enter."
+			: "New messages go to " + m + ". Pick another, or type its name and press Enter.";
 		if (problem != null || check == null)
 		{
 			return how + " The list fills in once AI requests are on and the provider is set up.";

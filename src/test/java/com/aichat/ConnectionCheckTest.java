@@ -138,19 +138,35 @@ public class ConnectionCheckTest
 		String how = "The model new messages go to. Pick one, or type its name and press Enter.";
 		String off = "Turn on \"Enable AI requests\" in the AI Chat settings, then choose a provider and add your API key.";
 		assertEquals(how + " The list fills in once AI requests are on and the provider is set up.",
-			ConnectionCheck.pickerTip(null, off, "Anthropic"));
+			ConnectionCheck.pickerTip(null, off, "Anthropic", ""));
 		assertEquals(how + " Looking up the models you can use\u2026",
-			ConnectionCheck.pickerTip(ConnectionCheck.testing(SETUP), null, "Anthropic"));
+			ConnectionCheck.pickerTip(ConnectionCheck.testing(SETUP), null, "Anthropic", null));
 		assertEquals(how, ConnectionCheck.pickerTip(ConnectionCheck.listed(SETUP, Arrays.asList("claude-opus-5-5"), false),
-			null, "Anthropic"));
+			null, "Anthropic", " "));
 		assertEquals(how + " localhost:11434 listed no models to chat with.", ConnectionCheck.pickerTip(
-			ConnectionCheck.listed(SETUP, Arrays.asList("nomic-embed-text"), true), null, "localhost:11434"));
+			ConnectionCheck.listed(SETUP, Arrays.asList("nomic-embed-text"), true), null, "localhost:11434", ""));
 		assertEquals(how + " Couldn't list the models: Couldn't reach Anthropic.",
-			ConnectionCheck.pickerTip(ConnectionCheck.failed(SETUP, "Couldn't reach Anthropic."), null, "Anthropic"));
+			ConnectionCheck.pickerTip(ConnectionCheck.failed(SETUP, "Couldn't reach Anthropic."), null, "Anthropic", ""));
 		assertEquals(how + " localhost:11434 doesn't list its models: type the name its website gives.",
-			ConnectionCheck.pickerTip(ConnectionCheck.failed(SETUP, OpenAiApi.NO_MODEL_LIST), null, "localhost:11434"));
+			ConnectionCheck.pickerTip(ConnectionCheck.failed(SETUP, OpenAiApi.NO_MODEL_LIST), null, "localhost:11434", ""));
 		// Never read as HTML: it always starts with AI Chat's own words, whatever the provider said.
-		assertTrue(ConnectionCheck.pickerTip(ConnectionCheck.failed(SETUP, "<html><b>x"), null, "Anthropic").startsWith(how));
+		assertTrue(ConnectionCheck.pickerTip(ConnectionCheck.failed(SETUP, "<html><b>x"), null, "Anthropic", "")
+			.startsWith(how));
+	}
+
+	@Test
+	public void thePickersTooltipNamesTheModelInFull()
+	{
+		// The box is narrow: a long name is cut there, and whole here.
+		String model = "anthropic/claude-sonnet-5-5:thinking-extended-preview";
+		assertEquals("New messages go to " + model + ". Pick another, or type its name and press Enter.",
+			ConnectionCheck.pickerTip(ConnectionCheck.listed(SETUP, Arrays.asList(model), false), null, "OpenRouter",
+				" " + model + " "));
+		assertEquals("New messages go to llama3.2. Pick another, or type its name and press Enter. localhost:11434 "
+			+ "doesn't list its models: type the name its website gives.", ConnectionCheck.pickerTip(
+			ConnectionCheck.failed(SETUP, OpenAiApi.NO_MODEL_LIST), null, "localhost:11434", "llama3.2"));
+		// A name of the player's own, too, comes after AI Chat's words: never read as HTML.
+		assertTrue(ConnectionCheck.pickerTip(null, null, "Anthropic", "<html><b>x").startsWith("New messages go to "));
 	}
 
 	@Test

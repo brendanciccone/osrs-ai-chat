@@ -1,6 +1,8 @@
 package com.aichat;
 
 import java.awt.Component;
+import java.awt.event.FocusAdapter;
+import java.awt.event.FocusEvent;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -15,6 +17,7 @@ import javax.swing.SwingUtilities;
 import javax.swing.event.PopupMenuEvent;
 import javax.swing.event.PopupMenuListener;
 import javax.swing.plaf.basic.BasicComboBoxEditor;
+import javax.swing.text.JTextComponent;
 
 /**
  * The model picker next to Send: the models the provider offers, with the one that's set always there and selected.
@@ -147,6 +150,12 @@ final class ModelPicker extends JComboBox<String>
 		{
 			items.setSelectedItem(model.isEmpty() ? null : model);
 			getEditor().setItem(model);
+			JTextComponent box = (JTextComponent) getEditor().getEditorComponent();
+			if (!box.isFocusOwner())
+			{
+				// The start of a long name, as the list shows it: the box is narrow, and would show its end.
+				box.setCaretPosition(0);
+			}
 		}
 		finally
 		{
@@ -198,6 +207,19 @@ final class ModelPicker extends JComboBox<String>
 				}
 			};
 			field.putClientProperty("html.disable", Boolean.TRUE);
+			field.addFocusListener(new FocusAdapter()
+			{
+				@Override
+				public void focusLost(FocusEvent e)
+				{
+					// Left with the end of a long name in view, where the typing was: back to its start. (Not when
+					// the focus is only away for a moment, such as in another window: the caret is kept for then.)
+					if (!e.isTemporary())
+					{
+						field.setCaretPosition(0);
+					}
+				}
+			});
 			field.setBorder(null);
 			field.setBackground(PanelStyle.FIELD_COLOR);
 			field.setForeground(PanelStyle.TEXT_COLOR);
