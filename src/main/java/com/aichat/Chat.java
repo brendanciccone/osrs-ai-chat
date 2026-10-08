@@ -105,8 +105,6 @@ class Chat
 	List<String> liveActivity = new ArrayList<>();
 	/** The model has stopped writing to look things up, and hasn't carried on yet. */
 	boolean lookingUp;
-	/** The latest look-up that finished while {@link #lookingUp}, or null. */
-	String lookupLine;
 	/** The reply's text when the look-ups started: only text beyond it means the model is writing again. */
 	String lookupAfter;
 	/** The provider was busy: why ("Anthropic is busy"), and when it's asked again. */
@@ -141,7 +139,6 @@ class Chat
 		liveText = null;
 		liveActivity = new ArrayList<>();
 		lookingUp = false;
-		lookupLine = null;
 		lookupAfter = null;
 		retryWhy = null;
 		retryAt = 0;

@@ -446,12 +446,14 @@ public class RequestRunnerTest
 		host.started.run();
 		runEdt();
 		assertTrue(chat.lookingUp);
-		assertEquals("Looking things up\u2026", PanelText.live(chat, chat.runStartedAt));
+		assertEquals("Looking things up\u2026 0s", PanelText.live(chat, chat.runStartedAt));
 
 		host.activity.accept("Read the Wiki page \"Vorkath\"");
 		runEdt();
-		assertEquals("Looking things up: Read the Wiki page \"Vorkath\"", PanelText.live(chat, chat.runStartedAt));
+		// Listed above the reply; the line under it still only says the look-ups are going on.
 		assertEquals(Collections.singletonList("Read the Wiki page \"Vorkath\""), chat.liveActivity);
+		assertTrue(chat.lookingUp);
+		assertEquals("Looking things up\u2026 0s", PanelText.live(chat, chat.runStartedAt));
 
 		api.listener().onPartial("Let me check.\n\nVorkath is weak to stab.");
 		runEdtSoon();

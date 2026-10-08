@@ -33,16 +33,16 @@ public class PanelTextTest
 		chat.liveText = "Vorkath is";
 		assertNull("the words say it all", PanelText.live(chat, NOW));
 
+		// What it looked up is listed above the reply, as each look-up comes back: this line doesn't say it again.
 		chat.lookingUp = true;
-		assertEquals("Looking things up…", PanelText.live(chat, NOW));
-		chat.lookupLine = "Read the Wiki page \"Vorkath\"";
-		assertEquals("Looking things up: Read the Wiki page \"Vorkath\"", PanelText.live(chat, NOW));
+		chat.liveActivity.add("Read the Wiki page \"Vorkath\"");
+		assertEquals("Looking things up… 12s", PanelText.live(chat, NOW));
 
 		chat.retryWhy = "Anthropic is busy";
 		chat.retryAt = NOW + 5_200;
 		assertEquals("Anthropic is busy; trying again in 6s", PanelText.live(chat, NOW));
 		// Once the wait is over, the request is on its way again.
-		assertEquals("Looking things up: Read the Wiki page \"Vorkath\"", PanelText.live(chat, NOW + 6_000));
+		assertEquals("Looking things up… 18s", PanelText.live(chat, NOW + 6_000));
 	}
 
 	@Test

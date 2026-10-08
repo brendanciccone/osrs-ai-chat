@@ -580,7 +580,7 @@ public class AiChatPanelTest
 
 			host.current.lookingUp = true;
 			panel.refreshLive(host.current);
-			assertEquals("Looking things up…", live.status.getSource());
+			assertTrue(live.status.getSource(), live.status.getSource().startsWith("Looking things up… "));
 		});
 	}
 

@@ -47,7 +47,8 @@ final class PanelText
 		}
 		if (chat.lookingUp)
 		{
-			return chat.lookupLine == null ? "Looking things up\u2026" : "Looking things up: " + chat.lookupLine;
+			// What it looked up is listed just above, as each look-up comes back: this line only says it's still going.
+			return "Looking things up\u2026 " + elapsed(ms);
 		}
 		return chat.liveText == null ? thinking(ms) : null;
 	}

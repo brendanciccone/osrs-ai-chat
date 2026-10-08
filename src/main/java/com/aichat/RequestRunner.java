@@ -492,7 +492,6 @@ final class RequestRunner
 		if (!text.equals(chat.lookupAfter))
 		{
 			chat.lookingUp = false;
-			chat.lookupLine = null;
 		}
 		host.live(chat);
 	}
@@ -505,7 +504,6 @@ final class RequestRunner
 			return;
 		}
 		chat.lookingUp = true;
-		chat.lookupLine = null;
 		chat.lookupAfter = before;
 		host.live(chat);
 	}
@@ -522,10 +520,6 @@ final class RequestRunner
 		activity.add(stoppedFirst ? GameDataTools.unshared(line) : line);
 		if (live)
 		{
-			if (chat.lookingUp)
-			{
-				chat.lookupLine = line;
-			}
 			host.live(chat);
 		}
 		else if (host.has(chat))
