@@ -540,7 +540,7 @@ public class AiChatPlugin extends Plugin
 		RequestRunner.Setup setup = setup();
 		if (setup == null)
 		{
-			showError(setupProblem());
+			notSetUp();
 			return false;
 		}
 		if (chat.isRunning())
@@ -567,7 +567,7 @@ public class AiChatPlugin extends Plugin
 		RequestRunner.Setup setup = setup();
 		if (setup == null)
 		{
-			showError(setupProblem());
+			notSetUp();
 			return;
 		}
 		if (runner.retry(chat, setup) || runner.regenerate(chat, m, setup))
@@ -943,6 +943,15 @@ public class AiChatPlugin extends Plugin
 		if (panel != null)
 		{
 			panel.showNote(message);
+		}
+	}
+
+	/** A message can't go because AI Chat isn't set up: the panel points to its banner, which says why. */
+	private void notSetUp()
+	{
+		if (panel != null)
+		{
+			panel.notSetUp();
 		}
 	}
 

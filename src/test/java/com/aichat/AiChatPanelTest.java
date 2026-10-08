@@ -524,6 +524,28 @@ public class AiChatPanelTest
 	}
 
 	@Test
+	public void aMessageThatCantGoYetPointsToTheBannerRatherThanRepeatIt() throws Throwable
+	{
+		onEdt(() ->
+		{
+			host.problem = "Add your Claude API key in the Claude section of the AI Chat settings (from console.anthropic.com).";
+			AiChatPanel panel = new AiChatPanel(host);
+			panel.notSetUp();
+			assertTrue(panel.composer.note.isVisible());
+			assertEquals("AI Chat isn't set up yet: see the note at the top.", panel.composer.note.getText());
+			assertTrue("said once, at the top", panel.banner.text.getText().startsWith(host.problem));
+
+			// A Test's result has the banner's place: the note says what's missing itself.
+			host.problem = "Pick a Claude model next to Send, or set one in the Claude section of the AI Chat settings.";
+			host.note = new ConnectionCheck.Note(ConnectionCheck.Kind.OK, "Connected to Anthropic.");
+			panel.refreshAll();
+			panel.notSetUp();
+			assertEquals(host.note.text, panel.banner.text.getText());
+			assertEquals(host.problem, panel.composer.note.getText());
+		});
+	}
+
+	@Test
 	public void thePlayersBubblesHugShortTextOnTheRight() throws Throwable
 	{
 		onEdt(() ->

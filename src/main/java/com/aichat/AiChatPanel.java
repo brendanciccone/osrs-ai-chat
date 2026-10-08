@@ -48,6 +48,8 @@ class AiChatPanel extends PluginPanel
 	private static final String CHAT_CARD = "chat";
 	private static final String EMPTY_CARD = "empty";
 	private static final String SETTINGS_HINT = " Open RuneLite's settings (the wrench) and search for AI Chat.";
+	/** Above the input box when a message can't go yet because of what the banner says. */
+	static final String NOT_SET_UP = "AI Chat isn't set up yet: see the note at the top.";
 
 	/** What the panel needs from the plugin. All on the EDT. */
 	interface Host
@@ -538,6 +540,16 @@ class AiChatPanel extends PluginPanel
 	void showNote(String text)
 	{
 		composer.showNote(text);
+	}
+
+	/**
+	 * A message couldn't go because AI Chat isn't set up. The banner says what's missing until it's fixed: the note
+	 * above the input box only points there, rather than say it again in red. While a Test's result has the banner's
+	 * place, the note says what's missing itself.
+	 */
+	void notSetUp()
+	{
+		showNote(host.connectionNote() == null ? NOT_SET_UP : host.setupProblem());
 	}
 
 	void focusInput()
