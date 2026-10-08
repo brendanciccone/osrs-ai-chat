@@ -366,13 +366,18 @@ class MessageView extends JTextPane
 		}
 	}
 
-	/** Adds one block at the end of the document. Returns the attributes of its text. */
+	/**
+	 * Adds one block at the end of the document. Returns the attributes of its text, for the line break that ends it:
+	 * a drawn table's own, so that the line break is part of the table's view, and not a sliver of text beside it (it
+	 * would show a selection of its own there).
+	 */
 	private AttributeSet writeBlock(DefaultStyledDocument doc, Markdown.Block b, int gap, int[] textStart) throws BadLocationException
 	{
 		int start = doc.getLength();
 		int depth = Math.min(b.depth, MAX_INDENT_DEPTH);
 		int base = depth == 0 ? 0 : textStart[depth - 1];
 		SimpleAttributeSet text = textAttributes();
+		AttributeSet tail = text;
 		// Paragraph attributes: for every line of the block, then extra ones for its first and last lines.
 		SimpleAttributeSet lines = new SimpleAttributeSet();
 		SimpleAttributeSet first = new SimpleAttributeSet();
@@ -413,6 +418,7 @@ class MessageView extends JTextPane
 					SimpleAttributeSet table = new SimpleAttributeSet(text);
 					table.addAttribute(TABLE, b.table);
 					doc.insertString(doc.getLength(), String.join(TableView.ROW_BREAK, b.lines), table);
+					tail = table;
 					break;
 				}
 				// Too big to draw: its lines, as code.
@@ -441,7 +447,7 @@ class MessageView extends JTextPane
 		{
 			doc.setParagraphAttributes(end, 0, last, false);
 		}
-		return text;
+		return tail;
 	}
 
 	/** A block's lines as they are, monospaced, in a box: code, or a table too big to draw. */

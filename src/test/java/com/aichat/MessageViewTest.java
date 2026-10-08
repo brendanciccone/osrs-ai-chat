@@ -23,6 +23,7 @@ import javax.swing.plaf.basic.BasicTextPaneUI;
 import javax.swing.text.AttributeSet;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.Document;
+import javax.swing.text.Element;
 import javax.swing.text.StyleConstants;
 import javax.swing.text.View;
 import net.runelite.client.ui.ColorScheme;
@@ -408,6 +409,55 @@ public class MessageViewTest
 				throw new AssertionError(e);
 			}
 			assertEquals("Bring:\n\n" + lines + "\n\nThat's all.", v.plainText());
+		});
+	}
+
+	@Test
+	public void aSelectedTableShowsNoSliverOfSelectionBesideIt() throws Throwable
+	{
+		onEdt(() ->
+		{
+			MessageView v = new MessageView();
+			v.setMarkdown("Bring these:\n\n| Item | Why |\n|---|---|\n| Extended antifire | Dragonfire |\n"
+				+ "| Anti-venom+ | His venom |\n\nThat's it.");
+			int h = StackLayout.heightFor(v, 220);
+			v.setSize(220, h);
+			TableView table = tables(v).get(0);
+			int right = (int) table.getPreferredSpan(View.X_AXIS);
+			assertTrue("narrower than the message", right < 200);
+			// The line break that ends the table's paragraph is the table's own: not a sliver of text beside it, which
+			// would show a selection of its own.
+			Element root = v.getDocument().getDefaultRootElement();
+			Element paragraph = root.getElement(root.getElementIndex(table.getStartOffset()));
+			assertEquals(1, paragraph.getElementCount());
+			assertEquals(paragraph.getEndOffset(), table.getEndOffset());
+
+			v.selectAll();
+			v.getCaret().setSelectionVisible(true);
+			BufferedImage image = new BufferedImage(220, h, BufferedImage.TYPE_INT_ARGB);
+			Graphics2D g = image.createGraphics();
+			v.print(g);
+			g.dispose();
+			try
+			{
+				Rectangle2D at = v.modelToView2D(text(v).indexOf("Item"));
+				for (int y = (int) at.getY(); y < (int) at.getMaxY(); y++)
+				{
+					for (int x = right; x < 220; x++)
+					{
+						assertEquals("nothing beside the table at " + x + "," + y, 0, alpha(image, x, y));
+					}
+				}
+				// The table itself shows it's selected, and the text after it too.
+				assertTrue(alpha(image, right / 2, (int) at.getCenterY()) > 0);
+				assertTrue(alpha(image, 2, (int) v.modelToView2D(text(v).indexOf("That's")).getCenterY()) > 0);
+			}
+			catch (BadLocationException e)
+			{
+				throw new AssertionError(e);
+			}
+			assertEquals("Bring these:\nItem              | Why\n------------------+-----------\n"
+				+ "Extended antifire | Dragonfire\nAnti-venom+       | His venom\nThat's it.", v.getSelectedText());
 		});
 	}
 

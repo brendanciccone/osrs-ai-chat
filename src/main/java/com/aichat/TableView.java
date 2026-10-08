@@ -182,9 +182,26 @@ final class TableView extends View
 		{
 			throw new BadLocationException("Not in the table", pos);
 		}
-		// One piece: anywhere in it is before it, and its end after it.
+		// One piece: anywhere in its text is before it, and its end after it.
 		Rectangle r = a.getBounds();
-		return new Rectangle(pos < getEndOffset() ? r.x : r.x + r.width, r.y, 0, r.height);
+		return new Rectangle(pos < textEnd() ? r.x : r.x + r.width, r.y, 0, r.height);
+	}
+
+	/**
+	 * Where the table's text ends: before the line break that ends its paragraph, when there's one. That's in this
+	 * view too (see {@link MessageView}), so that nothing beside the table shows a selection.
+	 */
+	private int textEnd()
+	{
+		int end = getEndOffset();
+		try
+		{
+			return end > getStartOffset() && getDocument().getText(end - 1, 1).equals("\n") ? end - 1 : end;
+		}
+		catch (BadLocationException e)
+		{
+			return end;
+		}
 	}
 
 	@Override
@@ -192,7 +209,7 @@ final class TableView extends View
 	{
 		Rectangle r = a.getBounds();
 		biasReturn[0] = Position.Bias.Forward;
-		return y < r.y + r.height / 2f ? getStartOffset() : getEndOffset();
+		return y < r.y + r.height / 2f ? getStartOffset() : textEnd();
 	}
 
 	@Override
@@ -326,7 +343,7 @@ final class TableView extends View
 		Color color = text.getSelectionColor();
 		// As the text around it: only while the selection shows (the view has the focus).
 		boolean shown = text.getCaret() != null && text.getCaret().isSelectionVisible();
-		if (!shown || start == end || start >= getEndOffset() || end <= getStartOffset() || color == null)
+		if (!shown || start == end || start >= textEnd() || end <= getStartOffset() || color == null)
 		{
 			return;
 		}
