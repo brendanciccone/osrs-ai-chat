@@ -20,8 +20,8 @@ import javax.swing.text.StyleConstants;
 
 /**
  * One message in the transcript, drawn the way chat apps draw them: the player's questions in a bubble on the right,
- * replies across the full width with what was looked up above them and small actions under them, notes small and
- * centred, errors in a red box. A row is made for one kind of message and shown again as the chat changes, so a new
+ * replies across the full width with one line above them saying what was shared and looked up, and small actions
+ * under them, notes small and centred, errors in a red box. A row is made for one kind of message and shown again as the chat changes, so a new
  * message doesn't redraw every earlier one. Swing EDT only.
  */
 abstract class MessageRow extends JPanel
@@ -119,7 +119,7 @@ abstract class MessageRow extends JPanel
 	 */
 	static final class Reply extends MessageRow
 	{
-		final Activity activity = new Activity(StyleConstants.ALIGN_LEFT);
+		final ShowMore activity = activityLine(StyleConstants.ALIGN_LEFT);
 		final MessageView body = new MessageView();
 		/** "Thinking..." and the like under the reply on its way; under a reply that broke off, that it didn't finish. */
 		final MessageView status = mutedLine(StyleConstants.ALIGN_LEFT);
@@ -148,7 +148,7 @@ abstract class MessageRow extends JPanel
 		{
 			message = m;
 			this.latest = latest;
-			activity.show(m.activity);
+			showActivity(activity, m.activity);
 			body.setTextColor(m.summarized ? PanelStyle.MUTED_COLOR : PanelStyle.TEXT_COLOR);
 			body.setMarkdown(m.text);
 			body.setVisible(true);
@@ -168,7 +168,7 @@ abstract class MessageRow extends JPanel
 		void showLive(String who, String text, List<String> lines, String line)
 		{
 			message = null;
-			activity.show(lines);
+			showActivity(activity, lines);
 			body.setTextColor(PanelStyle.TEXT_COLOR);
 			body.setMarkdown(text);
 			body.setVisible(text != null);
@@ -192,7 +192,7 @@ abstract class MessageRow extends JPanel
 	 */
 	static final class Note extends MessageRow
 	{
-		final Activity activity = new Activity(StyleConstants.ALIGN_CENTER);
+		final ShowMore activity = activityLine(StyleConstants.ALIGN_CENTER);
 		final ShowMore text = new ShowMore("Click to see the summary that's sent instead of them", StyleConstants.ALIGN_CENTER);
 		final FlatButton retry;
 		private final JPanel retryRow = buttonRow(FlowLayout.CENTER);
@@ -212,7 +212,7 @@ abstract class MessageRow extends JPanel
 		void show(Chat.Message m, boolean latest, boolean retry)
 		{
 			message = m;
-			activity.show(m.activity);
+			showActivity(activity, m.activity);
 			PanelText.Note note = PanelText.note(m.text);
 			text.setPlainTip(PanelText.tooltip(m));
 			text.show(note.line, note.details);
@@ -229,7 +229,7 @@ abstract class MessageRow extends JPanel
 	/** An error: in a red outlined box, with Retry inside it when the question can go again. */
 	static final class Problem extends MessageRow
 	{
-		final Activity activity = new Activity(StyleConstants.ALIGN_LEFT);
+		final ShowMore activity = activityLine(StyleConstants.ALIGN_LEFT);
 		final MessageView body = new MessageView();
 		final FlatButton retry;
 		private final JPanel retryRow = buttonRow(FlowLayout.LEFT);
@@ -253,7 +253,7 @@ abstract class MessageRow extends JPanel
 		void show(Chat.Message m, boolean latest, boolean retry)
 		{
 			message = m;
-			activity.show(m.activity);
+			showActivity(activity, m.activity);
 			body.setPlainText(m.text);
 			tip(PanelText.tooltip(m), body);
 			retryRow.setVisible(retry);
@@ -289,40 +289,6 @@ abstract class MessageRow extends JPanel
 		{
 			int padding = getInsets().left + getInsets().right;
 			return Math.min(body.naturalWidth() + padding, Math.round(available * BUBBLE_SHARE));
-		}
-	}
-
-	/**
-	 * What was looked up or shared for a message, in muted lines over it, plain text (the lines can hold words the
-	 * model chose). The Wiki and GE price look-ups share the first line, with the full list a click away when it leaves
-	 * some out (see {@link PanelText#activity}).
-	 */
-	static final class Activity extends JPanel
-	{
-		final ShowMore lookups;
-		/** Everything else listed: what was shared, and what was skipped or went wrong. */
-		final MessageView rest;
-
-		Activity(int alignment)
-		{
-			// No gaps of its own: the look-up line and the lines after it read as one list.
-			super(new StackLayout(0));
-			setOpaque(false);
-			lookups = new ShowMore("Click to see everything that was looked up for this message", alignment);
-			rest = mutedLine(alignment);
-			add(lookups);
-			add(rest);
-			setVisible(false);
-		}
-
-		void show(List<String> lines)
-		{
-			PanelText.Activity shown = PanelText.activity(lines);
-			lookups.show(shown.lookups, shown.full);
-			String others = String.join("\n", shown.rest);
-			rest.setPlainText(others);
-			rest.setVisible(!others.isEmpty());
-			setVisible(shown.lookups != null || !others.isEmpty());
 		}
 	}
 
@@ -410,6 +376,25 @@ abstract class MessageRow extends JPanel
 	// ------------------------------------------------------------------
 	// Helpers
 	// ------------------------------------------------------------------
+
+	/**
+	 * The line over a message saying what was looked up or shared for it, such as "Shared your equipment · Looked up 3
+	 * things": hidden while nothing was.
+	 */
+	static ShowMore activityLine(int alignment)
+	{
+		return new ShowMore("Click to see everything that was shared and looked up for this message", alignment);
+	}
+
+	/**
+	 * Shows {@code lines} (a message's {@link Chat.Message#activity}) on {@code line}: what was shared always named,
+	 * then the look-ups by name or counted, as the width allows, and every line a click away.
+	 */
+	static void showActivity(ShowMore line, List<String> lines)
+	{
+		PanelText.Summary summary = PanelText.summary(lines);
+		line.show(summary.isEmpty() ? null : summary::line, summary.details);
+	}
 
 	/** A small muted line of plain text. */
 	static MessageView mutedLine(int alignment)

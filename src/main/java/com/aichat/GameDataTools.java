@@ -34,9 +34,14 @@ final class GameDataTools implements ChatApi.ToolRunner
 	private static final int MAX_SEARCH = 100;
 	private static final String FAILED = "Reading the game failed inside AI Chat. Answer without it.";
 	private static final String ITEMS_SETTING = "Share items and gear";
-	/** How the lines for what was shared start. */
-	private static final String SHARED = "Shared your ";
-	private static final String SEARCHED = "Searched your bank for ";
+	/**
+	 * How the lines for what was shared start: the panel names what was shared, from these, on the line over each reply
+	 * (see {@link PanelText#summary}).
+	 */
+	static final String SHARED = "Shared your ";
+	static final String SEARCHED = "Searched your bank for ";
+	/** Ends the line for what was read but never sent: the request had stopped (see {@link #unshared}). */
+	static final String UNSHARED = ", but didn't share it: the request had stopped";
 	private static final String CHARACTER_SETTING = "Share character details";
 
 	/**
@@ -220,12 +225,11 @@ final class GameDataTools implements ChatApi.ToolRunner
 	 */
 	static String unshared(String line)
 	{
-		String why = ", but didn't share it: the request had stopped";
 		if (line.startsWith(SHARED))
 		{
-			return "Read your " + line.substring(SHARED.length()) + why;
+			return "Read your " + line.substring(SHARED.length()) + UNSHARED;
 		}
-		return line.startsWith(SEARCHED) ? line + why : line;
+		return line.startsWith(SEARCHED) ? line + UNSHARED : line;
 	}
 
 	private static Outcome bankOutcome(GameData.Bank bank, String search, long now)

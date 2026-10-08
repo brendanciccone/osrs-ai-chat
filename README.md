@@ -20,9 +20,9 @@ look things up on the OSRS Wiki while it answers. Uses your own API key. Free an
   reply, **Copy** copies it as plain text and **Retry** (on the latest reply) asks the same question again for a new
   answer. Once a reply is complete, it's echoed into the game chat, with a RuneLite notification
 - **Wiki look-ups:** the assistant can search and read the OSRS Wiki and check Grand Exchange prices (from RuneLite's
-  own price data) while it answers, and links the pages it used. What it looked up is listed above each reply.
-  Look-ups need a model that can use tools; a model that can't (some that run on your own computer) answers from
-  memory, and says so with its reply
+  own price data) while it answers, and links the pages it used. A line above each reply says what of yours was
+  shared for it and what it looked up; click it for the full list. Look-ups need a model that can use tools; a model
+  that can't (some that run on your own computer) answers from memory, and says so with its reply
 - Pick your provider: **Claude** (Anthropic), **ChatGPT** (OpenAI), or any service with an **OpenAI-compatible** API,
   such as OpenRouter, Groq, or a free model running on your own computer with Ollama or LM Studio
 - **Pick a model next to Send**, from the ones your key can use (or type any name), and check your setup with
@@ -66,10 +66,10 @@ there's no server in between.
   goes to whichever provider is selected when you send, so switching providers mid-chat sends it to the new one.
 - **What the assistant looks up** (Wiki pages, GE prices, and anything below that you share) is sent to the provider
   as part of the reply it's for. Claude also gets the look-ups of earlier replies again with each new message in that
-  chat, while RuneLite stays open. Every look-up is listed above the reply it was for, so you can always see what was
-  sent: the Wiki pages and GE prices on one line, such as "Looked up: Vorkath (Wiki) · Dragon bones (GE price)", and
-  anything of yours on a line of its own, such as "Shared your bank". When that first line can't name everything (a
-  long list, or the words searched for on the Wiki), it ends in "(show)": click it for the full list.
+  chat, while RuneLite stays open. Every look-up shows on the line above the reply it was for, so you can always see
+  what was sent: anything of yours that was shared is always named there in full, then the Wiki pages and GE prices,
+  by name or counted when they don't fit, such as "Shared your bank · Looked up 3 things". Click the line for the full
+  list: each thing shared as it happened, and the Wiki pages, the words searched for on the Wiki and the GE prices.
 - **Only while "Share character details" is on:** your character name, account type (a regular account or which kind of
   ironman), combat and total level, skill levels, quest points, and which quests you've completed or started. Added to
   your first message in a chat and again when something changed (that message says "Sent your character details"; click
@@ -113,7 +113,7 @@ The provider's own privacy policy applies to what you send them, and the OSRS Wi
 AI Chat never quietly drops the start of a chat. Once a chat would send more than 40 messages, it first asks the same
 provider and model for a short summary of the oldest ones (one extra request, shown as "Summarising earlier
 messages..." where the reply will appear), then sends that summary instead of them, along with the newest 16 or so. A
-note just before your question says "Summary of 24 earlier messages (show)": click it to read the summary. The
+note just before your question says "Summary of 24 earlier messages": click it to read the summary. The
 messages it covers are drawn fainter, and their tooltip says they're summarised. If it couldn't be made, or you skip
 it (the button next to the model picker says Skip while it's being made), a note says so and the whole chat is sent
 that time; the next message tries again.

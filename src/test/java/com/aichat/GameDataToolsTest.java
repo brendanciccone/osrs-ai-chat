@@ -208,6 +208,8 @@ public class GameDataToolsTest
 		// Every varbit at 1: all done but Karamja's first three tiers, which need 2.
 		assertTrue(diaries.result.content, diaries.result.content.endsWith("Completed 45 of 48 tiers."));
 		assertEquals(Arrays.asList("Shared your inventory", "Shared your Slayer task", "Shared your achievement diaries"), activity);
+		// The panel knows these lines by how they start (PanelText.summary), and names what was shared over the reply.
+		assertEquals("Shared your inventory, Slayer task and achievement diaries", PanelText.summary(activity).sharing);
 	}
 
 	@Test
@@ -269,6 +271,8 @@ public class GameDataToolsTest
 		Ended all = run(tools(), "get_bank", input);
 		assertTrue(all.result.content, all.result.content.contains("- Shark x250"));
 		assertEquals(Arrays.asList("Searched your bank for \"rune\"", "Shared your bank"), activity);
+		assertEquals("Shared your bank", PanelText.summary(activity).sharing);
+		assertEquals("Searched your bank", PanelText.summary(activity.subList(0, 1)).sharing);
 	}
 
 	@Test
@@ -339,5 +343,8 @@ public class GameDataToolsTest
 		// Nothing was shared anyway.
 		String off = "Didn't share your bank: \"" + ITEMS + "\" is off";
 		assertEquals(off, GameDataTools.unshared(off));
+		// Nor does the panel say so over the reply.
+		assertEquals(null, PanelText.summary(Arrays.asList(GameDataTools.unshared("Shared your equipment"),
+			GameDataTools.unshared("Searched your bank for \"rune\""), off)).sharing);
 	}
 }

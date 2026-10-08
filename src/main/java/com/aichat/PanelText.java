@@ -5,20 +5,17 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * The panel's words around the messages: the line under a reply on its way saying what it's doing, each message's
- * tooltip, how notes read, and the lines saying what was looked up or shared for a message. Pure, so it's tested
+ * tooltip, how notes read, and the line saying what was looked up or shared for a message. Pure, so it's tested
  * without Swing.
  */
 final class PanelText
 {
-	/** Names of each kind the look-up line shows; the others are counted, and listed in full a click away. */
-	static final int NAMES_SHOWN = 3;
-	/** The panel is narrow: a longer name is cut on the look-up line, and kept whole in the full list. */
-	static final int NAME_CHARS = 30;
 	/** "Thinking" counts its dots for this long; then the seconds count instead, for a model that's slow to start. */
 	static final int THINKING_DOTS_SECONDS = 5;
 	/** A summary's note, as {@link ConversationBuilder#applySummary} writes it: how many messages, then the summary. */
@@ -133,50 +130,136 @@ final class PanelText
 		return new Note(line, m.group(2).trim());
 	}
 
-	/** A message's activity lines, as the panel shows them. */
-	static final class Activity
+	/**
+	 * What was looked up or shared for a message, as the panel shows it: one muted line over the message, with
+	 * everything a click away. What the player shared of their own is named first, and always in full; then the Wiki
+	 * pages and GE prices, by name when they fit, or counted ("Looked up 3 things", "3 look-ups") when they don't.
+	 */
+	static final class Summary
 	{
-		/** "Looked up: Abyssal whip (Wiki) · Dragon bones (GE price)"; null when nothing was. */
-		final String lookups;
-		/**
-		 * Everything that was looked up, in full and one kind per line ("Wiki pages: ...", "Wiki searches: ...", "GE
-		 * prices: ..."), for the panel to show under the look-up line when it's clicked. Null when that line already
-		 * names it all, or when there's no such line.
-		 */
-		final String full;
-		/** The other lines, as they were and in order: what was shared, and what was skipped or went wrong. */
-		final List<String> rest;
+		/** Between the parts of the line. */
+		static final String SEPARATOR = " \u00b7 ";
+		static final String ELLIPSIS = "\u2026";
 
-		private Activity(String lookups, String full, List<String> rest)
+		/** "Shared your equipment and inventory", or null when nothing of the player's was shared. */
+		final String sharing;
+		/** "Looked up Vorkath, Dragon bones (GE price)", or null when nothing was. */
+		final String lookups;
+		/** "Looked up 3 things", or null when fewer than two things were. */
+		final String count;
+		/** "3 look-ups": the count, shorter. Null when {@link #count} is. */
+		final String tally;
+		/** When nothing was shared or looked up: the first line there is (a skipped look-up, say), or null. */
+		final String other;
+		/**
+		 * Everything, for when the line is clicked: each line as it was recorded (what was shared, skipped or went
+		 * wrong), then what was looked up, one kind to a line ("Wiki pages: ...", "Wiki searches: ...", "GE prices:
+		 * ..."). Empty when there's nothing.
+		 */
+		final String details;
+
+		private Summary(String sharing, String lookups, int things, String other, String details)
 		{
+			this.sharing = sharing;
 			this.lookups = lookups;
-			this.full = full;
-			this.rest = rest;
+			this.count = things > 1 ? "Looked up " + things + " things" : null;
+			this.tally = things > 1 ? things + " look-ups" : null;
+			this.other = other;
+			this.details = details;
 		}
 
-		/** Every line shown, the look-up line first. */
-		List<String> lines()
+		/** Whether there's nothing to show: no line at all. */
+		boolean isEmpty()
 		{
-			List<String> all = new ArrayList<>();
-			if (lookups != null)
+			return details.isEmpty();
+		}
+
+		/**
+		 * The line, as long as {@code fits} says fits on one row: the look-ups by name, else counted ("Looked up 3
+		 * things", then "3 look-ups"), else cut short at the end. Never cut into what was shared: if even that doesn't
+		 * fit, the line is longer than a row (and wraps).
+		 */
+		String line(Predicate<String> fits)
+		{
+			String named = join(sharing, lookups != null ? lookups : other);
+			if (fits.test(named))
 			{
-				all.add(lookups);
+				return named;
 			}
-			all.addAll(rest);
-			return all;
+			if (count != null && fits.test(join(sharing, count)))
+			{
+				return join(sharing, count);
+			}
+			String counted = tally != null ? join(sharing, tally) : named;
+			if (fits.test(counted))
+			{
+				return counted;
+			}
+			String head = sharing == null ? "" : sharing + SEPARATOR;
+			if (counted.length() <= head.length())
+			{
+				// Only what was shared, which is never cut.
+				return counted;
+			}
+			if (tally != null)
+			{
+				// A count cut short says nothing: all of it goes, after what was shared.
+				return !head.isEmpty() && fits.test(head + ELLIPSIS) ? head + ELLIPSIS : counted;
+			}
+			String tail = counted.substring(head.length());
+			// The longest start of the rest that fits with the ellipsis after it; widths only grow with the length.
+			int lo = 0;
+			int hi = tail.length() - 1;
+			int best = -1;
+			while (lo <= hi)
+			{
+				int mid = (lo + hi) >>> 1;
+				if (fits.test(cut(head, tail, mid)))
+				{
+					best = mid;
+					lo = mid + 1;
+				}
+				else
+				{
+					hi = mid - 1;
+				}
+			}
+			if (best < 0)
+			{
+				return counted;
+			}
+			if (best < tail.length() && tail.charAt(best) != ' ')
+			{
+				// Not in the middle of a word: back to the space before it, or, after what was shared, to nothing.
+				int space = tail.lastIndexOf(' ', best - 1);
+				best = space > 0 ? space : head.isEmpty() ? best : 0;
+			}
+			return cut(head, tail, best);
+		}
+
+		private static String cut(String head, String tail, int length)
+		{
+			return head + tail.substring(0, length).trim() + ELLIPSIS;
+		}
+
+		private static String join(String first, String second)
+		{
+			if (first == null || second == null)
+			{
+				return first != null ? first : second == null ? "" : second;
+			}
+			return first + SEPARATOR + second;
 		}
 	}
 
 	/**
-	 * Folds the Wiki and GE price look-ups among {@code lines} (a message's {@link Chat.Message#activity}; null for
-	 * none) into one line: the Wiki pages read (or, when none was, what was searched for), then the GE prices checked,
-	 * each named once. A line per look-up was too much to read under every reply. When the line leaves something out
-	 * (names past the first few, a long name cut, or the searches behind the pages read), the full list comes with it:
-	 * it's the only place some of what was sent, such as the words searched for, can be read. What the player shared
-	 * of their own, and look-ups that were skipped or went wrong, keep their own lines. Done only when shown: the saved
-	 * lines keep every look-up, and chats saved by earlier versions look the same.
+	 * Sums up {@code lines} (a message's {@link Chat.Message#activity}; null for none) for the line over the message.
+	 * Lines from {@link GameDataTools} for what was shared are put together ("Shared your equipment and bank"), and the
+	 * Wiki and GE price look-ups from {@link LookupTools} too, each thing named once: the Wiki pages read (or, when none
+	 * was, what was searched for), then the GE prices. A line for each was too much to read over every reply. Done only
+	 * when shown: the saved lines keep every look-up, and chats saved by earlier versions show the same way.
 	 */
-	static Activity activity(List<String> lines)
+	static Summary summary(List<String> lines)
 	{
 		List<String> pages = new ArrayList<>();
 		List<String> searches = new ArrayList<>();
@@ -189,36 +272,86 @@ final class PanelText
 				rest.add(line);
 			}
 		}
-		if (pages.isEmpty() && searches.isEmpty() && prices.isEmpty())
-		{
-			return new Activity(null, null, rest);
-		}
-		List<String> shown = new ArrayList<>();
-		List<String> full = new ArrayList<>();
-		// The pages say what the searches found; the searches still go in the full list, as they went to the Wiki too.
-		boolean more = !pages.isEmpty() && !searches.isEmpty();
+		List<String> details = new ArrayList<>(rest);
 		if (!pages.isEmpty())
 		{
-			shown.add(names(pages, false) + " (Wiki)");
-			full.add("Wiki pages: " + String.join(", ", pages));
-			more |= !allNamed(pages);
-		}
-		else if (!searches.isEmpty())
-		{
-			shown.add(names(searches, true) + (searches.size() == 1 ? " (Wiki search)" : " (Wiki searches)"));
-			more |= !allNamed(searches);
+			details.add("Wiki pages: " + String.join(", ", pages));
 		}
 		if (!searches.isEmpty())
 		{
-			full.add("Wiki searches: " + quoted(searches));
+			details.add("Wiki searches: " + quoted(searches));
 		}
 		if (!prices.isEmpty())
 		{
-			shown.add(names(prices, false) + (prices.size() == 1 ? " (GE price)" : " (GE prices)"));
-			full.add("GE prices: " + String.join(", ", prices));
-			more |= !allNamed(prices);
+			details.add("GE prices: " + String.join(", ", prices));
 		}
-		return new Activity("Looked up: " + String.join(" · ", shown), more ? String.join("\n", full) : null, rest);
+
+		String sharing = sharing(rest);
+		// The pages say what the searches found: the searches count only when no page was read.
+		List<String> wiki = pages.isEmpty() ? quotedEach(searches) : pages;
+		int things = wiki.size() + prices.size();
+		String lookups = null;
+		if (things > 0)
+		{
+			List<String> names = new ArrayList<>(wiki);
+			if (!prices.isEmpty())
+			{
+				names.add(String.join(", ", prices) + (prices.size() == 1 ? " (GE price)" : " (GE prices)"));
+			}
+			lookups = "Looked up " + String.join(", ", names);
+		}
+		String other = sharing == null && lookups == null && !rest.isEmpty() ? brief(rest.get(0)) : null;
+		return new Summary(sharing, lookups, things, other, String.join("\n", details));
+	}
+
+	/**
+	 * What the player shared of their own, from {@link GameDataTools}' lines: "Shared your equipment, inventory and
+	 * bank", "Searched your bank", "Shared your equipment and searched your bank"; null for nothing. Lines for what
+	 * wasn't shared after all (the request had stopped, a setting is off) don't count.
+	 */
+	private static String sharing(List<String> lines)
+	{
+		List<String> shared = new ArrayList<>();
+		boolean searched = false;
+		for (String line : lines)
+		{
+			if (line.startsWith(GameDataTools.SHARED))
+			{
+				addOnce(shared, line.substring(GameDataTools.SHARED.length()));
+			}
+			else if (line.startsWith(GameDataTools.SEARCHED) && !line.endsWith(GameDataTools.UNSHARED))
+			{
+				searched = true;
+			}
+		}
+		// Sharing the whole bank says it all for a search of it too.
+		searched &= !shared.contains("bank");
+		if (shared.isEmpty())
+		{
+			return searched ? "Searched your bank" : null;
+		}
+		String what = "Shared your " + and(shared);
+		if (!searched)
+		{
+			return what;
+		}
+		return what + (shared.size() > 1 ? ", and" : " and") + " searched your bank";
+	}
+
+	/** "a", "a and b", "a, b and c". */
+	private static String and(List<String> items)
+	{
+		if (items.size() == 1)
+		{
+			return items.get(0);
+		}
+		return String.join(", ", items.subList(0, items.size() - 1)) + " and " + items.get(items.size() - 1);
+	}
+
+	/** A line on its own, as the summary shows it when it's all there is: the long ones said shorter. */
+	private static String brief(String line)
+	{
+		return RequestRunner.NO_LOOKUPS.equals(line) ? "No look-ups: this model can't use tools" : line;
 	}
 
 	/**
@@ -270,46 +403,18 @@ final class PanelText
 		return unquote(end > 0 && s.endsWith(")") ? s.substring(0, end + 1) : s);
 	}
 
-	/** The first {@link #NAMES_SHOWN} names, cut to fit the narrow panel, then how many more there are. */
-	private static String names(List<String> names, boolean quoted)
-	{
-		StringBuilder out = new StringBuilder();
-		for (int i = 0; i < names.size() && i < NAMES_SHOWN; i++)
-		{
-			String name = ChatApi.shorten(names.get(i), NAME_CHARS);
-			out.append(i > 0 ? ", " : "").append(quoted ? '"' + name + '"' : name);
-		}
-		if (names.size() > NAMES_SHOWN)
-		{
-			out.append(" +").append(names.size() - NAMES_SHOWN).append(" more");
-		}
-		return out.toString();
-	}
-
-	/** Whether {@link #names} names each of {@code names}, whole. */
-	private static boolean allNamed(List<String> names)
-	{
-		if (names.size() > NAMES_SHOWN)
-		{
-			return false;
-		}
-		for (String name : names)
-		{
-			if (!ChatApi.shorten(name, NAME_CHARS).equals(name))
-			{
-				return false;
-			}
-		}
-		return true;
-	}
-
-	private static String quoted(List<String> names)
+	private static List<String> quotedEach(List<String> names)
 	{
 		List<String> out = new ArrayList<>();
 		for (String name : names)
 		{
 			out.add('"' + name + '"');
 		}
-		return String.join(", ", out);
+		return out;
+	}
+
+	private static String quoted(List<String> names)
+	{
+		return String.join(", ", quotedEach(names));
 	}
 }

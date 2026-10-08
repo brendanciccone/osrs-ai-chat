@@ -6,12 +6,14 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
+import java.util.function.Predicate;
 import org.junit.Test;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
-/** The panel's words for a reply on its way, a message's tooltip, notes, and what was looked up or shared. */
+/** The panel's words for a reply on its way, a message's tooltip, notes, and the line about look-ups and sharing. */
 public class PanelTextTest
 {
 	private static final long NOW = 1_000_000;
@@ -128,177 +130,142 @@ public class PanelTextTest
 		assertEquals("1m 0s", PanelText.elapsed(60_000));
 	}
 
-	private static PanelText.Activity fold(String... lines)
+	private static PanelText.Summary sum(String... lines)
 	{
-		return PanelText.activity(Arrays.asList(lines));
+		return PanelText.summary(Arrays.asList(lines));
+	}
+
+	/** Any line fits. */
+	private static final Predicate<String> ROOMY = s -> true;
+
+	/** A line fits when it has at most {@code chars} characters (the panel measures pixels instead). */
+	private static Predicate<String> chars(int chars)
+	{
+		return s -> s.length() <= chars;
 	}
 
 	@Test
-	public void wikiPagesReadAreListedByTitle()
+	public void whatWasSharedComesFirstThenWhatWasLookedUp()
 	{
-		PanelText.Activity shown = fold(
-			"Searched the Wiki for \"abyssal whip\"",
-			"Read the Wiki page \"Abyssal whip\"",
-			"Searched the Wiki for \"what drops the abyssal whip\"",
-			"Read the Wiki page \"Abyssal demon\" (Drops)");
-		assertEquals("Looked up: Abyssal whip, Abyssal demon (Wiki)", shown.lookups);
-		// The searches only found the pages, so they're left off the line; the full list still has them.
-		assertEquals("Wiki pages: Abyssal whip, Abyssal demon\n"
-			+ "Wiki searches: \"abyssal whip\", \"what drops the abyssal whip\"", shown.full);
-		assertEquals(Collections.emptyList(), shown.rest);
-		assertEquals(Collections.singletonList("Looked up: Abyssal whip, Abyssal demon (Wiki)"), shown.lines());
-
-		// A title with quotes or brackets of its own, with and without a section.
-		assertEquals("Looked up: \"Ernest\" the Chicken, Dragon (disambiguation) (Wiki)", fold(
-			"Read the Wiki page \"\"Ernest\" the Chicken\" (introduction)",
-			"Read the Wiki page \"Dragon (disambiguation)\"").lookups);
-	}
-
-	@Test
-	public void searchesAreListedWhenNoPageWasRead()
-	{
-		PanelText.Activity one = fold("Searched the Wiki for \"abyssal whip drop rate\"");
-		assertEquals("Looked up: \"abyssal whip drop rate\" (Wiki search)", one.lookups);
-		// The line already says it all.
-		assertNull(one.full);
-
-		PanelText.Activity two = fold("Searched the Wiki for \"whip\"", "Searched the Wiki for \"abyssal whip\"");
-		assertEquals("Looked up: \"whip\", \"abyssal whip\" (Wiki searches)", two.lookups);
-		assertNull(two.full);
-	}
-
-	@Test
-	public void wikiAndGePricesShareTheLine()
-	{
-		PanelText.Activity shown = fold(
-			"Searched the Wiki for \"abyssal whip\"",
-			"Read the Wiki page \"Abyssal whip\"",
-			"Read the Wiki page \"Abyssal demon\"",
-			"Checked the GE price of Dragon bones");
-		assertEquals("Looked up: Abyssal whip, Abyssal demon (Wiki) · Dragon bones (GE price)", shown.lookups);
-		assertEquals("Wiki pages: Abyssal whip, Abyssal demon\nWiki searches: \"abyssal whip\"\nGE prices: Dragon bones",
-			shown.full);
-
-		PanelText.Activity searched = fold(
+		PanelText.Summary s = sum(
+			"Searched the Wiki for \"vorkath gear\"",
+			"Read the Wiki page \"Vorkath\" (Equipment)",
+			"Shared your equipment",
 			"Checked the GE price of Dragon bones",
-			"Searched the Wiki for \"dragon bones\"",
-			"Checked the GE price of Big bones");
-		assertEquals("Looked up: \"dragon bones\" (Wiki search) · Dragon bones, Big bones (GE prices)", searched.lookups);
-		assertNull(searched.full);
-		PanelText.Activity prices = fold("Checked the GE price of Dragon bones");
-		assertEquals("Looked up: Dragon bones (GE price)", prices.lookups);
-		assertNull(prices.full);
+			"Shared your inventory");
+		assertEquals("Shared your equipment and inventory · Looked up Vorkath, Dragon bones (GE price)", s.line(ROOMY));
+		// Too long for the row: the look-ups are counted instead, and what was shared is still named in full.
+		assertEquals("Shared your equipment and inventory · Looked up 2 things", s.line(chars(60)));
+		// Shorter still.
+		assertEquals("Shared your equipment and inventory · 2 look-ups", s.line(chars(50)));
+		// Still too long: the count goes, never what was shared.
+		assertEquals("Shared your equipment and inventory · …", s.line(chars(47)));
+		// Not even that fits: what was shared is shown whole all the same, over two rows.
+		assertEquals("Shared your equipment and inventory · 2 look-ups", s.line(chars(30)));
+		assertEquals("Shared your equipment and inventory", sum("Shared your equipment", "Shared your inventory")
+			.line(chars(10)));
 	}
 
 	@Test
-	public void eachThingIsNamedOnce()
+	public void lookUpsAloneAreNamedOrCounted()
 	{
-		PanelText.Activity shown = fold(
+		assertEquals("Looked up Dragon bones (GE price)", sum("Checked the GE price of Dragon bones").line(ROOMY));
+		PanelText.Summary s = sum(
+			"Searched the Wiki for \"whip\"",
+			"Read the Wiki page \"Abyssal whip\"",
+			"Read the Wiki page \"Abyssal demon\" (Drops)",
+			"Checked the GE price of Abyssal whip",
+			"Checked the GE price of Big bones");
+		assertEquals("Looked up Abyssal whip, Abyssal demon, Abyssal whip, Big bones (GE prices)", s.line(ROOMY));
+		assertEquals("Looked up 4 things", s.line(chars(30)));
+		assertEquals("4 look-ups", s.line(chars(15)));
+		// The searches only found the pages, so they're left off the line; the details still have them.
+		assertEquals("Wiki pages: Abyssal whip, Abyssal demon\nWiki searches: \"whip\"\n"
+			+ "GE prices: Abyssal whip, Big bones", s.details);
+		// With no page read, what was searched for is what was looked up.
+		PanelText.Summary searched = sum("Searched the Wiki for \"abyssal whip drop rate\"", "Searched the Wiki for \"whip\"");
+		assertEquals("Looked up \"abyssal whip drop rate\", \"whip\"", searched.line(ROOMY));
+		assertEquals("Looked up 2 things", searched.line(chars(30)));
+		// One long name: cut at the end, between words.
+		assertEquals("Looked up Abyssal whip (or)…", sum("Checked the GE price of Abyssal whip (or) ornament kit")
+			.line(chars(30)));
+		// A title with quotes or brackets of its own, with and without a section.
+		assertEquals("Looked up \"Ernest\" the Chicken, Dragon (disambiguation)", sum(
+			"Read the Wiki page \"\"Ernest\" the Chicken\" (introduction)",
+			"Read the Wiki page \"Dragon (disambiguation)\"").line(ROOMY));
+	}
+
+	@Test
+	public void eachThingIsNamedOnceAndTheDetailsHaveEveryLine()
+	{
+		PanelText.Summary s = sum(
+			"Shared your equipment",
 			"Read the Wiki page \"Vorkath\"",
 			"Read the Wiki page \"Vorkath\" (Drops)",
-			"Read the Wiki page \"Vorkath\" (Strategy)",
-			"Checked the GE price of Dragon bones",
-			"Checked the GE price of Dragon bones",
-			"Searched the Wiki for \"vorkath\"",
-			"Searched the Wiki for \"vorkath\"");
-		assertEquals("Looked up: Vorkath (Wiki) · Dragon bones (GE price)", shown.lookups);
-		assertEquals("Wiki pages: Vorkath\nWiki searches: \"vorkath\"\nGE prices: Dragon bones", shown.full);
-		assertEquals("Looked up: \"vorkath\" (Wiki search)",
-			fold("Searched the Wiki for \"vorkath\"", "Searched the Wiki for \"vorkath\"").lookups);
-	}
-
-	@Test
-	public void aLongListShowsThreeOfEachAndTheFullListHasThemAll()
-	{
-		PanelText.Activity shown = fold(
-			"Read the Wiki page \"Abyssal whip\"",
-			"Read the Wiki page \"Abyssal demon\"",
-			"Read the Wiki page \"Abyssal Sire\"",
-			"Read the Wiki page \"Abyssal tentacle\"",
-			"Read the Wiki page \"Kraken\"",
-			"Checked the GE price of Abyssal whip",
-			"Checked the GE price of Kraken tentacle",
-			"Checked the GE price of Abyssal dagger",
-			"Checked the GE price of Abyssal bludgeon");
-		assertEquals("Looked up: Abyssal whip, Abyssal demon, Abyssal Sire +2 more (Wiki) · "
-			+ "Abyssal whip, Kraken tentacle, Abyssal dagger +1 more (GE prices)", shown.lookups);
-		assertEquals("Wiki pages: Abyssal whip, Abyssal demon, Abyssal Sire, Abyssal tentacle, Kraken\n"
-			+ "GE prices: Abyssal whip, Kraken tentacle, Abyssal dagger, Abyssal bludgeon", shown.full);
-		// Too many of one kind is enough for the full list.
-		assertEquals("Wiki pages: Abyssal whip, Abyssal demon, Abyssal Sire, Abyssal tentacle\nGE prices: Kraken tentacle",
-			fold(
-				"Read the Wiki page \"Abyssal whip\"",
-				"Read the Wiki page \"Abyssal demon\"",
-				"Read the Wiki page \"Abyssal Sire\"",
-				"Read the Wiki page \"Abyssal tentacle\"",
-				"Checked the GE price of Kraken tentacle").full);
-		// Three of each is still all of them.
-		assertNull(fold(
-			"Read the Wiki page \"Abyssal whip\"",
-			"Read the Wiki page \"Abyssal demon\"",
-			"Read the Wiki page \"Abyssal Sire\"",
-			"Checked the GE price of Abyssal whip",
-			"Checked the GE price of Kraken tentacle",
-			"Checked the GE price of Abyssal dagger").full);
-
-		// A long name is cut on the line, and whole in the full list.
-		String search = "how much does an abyssal whip cost to imbue";
-		PanelText.Activity cut = fold("Searched the Wiki for \"" + search + "\"");
-		assertEquals("Looked up: \"how much does an abyssal whip...\" (Wiki search)", cut.lookups);
-		assertEquals("Wiki searches: \"" + search + "\"", cut.full);
-		String item = "Abyssal whip (or) ornament kit, noted";
-		PanelText.Activity price = fold("Checked the GE price of " + item);
-		assertEquals("Looked up: Abyssal whip (or) ornament kit... (GE price)", price.lookups);
-		assertEquals("GE prices: " + item, price.full);
-		// Exactly as long as fits isn't cut.
-		String fits = "Abyssal whip (or) ornament kit";
-		assertEquals(PanelText.NAME_CHARS, fits.length());
-		assertNull(fold("Checked the GE price of " + fits).full);
-	}
-
-	@Test
-	public void whatWasSharedFollowsTheLookUpLineInOrder()
-	{
-		PanelText.Activity shown = fold(
-			"Shared your equipment",
-			"Read the Wiki page \"Vorkath\"",
 			"Searched your bank for \"rune\"",
 			"Couldn't search the Wiki for \"vorkath\"",
+			"Searched the Wiki for \"vorkath\"",
+			"Searched the Wiki for \"vorkath\"",
+			"Checked the GE price of Rune platebody",
 			"Checked the GE price of Rune platebody",
 			"Didn't share your inventory: \"Share items and gear\" is off",
-			"Found no Wiki page called \"Vorkath (monster)\"",
-			"Read your bank, but didn't share it: the request had stopped",
-			"Found no GE price for \"vorki\"",
-			"Skipped a Wiki search: Wiki look-ups are off");
-		assertEquals(Arrays.asList(
-			"Looked up: Vorkath (Wiki) · Rune platebody (GE price)",
-			"Shared your equipment",
-			"Searched your bank for \"rune\"",
-			"Couldn't search the Wiki for \"vorkath\"",
-			"Didn't share your inventory: \"Share items and gear\" is off",
-			"Found no Wiki page called \"Vorkath (monster)\"",
-			"Read your bank, but didn't share it: the request had stopped",
-			"Found no GE price for \"vorki\"",
-			"Skipped a Wiki search: Wiki look-ups are off"), shown.lines());
+			"Read your bank, but didn't share it: the request had stopped");
+		assertEquals("Shared your equipment and searched your bank · Looked up Vorkath, Rune platebody (GE price)",
+			s.line(ROOMY));
+		// Each line as it was recorded, in order; then what was looked up, one kind to a line.
+		assertEquals("Shared your equipment\n"
+			+ "Searched your bank for \"rune\"\n"
+			+ "Couldn't search the Wiki for \"vorkath\"\n"
+			+ "Didn't share your inventory: \"Share items and gear\" is off\n"
+			+ "Read your bank, but didn't share it: the request had stopped\n"
+			+ "Wiki pages: Vorkath\n"
+			+ "Wiki searches: \"vorkath\"\n"
+			+ "GE prices: Rune platebody", s.details);
 	}
 
 	@Test
-	public void otherLinesAreShownAsTheyAre()
+	public void onlyWhatWasSharedIsNamedAsShared()
+	{
+		assertEquals("Shared your equipment, inventory and bank", sum("Shared your equipment", "Shared your inventory",
+			"Shared your bank", "Searched your bank for \"rune\"").line(ROOMY));
+		assertEquals("Shared your Slayer task and achievement diaries, and searched your bank", sum(
+			"Shared your Slayer task", "Searched your bank for \"rune\"", "Shared your achievement diaries",
+			"Shared your Slayer task").line(ROOMY));
+		assertEquals("Searched your bank", sum("Searched your bank for \"rune\"").line(ROOMY));
+		// Read, but never sent, as the request had stopped; or a setting is off: nothing was shared.
+		PanelText.Summary stopped = sum(GameDataTools.unshared("Shared your bank"),
+			GameDataTools.unshared("Searched your bank for \"rune\""),
+			"Didn't share your inventory: \"Share items and gear\" is off");
+		assertNull(stopped.sharing);
+		assertEquals("Read your bank, but didn't share it: the request had stopped", stopped.line(ROOMY));
+	}
+
+	@Test
+	public void withNothingSharedOrLookedUpTheFirstLineSaysIt()
+	{
+		assertEquals("No look-ups: this model can't use tools", sum(RequestRunner.NO_LOOKUPS).line(ROOMY));
+		assertEquals(RequestRunner.NO_LOOKUPS, sum(RequestRunner.NO_LOOKUPS).details);
+		PanelText.Summary s = sum("Skipped a Wiki search: Wiki look-ups are off", "Couldn't read the game (get_bank)");
+		assertEquals("Skipped a Wiki search: Wiki look-ups are off", s.line(ROOMY));
+		assertEquals("Skipped a Wiki search:…", s.line(chars(25)));
+		assertEquals("Skipped a Wiki search: Wiki look-ups are off\nCouldn't read the game (get_bank)", s.details);
+	}
+
+	@Test
+	public void otherLinesAreKeptAsTheyAre()
 	{
 		List<String> lines = Arrays.asList(
-			RequestRunner.NO_LOOKUPS,
-			"Shared your Slayer task",
 			"Something a later version writes",
+			"Shared your Slayer task",
 			"Read the Wiki page Vorkath",
 			"Read the Wiki page \"\"",
 			"Searched the Wiki for vorkath",
 			"Checked the GE price of ",
 			"Couldn't finish a look-up (wiki_page)");
-		PanelText.Activity shown = PanelText.activity(lines);
+		PanelText.Summary shown = PanelText.summary(lines);
 		assertNull(shown.lookups);
-		assertNull(shown.full);
-		assertEquals(lines, shown.rest);
-		assertEquals(lines, shown.lines());
+		assertEquals("Shared your Slayer task", shown.line(ROOMY));
+		assertEquals(String.join("\n", lines), shown.details);
 	}
 
 	@Test
@@ -306,10 +273,10 @@ public class PanelTextTest
 	{
 		for (List<String> none : Arrays.asList(null, Collections.<String>emptyList(), Collections.<String>singletonList(null)))
 		{
-			PanelText.Activity shown = PanelText.activity(none);
-			assertNull(shown.lookups);
-			assertNull(shown.full);
-			assertTrue(shown.lines().isEmpty());
+			PanelText.Summary shown = PanelText.summary(none);
+			assertTrue(shown.isEmpty());
+			assertEquals("", shown.details);
 		}
+		assertFalse(sum("Shared your bank").isEmpty());
 	}
 }

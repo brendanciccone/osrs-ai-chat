@@ -36,8 +36,8 @@ final class LookupTools implements ChatApi.ToolRunner
 	static final String WIKI_PAGE = "wiki_page";
 	static final String GE_PRICE = "ge_price";
 	/**
-	 * How the lines for look-ups that went through start. The panel folds them into one line (see
-	 * {@link PanelText#activity}), by these.
+	 * How the lines for look-ups that went through start. The panel counts or names them on one line over the reply,
+	 * and lists them one kind to a line when that's clicked (see {@link PanelText#summary}), by these.
 	 */
 	static final String SEARCHED_WIKI = "Searched the Wiki for ";
 	static final String READ_WIKI_PAGE = "Read the Wiki page ";

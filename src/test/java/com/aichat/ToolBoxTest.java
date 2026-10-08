@@ -182,9 +182,8 @@ public class ToolBoxTest
 
 		assertEquals(3, started.get());
 		assertEquals(Arrays.asList("Checked the GE price of Abyssal whip", "Shared your equipment"), activity);
-		// As the panel lists them: the look-up first, then what was shared.
-		assertEquals(Arrays.asList("Looked up: Abyssal whip (GE price)", "Shared your equipment"),
-			PanelText.activity(activity).lines());
+		// As the panel sums them up: what was shared first, then the look-up.
+		assertEquals("Shared your equipment · Looked up Abyssal whip (GE price)", PanelText.summary(activity).line(s -> true));
 	}
 
 	@Test

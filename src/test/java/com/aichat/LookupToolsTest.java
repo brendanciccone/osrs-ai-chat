@@ -315,7 +315,7 @@ public class LookupToolsTest
 	@Test
 	public void thePanelFoldsTheLinesOfLookUpsThatWentThrough() throws Exception
 	{
-		// The panel knows these lines by how they start (PanelText.activity): what is written here is what it reads.
+		// The panel knows these lines by how they start (PanelText.summary): what is written here is what it reads.
 		LookupTools tools = new LookupTools(wiki(5000), whips(), activity::add);
 		answer("200", SEARCH);
 		run(tools, "wiki_search", "{\"query\":\"abyssal whip\"}");
@@ -327,10 +327,10 @@ public class LookupToolsTest
 		assertEquals(Arrays.asList("Searched the Wiki for \"abyssal whip\"", "Read the Wiki page \"Abyssal whip\" (Drops)",
 			"Checked the GE price of Cannonball", "Found no Wiki page called \"Abyssal wip\""), activity);
 
-		PanelText.Activity shown = PanelText.activity(activity);
-		assertEquals(Arrays.asList("Looked up: Abyssal whip (Wiki) · Cannonball (GE price)",
-			"Found no Wiki page called \"Abyssal wip\""), shown.lines());
-		assertEquals("Wiki pages: Abyssal whip\nWiki searches: \"abyssal whip\"\nGE prices: Cannonball", shown.full);
+		PanelText.Summary shown = PanelText.summary(activity);
+		assertEquals("Looked up Abyssal whip, Cannonball (GE price)", shown.line(s -> true));
+		assertEquals("Found no Wiki page called \"Abyssal wip\"\nWiki pages: Abyssal whip\nWiki searches: \"abyssal whip\"\n"
+			+ "GE prices: Cannonball", shown.details);
 	}
 
 	@Test

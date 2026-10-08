@@ -2,6 +2,7 @@ package com.aichat;
 
 import java.awt.Component;
 import java.awt.Container;
+import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 import java.awt.event.InputEvent;
 import java.awt.event.MouseEvent;
@@ -9,6 +10,7 @@ import java.awt.image.BufferedImage;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,6 +22,7 @@ import javax.swing.text.StyleConstants;
 import org.junit.Test;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
@@ -715,7 +718,7 @@ public class AiChatPanelTest
 			assertSame("updated in place", live, panel.liveRow());
 			assertFalse(live.status.isVisible());
 			assertEquals("Abyssal demons drop it", live.body.getSource());
-			assertEquals("Looked up: Abyssal whip (Wiki)", live.activity.lookups.line.getSource());
+			assertEquals("Looked up Abyssal whip", live.activity.lineText());
 
 			host.current.lookingUp = true;
 			panel.refreshLive(host.current);
@@ -733,10 +736,12 @@ public class AiChatPanelTest
 			add(Chat.Role.USER, "q");
 			AiChatPanel panel = new AiChatPanel(host);
 			ShowMore text = ((MessageRow.Note) panel.row(note)).text;
-			assertEquals("Summary of 24 earlier messages (show)", text.line.getSource());
+			assertEquals("Summary of 24 earlier messages", text.lineText());
+			assertEquals(Glyph.Shape.CHEVRON_DOWN, text.chevron());
 			click(text);
 			assertEquals("The player is training Agility.", text.more.getSource());
 			assertTrue(text.more.isVisible());
+			assertEquals(Glyph.Shape.CHEVRON_UP, text.chevron());
 		});
 	}
 
@@ -765,48 +770,78 @@ public class AiChatPanelTest
 	}
 
 	@Test
-	public void theFullListOfLookUpsIsAClickAwayWhenTheLineLeavesSomeOut() throws Throwable
+	public void whatAReplyDidIsOneLineThatOpensAndClosesWithItsChevron() throws Throwable
 	{
 		onEdt(() ->
 		{
-			ShowMore s = new ShowMore("Click to see everything", StyleConstants.ALIGN_LEFT);
+			ShowMore s = MessageRow.activityLine(StyleConstants.ALIGN_LEFT);
 			assertFalse("nothing to show yet", s.isVisible());
+			MessageRow.showActivity(s, Collections.emptyList());
+			assertFalse("nothing was looked up or shared: no line", s.isVisible());
 
-			PanelText.Activity shown = PanelText.activity(Arrays.asList(
+			List<String> lines = new ArrayList<>(Arrays.asList(
 				"Searched the Wiki for \"abyssal whip\"",
 				"Read the Wiki page \"Abyssal whip\"",
+				"Shared your equipment",
 				"Checked the GE price of Dragon bones"));
-			s.show(shown.lookups, shown.full);
+			MessageRow.showActivity(s, lines);
 			assertTrue(s.isVisible());
-			assertEquals("Looked up: Abyssal whip (Wiki) · Dragon bones (GE price) (show)", s.line.getText());
-			assertFalse(s.more.isVisible());
-			assertEquals("Click to see everything", s.line.getToolTipText());
-			int closed = StackLayout.heightFor(s, 220);
+			assertEquals("Shared your equipment · Looked up Abyssal whip, Dragon bones (GE price)", s.lineText());
+			assertEquals("one line, with a chevron to open it", Glyph.Shape.CHEVRON_DOWN, s.chevron());
+			assertFalse(s.isOpen());
+			assertEquals("Click to see everything that was shared and looked up for this message", s.line.getToolTipText());
+			int closed = StackLayout.heightFor(s, 600);
 
 			click(s);
-			assertTrue(s.more.isVisible());
-			assertEquals("Looked up: Abyssal whip (Wiki) · Dragon bones (GE price) (hide)", s.line.getText());
-			// One kind per line, wrapped in the narrow panel, and never read as HTML.
-			assertEquals("Wiki pages: Abyssal whip\nWiki searches: \"abyssal whip\"\nGE prices: Dragon bones",
-				s.more.getText());
-			assertEquals(Boolean.TRUE, s.more.getClientProperty("html.disable"));
-			assertTrue("taller when open", StackLayout.heightFor(s, 220) > closed);
-
-			// More look-ups for a reply still on its way: the open list takes them in and stays open.
-			PanelText.Activity more = PanelText.activity(Arrays.asList(
-				"Searched the Wiki for \"abyssal whip\"",
-				"Read the Wiki page \"Abyssal whip\"",
-				"Checked the GE price of Dragon bones",
-				"Searched the Wiki for \"whip price\""));
-			s.show(more.lookups, more.full);
-			assertTrue(s.more.isVisible());
-			assertEquals("Wiki pages: Abyssal whip\nWiki searches: \"abyssal whip\", \"whip price\"\n"
+			assertTrue(s.isOpen());
+			assertEquals(Glyph.Shape.CHEVRON_UP, s.chevron());
+			assertEquals("the line stays as it was", "Shared your equipment · Looked up Abyssal whip, Dragon bones (GE price)",
+				s.lineText());
+			// Each line as recorded, then the look-ups one kind to a line; plain text, never read as HTML.
+			assertEquals("Shared your equipment\nWiki pages: Abyssal whip\nWiki searches: \"abyssal whip\"\n"
 				+ "GE prices: Dragon bones", s.more.getText());
+			assertEquals(Boolean.TRUE, s.more.getClientProperty("html.disable"));
+			assertTrue("taller when open", StackLayout.heightFor(s, 600) > closed);
+
+			// More for a reply still on its way: the open list takes it in and stays open.
+			lines.add("Searched your bank for \"rune\"");
+			MessageRow.showActivity(s, lines);
+			assertTrue(s.isOpen());
+			assertEquals("Shared your equipment\nSearched your bank for \"rune\"\nWiki pages: Abyssal whip\n"
+				+ "Wiki searches: \"abyssal whip\"\nGE prices: Dragon bones", s.more.getText());
 
 			click(s);
-			assertFalse(s.more.isVisible());
-			assertEquals("Looked up: Abyssal whip (Wiki) · Dragon bones (GE price) (show)", s.line.getText());
-			assertEquals(closed, StackLayout.heightFor(s, 220));
+			assertFalse(s.isOpen());
+			assertEquals(Glyph.Shape.CHEVRON_DOWN, s.chevron());
+			assertEquals(closed, StackLayout.heightFor(s, 600));
+		});
+	}
+
+	@Test
+	public void theLineFitsItsWidthAndNeverCutsWhatWasShared() throws Throwable
+	{
+		onEdt(() ->
+		{
+			List<String> lines = Arrays.asList(
+				"Read the Wiki page \"Vorkath/Strategies\"",
+				"Shared your equipment",
+				"Read the Wiki page \"Dragon hunter crossbow\"",
+				"Checked the GE price of Dragon hunter crossbow");
+			ShowMore s = MessageRow.activityLine(StyleConstants.ALIGN_LEFT);
+			MessageRow.showActivity(s, lines);
+			PanelText.Summary summary = PanelText.summary(lines);
+			FontMetrics fm = s.line.getFontMetrics(PanelStyle.SMALL_FONT);
+			int oneRow = StackLayout.heightFor(s, 2000);
+			assertEquals(summary.line(t -> true), s.lineText());
+
+			// The sidebar's width: the words that fit it, with the chevron, on one row.
+			assertEquals(oneRow, StackLayout.heightFor(s, 220));
+			assertEquals(summary.line(t -> fm.stringWidth(t + ShowMore.CHEVRON_ROOM) <= 218), s.lineText());
+			assertNotEquals(summary.line(t -> true), s.lineText());
+			assertTrue(s.lineText(), s.lineText().startsWith("Shared your equipment · "));
+			// Narrower than what was shared: that's never cut, so the line takes two rows.
+			assertTrue(StackLayout.heightFor(s, 80) > oneRow);
+			assertTrue(s.lineText().startsWith("Shared your equipment"));
 		});
 	}
 
@@ -816,20 +851,21 @@ public class AiChatPanelTest
 		onEdt(() ->
 		{
 			ShowMore s = new ShowMore("Click to see everything", StyleConstants.ALIGN_LEFT);
-			s.show("Looked up: Dragon bones (GE price)", "GE prices: Dragon bones");
+			s.show("Summary of 2 earlier messages", "The player asked about whips.");
 			click(s);
-			assertTrue(s.more.isVisible());
+			assertTrue(s.isOpen());
 
-			// The same line, now with nothing more to it: the open list goes, and a click does nothing.
-			s.show("Looked up: Dragon bones (GE price)", null);
-			assertEquals("Looked up: Dragon bones (GE price)", s.line.getText());
-			assertFalse(s.more.isVisible());
+			// A note with nothing more to it: the open block goes, there's no chevron, and a click does nothing.
+			s.show("Stopped.", null);
+			assertEquals("Stopped.", s.lineText());
+			assertEquals("Stopped.", s.line.getSource());
+			assertFalse(s.isOpen());
+			assertNull(s.chevron());
 			assertNull(s.line.getToolTipText());
 			click(s);
-			assertFalse(s.more.isVisible());
-			assertEquals("Looked up: Dragon bones (GE price)", s.line.getText());
+			assertFalse(s.isOpen());
 
-			s.show(null, "GE prices: Dragon bones");
+			s.show((String) null, "details");
 			assertFalse(s.isVisible());
 		});
 	}
@@ -843,9 +879,11 @@ public class AiChatPanelTest
 			q.context = "[Character: Zezima]\nCombat level: 126";
 			AiChatPanel panel = new AiChatPanel(host);
 			ShowMore s = ((MessageRow.Question) panel.row(q)).shared;
-			assertEquals("Sent your character details (show)", s.line.getText());
+			assertEquals("Sent your character details", s.lineText());
+			assertEquals(Glyph.Shape.CHEVRON_DOWN, s.chevron());
 			click(s);
-			assertEquals("Sent your character details (hide)", s.line.getText());
+			assertEquals("Sent your character details", s.lineText());
+			assertEquals(Glyph.Shape.CHEVRON_UP, s.chevron());
 			assertEquals("[Character: Zezima]\nCombat level: 126", s.more.getText());
 			assertTrue(s.more.isVisible());
 		});
