@@ -562,24 +562,24 @@ public class AiChatPanelTest
 		{
 			Composer composer = made[0].composer;
 			JTextArea input = composer.input;
-			int line = input.getFontMetrics(input.getFont()).getHeight();
-			onEdt(() -> assertEquals("two lines to start with", 2 * line, composer.scroll.getHeight()));
+			onEdt(() -> assertEquals("two lines to start with", composer.linesHeight(2), composer.scroll.getHeight()));
 
 			// Shift+Enter on the second line: the box is three lines tall at once, not after the next key.
 			edit(() -> input.setText("Two\nlines"));
 			edit(() -> press(input, "shift ENTER"));
-			onEdt(() -> assertEquals(3 * line, composer.scroll.getHeight()));
+			onEdt(() -> assertEquals(composer.linesHeight(3), composer.scroll.getHeight()));
 			// Pasted lines.
 			edit(() -> input.replaceSelection("and\na\nfew more"));
-			onEdt(() -> assertEquals(5 * line, composer.scroll.getHeight()));
+			onEdt(() -> assertEquals(composer.linesHeight(5), composer.scroll.getHeight()));
 			// A long line wraps in the narrow box, and the box grows for that too.
 			edit(() -> composer.fill("What should I bring to Vorkath with 99 Ranged and a dragon hunter "
 				+ "crossbow, and how many kills a trip?"));
-			onEdt(() -> assertTrue(composer.scroll.getHeight() >= 3 * line));
+			onEdt(() -> assertTrue(composer.scroll.getHeight() >= composer.linesHeight(3)));
 			edit(() -> input.setText("1\n2\n3\n4\n5\n6\n7\n8\n9\n10"));
 			onEdt(() ->
 			{
-				assertEquals("at most six lines: then it scrolls", 6 * line, composer.scroll.getHeight());
+				assertEquals("at most six lines: then it scrolls", composer.linesHeight(6),
+					composer.scroll.getHeight());
 				assertTrue(input.getPreferredSize().height > composer.scroll.getViewport().getHeight());
 			});
 
@@ -587,11 +587,11 @@ public class AiChatPanelTest
 			onEdt(() ->
 			{
 				assertEquals("sent", "1\n2\n3\n4\n5\n6\n7\n8\n9\n10", host.sent.get(0));
-				assertEquals("back to two lines", 2 * line, composer.scroll.getHeight());
+				assertEquals("back to two lines", composer.linesHeight(2), composer.scroll.getHeight());
 			});
 			// A message that couldn't go, back in the box.
 			edit(() -> composer.restoreDraft("One\ntwo\nthree\nfour"));
-			onEdt(() -> assertEquals(4 * line, composer.scroll.getHeight()));
+			onEdt(() -> assertEquals(composer.linesHeight(4), composer.scroll.getHeight()));
 		}
 		finally
 		{
@@ -631,8 +631,7 @@ public class AiChatPanelTest
 			edit(() -> panel.composer.input.replaceSelection("3\n4\n5"));
 			onEdt(() ->
 			{
-				int line = panel.composer.input.getFontMetrics(panel.composer.input.getFont()).getHeight();
-				assertEquals(5 * line, panel.composer.scroll.getHeight());
+				assertEquals(panel.composer.linesHeight(5), panel.composer.scroll.getHeight());
 				assertEquals("still at the end", bar.getMaximum(), bar.getValue() + bar.getVisibleAmount());
 				assertFalse(panel.jump.isVisible());
 

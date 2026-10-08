@@ -241,9 +241,18 @@ final class Composer extends JPanel
 	 */
 	int inputHeight()
 	{
-		int line = lineHeight();
 		int text = input.getPreferredSize().height;
-		return Math.max(MIN_LINES * line, Math.min(MAX_LINES * line, text));
+		return Math.max(linesHeight(MIN_LINES), Math.min(linesHeight(MAX_LINES), text));
+	}
+
+	/**
+	 * How tall the text area is with {@code lines} lines in it: measured as its own preferred height is, by the lines
+	 * and the space around them, so that a box of six lines shows six whole lines.
+	 */
+	int linesHeight(int lines)
+	{
+		Insets in = input.getInsets();
+		return lines * lineHeight() + in.top + in.bottom;
 	}
 
 	private int lineHeight()
