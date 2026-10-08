@@ -53,11 +53,12 @@ final class ConnectionTester
 	/**
 	 * "Refresh list" in the model picker's menu: asks for the models again, quietly, even when the list for this setup
 	 * is in, instead of anything still asking. As with {@link #list}, never while {@code problem} says the provider
-	 * can't be reached. Returns whether it asked.
+	 * can't be reached, and not while a Test for this setup is still asking: its answer is the list too, and the
+	 * banner is waiting for it. Returns whether it asked.
 	 */
 	boolean refresh(String problem, String setup, Supplier<ChatApi> api, boolean sorted)
 	{
-		if (problem != null)
+		if (problem != null || shown && testing != null && check(setup) != null)
 		{
 			return false;
 		}

@@ -198,6 +198,30 @@ public class ConnectionTesterTest
 	}
 
 	@Test
+	public void refreshListLeavesATestThatsStillAskingAlone()
+	{
+		tester.start(api, SETUP, false);
+		// Refresh list before the Test's answer: the Test isn't stopped, and its answer is the list.
+		assertFalse(tester.refresh(null, SETUP, () -> api, false));
+		assertEquals(1, api.listeners.size());
+		assertFalse(api.requests.get(0).isCancelled());
+		assertEquals(ConnectionCheck.Kind.TESTING, note().kind);
+		api.listeners.get(0).onModels(List.of("claude-opus-5-5", "claude-haiku-4-5"));
+		runEdt();
+		assertEquals("the banner says what the Test found", ConnectionCheck.Kind.OK, note().kind);
+		assertEquals(List.of("claude-opus-5-5", "claude-haiku-4-5"), tester.check(SETUP).models);
+
+		// Once it's answered, Refresh list asks again, quietly, as ever.
+		assertTrue(tester.refresh(null, SETUP, () -> api, false));
+		assertEquals(2, api.listeners.size());
+		// A Test whose banner was closed while it was asking is asked again too.
+		tester.start(api, SETUP, false);
+		tester.dismiss();
+		assertTrue(tester.refresh(null, SETUP, () -> api, false));
+		assertTrue(api.requests.get(2).isCancelled());
+	}
+
+	@Test
 	public void testAsksAgainAndTheBannerCanBeClosed()
 	{
 		tester.list(null, SETUP, () -> api, false);
