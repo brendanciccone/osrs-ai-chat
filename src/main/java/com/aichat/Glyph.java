@@ -33,7 +33,13 @@ final class Glyph implements Icon
 		/** A circling arrow: Retry. */
 		RETRY,
 		/** A cross: close. */
-		CLOSE
+		CLOSE,
+		/** A chevron pointing down: opens a menu, or shows more. */
+		CHEVRON_DOWN,
+		/** A chevron pointing up: hides what a {@link #CHEVRON_DOWN} showed. */
+		CHEVRON_UP,
+		/** A tick: the one chosen. */
+		CHECK
 	}
 
 	private final Shape shape;
@@ -116,35 +122,26 @@ final class Glyph implements Icon
 				g.draw(new RoundRectangle2D.Double(0.14 * s, 0.34 * s, 0.52 * s, 0.52 * s, 0.12 * s, 0.12 * s));
 				break;
 			case RETRY:
-				retry(g, s);
+				// Most of a circle going clockwise, open at the top right where it ends in an open arrowhead. A head
+				// of two strokes stays clear at 12 pixels, where a small filled one made the icon read as a "C".
+				double r = 0.34 * s;
+				g.draw(new Arc2D.Double(0.48 * s - r, 0.52 * s - r, 2 * r, 2 * r, 30, 300, Arc2D.OPEN));
+				g.draw(path(s, 0.84, 0.14, 0.84, 0.38, 0.6, 0.38));
+				break;
+			case CHEVRON_DOWN:
+				g.draw(path(s, 0.2, 0.36, 0.5, 0.66, 0.8, 0.36));
+				break;
+			case CHEVRON_UP:
+				g.draw(path(s, 0.2, 0.64, 0.5, 0.34, 0.8, 0.64));
+				break;
+			case CHECK:
+				g.draw(path(s, 0.18, 0.52, 0.4, 0.74, 0.82, 0.28));
 				break;
 			default:
 				g.draw(line(s, 0.28, 0.28, 0.72, 0.72));
 				g.draw(line(s, 0.72, 0.28, 0.28, 0.72));
 				break;
 		}
-	}
-
-	/** Most of a circle, anticlockwise from the upper right round to the lower right, with an arrowhead at its end. */
-	private static void retry(Graphics2D g, float s)
-	{
-		double r = 0.32 * s;
-		double cx = 0.5 * s;
-		double cy = 0.5 * s;
-		g.draw(new Arc2D.Double(cx - r, cy - r, 2 * r, 2 * r, 40, 290, Arc2D.OPEN));
-		double end = Math.toRadians(330);
-		double ex = cx + r * Math.cos(end);
-		double ey = cy - r * Math.sin(end);
-		// The way the arc is heading at its end (anticlockwise on screen), and across it.
-		double dx = -Math.sin(end);
-		double dy = -Math.cos(end);
-		double head = 0.2 * s;
-		Path2D.Double arrow = new Path2D.Double();
-		arrow.moveTo(ex + dx * head, ey + dy * head);
-		arrow.lineTo(ex - dy * head * 0.6, ey + dx * head * 0.6);
-		arrow.lineTo(ex + dy * head * 0.6, ey - dx * head * 0.6);
-		arrow.closePath();
-		g.fill(arrow);
 	}
 
 	private static Line2D line(float s, double x1, double y1, double x2, double y2)

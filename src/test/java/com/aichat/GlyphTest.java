@@ -74,6 +74,39 @@ public class GlyphTest
 		assertTrue(centreY(draw(Glyph.Shape.SEND, true)) < centreY(draw(Glyph.Shape.DOWN, true)));
 	}
 
+	@Test
+	public void chevronsPointTheWayTheySay()
+	{
+		// The tip is where the middle column's ink is: low for down, high for up.
+		assertTrue(inkRow(draw(Glyph.Shape.CHEVRON_DOWN, true), SIZE / 2) > SIZE / 2);
+		assertTrue(inkRow(draw(Glyph.Shape.CHEVRON_UP, true), SIZE / 2) < SIZE / 2);
+	}
+
+	@Test
+	public void retryEndsInAnArrowheadWhereItsCircleIsOpen()
+	{
+		int[] retry = draw(Glyph.Shape.RETRY, true);
+		// The head, at the top right; under it, the gap the arrow goes round to.
+		assertTrue(retry[3 * SIZE + 13] > 170);
+		for (int y = 7; y <= 8; y++)
+		{
+			assertEquals("open at the right, row " + y, 0, retry[y * SIZE + 14]);
+		}
+	}
+
+	/** The first row from the top with ink in column {@code x}. */
+	private static int inkRow(int[] alpha, int x)
+	{
+		for (int y = 0; y < SIZE; y++)
+		{
+			if (alpha[y * SIZE + x] > 100)
+			{
+				return y;
+			}
+		}
+		return -1;
+	}
+
 	private static double centreY(int[] alpha)
 	{
 		double weighted = 0;
