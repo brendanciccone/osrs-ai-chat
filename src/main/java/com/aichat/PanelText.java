@@ -184,7 +184,7 @@ final class PanelText
 		 * The line, as long as {@code fits} says fits on one row: the look-ups by name, else counted ("Looked up 3
 		 * things", then "3 look-ups"), else cut short at the end. Never cut into what was shared: after it, the look-ups
 		 * are cut down to an ellipsis, or left off (the line's chevron says there's more); only if what was shared
-		 * doesn't fit by itself is the line longer than a row (and wraps).
+		 * doesn't fit by itself is the line longer than a row: it wraps, with the count on a row of its own.
 		 */
 		String line(Predicate<String> fits)
 		{
@@ -216,7 +216,9 @@ final class PanelText
 						return shorter;
 					}
 				}
-				return join(sharing, tally);
+				// Longer than a row by itself: the count on a row of its own, rather than a separator left at the end
+				// of one row or the start of the next.
+				return sharing + "\n" + tally;
 			}
 			if (tally != null)
 			{

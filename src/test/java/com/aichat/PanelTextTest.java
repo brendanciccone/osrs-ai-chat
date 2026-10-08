@@ -160,8 +160,8 @@ public class PanelTextTest
 		assertEquals("Shared your equipment and inventory · 2 look-ups", s.line(chars(50)));
 		// Still too long: the count goes, never what was shared.
 		assertEquals("Shared your equipment and inventory · …", s.line(chars(47)));
-		// Not even that fits: what was shared is shown whole all the same, over two rows.
-		assertEquals("Shared your equipment and inventory · 2 look-ups", s.line(chars(30)));
+		// Not even that fits: what was shared is shown whole all the same, over two rows, the count on its own.
+		assertEquals("Shared your equipment and inventory\n2 look-ups", s.line(chars(30)));
 		assertEquals("Shared your equipment and inventory", sum("Shared your equipment", "Shared your inventory")
 			.line(chars(10)));
 	}
@@ -193,8 +193,9 @@ public class PanelTextTest
 		// Not even " · …" fits after it: the ellipsis alone, then nothing (the chevron says there's more).
 		assertEquals("Shared your equipment, inventory and bank…", s.line(chars(44)));
 		assertEquals("Shared your equipment, inventory and bank", s.line(chars(41)));
-		// Only when what was shared is longer than a row does the line take two.
-		assertEquals("Shared your equipment, inventory and bank · 3 look-ups", s.line(chars(40)));
+		// Only when what was shared is longer than a row does the line take two: the count on its own, with no
+		// separator left at the end of a row.
+		assertEquals("Shared your equipment, inventory and bank\n3 look-ups", s.line(chars(40)));
 	}
 
 	@Test
