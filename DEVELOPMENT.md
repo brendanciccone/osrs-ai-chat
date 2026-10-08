@@ -21,7 +21,7 @@ reads it back (a very short chat can be under Claude's minimum and isn't cached)
 services only say what they read from their own cache.
 
 To try it without paying for API use, run a local model with [Ollama](https://ollama.com) (`ollama pull llama3.2`),
-then choose **OpenAI-compatible** with URL `http://localhost:11434/v1` and model `llama3.2`.
+then choose the **Other (OpenAI-compatible)** provider with Base URL `http://localhost:11434/v1` and model `llama3.2`.
 
 ## Tests
 
@@ -32,23 +32,31 @@ server on 127.0.0.1 (`StandIn`), which serves canned answers (streams included) 
   token counts, model lists, and the settings a service may refuse. `ChatApiTest`: what they share (keys, retry
   waits, running tools). `SseTest`: the event-stream reader.
 - `RequestRunnerTest`: a message's way out and its answer's way back, with a stand-in provider and EDT: summary
-  first, the reply as it streams in, look-ups, Stop (what was shown stays), Retry, a chat too long for its model, the
-  line each request logs, and answers that come too late to count.
+  first, the reply as it streams in, look-ups, Stop (what was shown stays), Retry (an unanswered question, or the
+  latest reply written again on the same history), a chat too long for its model, the line each request logs, and
+  answers that come too late to count.
   `ThrottleTest`: redrawing a streaming reply at most ~15 times a second. `ToolBoxTest`: which tools go with a
   request, in what order, and which runner answers each call.
 - `ConversationBuilderTest`: what a request sends (history, character notes, summaries, replaying Claude's replies).
-  `ChatStoreTest`: what "Remember chats" saves and loads, files from older versions included. `ChatSaverTest`: when
+  `ChatStoreTest`: what "Save chat history" saves and loads, files from older versions included. `ChatSaverTest`: when
   the saved chats are opened, brought back, saved and deleted, with a stand-in disk.
 - `LookupToolsTest`: the Wiki and GE price tools, against a stand-in Wiki and canned prices. `GameDataTest` and
   `GameDataToolsTest`: writing up the player's items, Slayer task and diaries, and when the game-data tools share.
   `CharacterInfoTest`: the character note.
-- `MarkdownTest` and `MessageViewTest`: reading replies' Markdown, and drawing it off screen (headless).
-  `StackLayoutTest`: the transcript's layout.
-  `GameChatEchoTest`: replies as game chat. `PanelTextTest`: the status line, and the Wiki and GE price look-ups
-  folded into one line under a reply, with the full list when that line leaves some out.
-  `ConnectionCheckTest` and `ProviderSetupTest`: "Test" and what the settings say about the provider.
-  `ConnectionTesterTest`: which answers to "Test" count. `AiChatPanelTest`: when the transcript follows the chat
-  down, and the lines under a message that show more when clicked (headless). `PrefixTest`: the `::ai` command.
+- `MarkdownTest` and `MessageViewTest`: reading replies' Markdown, and drawing it off screen (headless): alignment,
+  the width a bubble hugs, links and tooltips. `StackLayoutTest`: the transcript's layout, bubbles that hug their text
+  included. `GlyphTest`: the drawn icons.
+  `GameChatEchoTest`: replies as game chat. `PanelTextTest`: the line under a reply on its way ("Thinking..."), each
+  message's tooltip, summary notes, and the Wiki and GE price look-ups folded into one line over a reply, with the full
+  list when that line leaves some out.
+  `ConnectionCheckTest` and `ProviderSetupTest`: the model list (what the picker offers, what Test says, the picker's
+  tooltip) and what the settings say about the provider. `ConnectionTesterTest`: which answers count, and when the
+  picker's list is asked for (once per provider, key and URL, never while AI requests are off).
+  `AiChatPanelTest`: the panel with a stand-in plugin (headless): Send, Stop and Skip, the starters (they fill the
+  box, never send), Retry only on the last message and the latest reply's Copy and Retry, the banner, the player's
+  bubbles, the reply on its way, when the transcript follows the chat down, and the lines that show more when
+  clicked. `ModelPickerTest`: what the model picker saves, and what it doesn't. `SystemPromptTest`: the settings the
+  assistant is told about, by their names. `PrefixTest`: the `::ai` command.
 
 ## Code
 
@@ -58,15 +66,20 @@ server on 127.0.0.1 (`StandIn`), which serves canned answers (streams included) 
   streaming reply, Stop, Retry). `ConversationBuilder`: what each request sends. `Throttle`: paces the redraws of a
   streaming reply.
 - `ChatApi` (shared types and helpers), `AnthropicApi`, `OpenAiApi`, `Sse`: the providers. `ProviderSetup`: the chosen
-  provider as the settings describe it. `ConnectionTester`: "Test" while it runs. `ConnectionCheck`: what its answer
-  says, and "Choose model".
+  provider as the settings describe it. `ConnectionTester`: asking for the provider's model list, for "Test
+  connection" and for the model picker. `ConnectionCheck`: what the list says, and what the picker offers.
 - `ToolBox`: the tools that go with a request. `LookupTools` and `WikiClient`: Wiki search and pages, GE prices.
   `GameDataTools` and `GameData`: the player's equipment, inventory, bank, Slayer task and diaries.
   `CharacterInfo`: the character note.
-- `AiChatPanel` (the sidebar), `MessageView` and `Markdown` (formatted messages), `PanelText` (the panel's status
-  line, and the lines under each message), `StackLayout`. `GameChatEcho`: replies as game chat.
-- `Chat` (a conversation), `ChatSaver` ("Remember chats": when to load, save and delete), `ChatStore` (what's saved),
-  `ChatFile` (the file itself), `AiChatConfig`.
+- `AiChatPanel` (the sidebar: header, banner, transcript, composer, kept in step with the plugin through its `Host`),
+  `MessageRow` (one message: the player's bubble, a reply with Copy and Retry, a note, an error), `Composer` (the input
+  box, model picker and Send/Stop button), `ModelPicker`, `Banner`, `EmptyChat` (a new chat's welcome and starters),
+  `ShowMore` (a line that shows more when clicked), `MessageView` and `Markdown` (formatted text), `PanelText` (the
+  panel's words: the line under a reply on its way, tooltips, notes, the look-up lines), `StackLayout`, and the small
+  drawn parts: `Glyph` (icons), `FlatButton`, `RoundBox`, `PanelStyle` (fonts and colours). `GameChatEcho`: replies as
+  game chat.
+- `Chat` (a conversation), `ChatSaver` ("Save chat history": when to load, save and delete), `ChatStore` (what's
+  saved), `ChatFile` (the file itself), `AiChatConfig`.
 
 ## Plugin Hub
 
