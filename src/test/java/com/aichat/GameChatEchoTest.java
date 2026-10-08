@@ -39,6 +39,28 @@ public class GameChatEchoTest
 	}
 
 	@Test
+	public void tablesBecomeOneLinePerRow()
+	{
+		String h = "<colHIGHLIGHT>";
+		String n = "<colNORMAL>";
+		// Two columns read as "name: value"; the column names and the rule under them are left out.
+		assertEquals(List.of(
+				h + "Claude: " + n + "Also bring:",
+				h + "- " + n + "Extended antifire: Dragonfire",
+				h + "- " + n + "Anti-venom+: His venom",
+				h + "Claude: " + n + "That's it."),
+			GameChatEcho.echoMessages("Claude", null, "Also bring:\n\n| Item | Why |\n|---|:--:|\n"
+				+ "| **Extended antifire** | Dragonfire |\n| Anti-venom+ | His venom |\n\nThat's it.", 500));
+		// More columns are joined; an escaped pipe is part of its cell, and an empty cell is skipped.
+		assertEquals(List.of(h + "Claude: - " + n + "Rune - 9k - a | b"),
+			GameChatEcho.echoMessages("Claude", null, "| Bow | Price | Notes | |\n|---|---|---|---|\n| Rune | 9k | a \\| b | |",
+				500));
+		// Pipes outside a table stay as they are.
+		assertEquals(List.of(h + "Claude: " + n + "| this or that |"),
+			GameChatEcho.echoMessages("Claude", null, "| this or that |", 500));
+	}
+
+	@Test
 	public void longRepliesAreCutWithANoteAboutThePanel()
 	{
 		String note = "<colHIGHLIGHT>AI Chat: the full reply is in the side panel.";

@@ -24,6 +24,12 @@ final class GameChatEcho
 	private static final Pattern LIST_ITEM = Pattern.compile("([-*+\u2022]|\\d{1,3}[.)])\\s+(.+)");
 	/** Markdown that's only layout (rules, table borders, leftover markers): left out of game chat. */
 	private static final Pattern LAYOUT_ONLY = Pattern.compile("[-*_=#|`~:+ ]+");
+	/** A Markdown table's line: "| a | b |". */
+	private static final Pattern TABLE_LINE = Pattern.compile("\\s*\\|.*\\|\\s*");
+	/** The line under a table's header: "|---|:--:|". */
+	private static final Pattern TABLE_RULE = Pattern.compile("\\s*\\|?(\\s*:?-+:?\\s*\\|)+\\s*:?-*:?\\s*");
+	/** A cell border: a pipe that isn't escaped. */
+	private static final Pattern CELL_BORDER = Pattern.compile("(?<!\\\\)\\|");
 	/** The first and last line of a code block. */
 	private static final Pattern FENCE = Pattern.compile("(```|~~~).*");
 	/** Block quote markers, nested ones too: "> ", ">> ", "> > ". */
@@ -62,9 +68,18 @@ final class GameChatEcho
 		List<String> messages = new ArrayList<>();
 		int left = maxChars;
 		boolean cut = false;
-		for (String raw : text.split("\\r\\n|[\\n\\r\u2028\u2029]"))
+		String[] lines = text.split("\\r\\n|[\\n\\r\u2028\u2029]");
+		boolean[] header = new boolean[lines.length];
+		boolean[] row = new boolean[lines.length];
+		tables(lines, header, row);
+		for (int i = 0; i < lines.length; i++)
 		{
-			String line = chatText(raw);
+			if (header[i])
+			{
+				// A table's column names: its rows say what they are well enough in a chatbox.
+				continue;
+			}
+			String line = chatText(row[i] ? tableRow(lines[i]) : lines[i]);
 			if (line.isEmpty() || LAYOUT_ONLY.matcher(line).matches())
 			{
 				continue;
@@ -151,6 +166,50 @@ final class GameChatEcho
 				.append(word.length() <= MAX_WORD ? word : word.substring(0, MAX_WORD - 3) + "...");
 		}
 		return unescape(out.toString());
+	}
+
+	/**
+	 * Marks the Markdown tables in {@code lines}: a header line followed by its rule line, then the rows under it. A line
+	 * with pipes that isn't in such a table is left as it is.
+	 */
+	private static void tables(String[] lines, boolean[] header, boolean[] row)
+	{
+		for (int i = 0; i + 1 < lines.length; i++)
+		{
+			if (!TABLE_LINE.matcher(lines[i]).matches() || !TABLE_RULE.matcher(lines[i + 1]).matches())
+			{
+				continue;
+			}
+			header[i] = true;
+			for (int j = i + 2; j < lines.length && TABLE_LINE.matcher(lines[j]).matches()
+				&& !TABLE_RULE.matcher(lines[j]).matches(); j++)
+			{
+				row[j] = true;
+			}
+		}
+	}
+
+	/**
+	 * A table row as a list item for the chatbox: "- Extended antifire: Dragonfire" for two columns, the cells joined
+	 * by " - " for more.
+	 */
+	static String tableRow(String line)
+	{
+		String t = line.trim();
+		t = t.substring(1, t.length() - (t.endsWith("\\|") ? 0 : 1));
+		List<String> cells = new ArrayList<>();
+		for (String cell : CELL_BORDER.split(t, -1))
+		{
+			if (!cell.trim().isEmpty())
+			{
+				cells.add(cell.trim());
+			}
+		}
+		if (cells.isEmpty())
+		{
+			return "";
+		}
+		return "- " + (cells.size() == 2 ? cells.get(0) + ": " + cells.get(1) : String.join(" - ", cells));
 	}
 
 	/** Escaped punctuation as stand-ins, without its backslashes. */
