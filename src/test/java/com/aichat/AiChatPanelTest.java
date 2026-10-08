@@ -25,6 +25,8 @@ import javax.swing.JTextArea;
 import javax.swing.KeyStroke;
 import javax.swing.RepaintManager;
 import javax.swing.SwingUtilities;
+import javax.swing.text.BadLocationException;
+import javax.swing.text.Document;
 import javax.swing.text.StyleConstants;
 import org.junit.Test;
 import static org.junit.Assert.assertEquals;
@@ -938,6 +940,23 @@ public class AiChatPanelTest
 			false, MouseEvent.BUTTON1));
 	}
 
+	/**
+	 * The text {@code v} shows, from its document. Not getText(), which writes the text out as a file would be, with
+	 * the system's line ends: "\r\n" on Windows.
+	 */
+	private static String shown(MessageView v)
+	{
+		Document d = v.getDocument();
+		try
+		{
+			return d.getText(0, d.getLength());
+		}
+		catch (BadLocationException e)
+		{
+			throw new AssertionError(e);
+		}
+	}
+
 	@Test
 	public void whatAReplyDidIsOneLineThatOpensAndClosesWithItsChevron() throws Throwable
 	{
@@ -969,7 +988,7 @@ public class AiChatPanelTest
 				"Shared your equipment · Looked up Abyssal whip, Dragon bones (GE price)", s.lineText());
 			// Each line as recorded, then the look-ups one kind to a line; plain text, never read as HTML.
 			assertEquals("Shared your equipment\nWiki pages: Abyssal whip\nWiki searches: \"abyssal whip\"\n"
-				+ "GE prices: Dragon bones", s.more.getText());
+				+ "GE prices: Dragon bones", shown(s.more));
 			assertEquals(Boolean.TRUE, s.more.getClientProperty("html.disable"));
 			assertTrue("taller when open", StackLayout.heightFor(s, 600) > closed);
 
@@ -978,7 +997,7 @@ public class AiChatPanelTest
 			MessageRow.showActivity(s, lines);
 			assertTrue(s.isOpen());
 			assertEquals("Shared your equipment\nSearched your bank for \"rune\"\nWiki pages: Abyssal whip\n"
-				+ "Wiki searches: \"abyssal whip\"\nGE prices: Dragon bones", s.more.getText());
+				+ "Wiki searches: \"abyssal whip\"\nGE prices: Dragon bones", shown(s.more));
 
 			click(s);
 			assertFalse(s.isOpen());
@@ -1063,7 +1082,7 @@ public class AiChatPanelTest
 			click(s);
 			assertEquals("Sent your character details", s.lineText());
 			assertEquals(Glyph.Shape.CHEVRON_UP, s.chevron());
-			assertEquals("[Character: Zezima]\nCombat level: 126", s.more.getText());
+			assertEquals("[Character: Zezima]\nCombat level: 126", shown(s.more));
 			assertTrue(s.more.isVisible());
 		});
 	}
