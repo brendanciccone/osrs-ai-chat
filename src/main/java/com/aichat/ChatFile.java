@@ -19,8 +19,8 @@ import net.runelite.client.util.Filepath;
 
 /**
  * The saved chats on disk, in the plugin's own folder. One RuneLite window at a time owns them: with several open, the
- * first keeps its lock for as long as it runs, and the others never read or write the file, so they can't overwrite
- * each other. Every method does file work, so call them off the Swing and client threads.
+ * first keeps its lock for as long as it runs, and the others never read, write or delete the file, so they can't
+ * overwrite each other. Every method does file work, so call them off the Swing and client threads.
  */
 @Slf4j
 final class ChatFile implements ChatSaver.Disk
@@ -205,31 +205,67 @@ final class ChatFile implements ChatSaver.Disk
 		}
 	}
 
-	/** Deletes the saved chats, and any temporary file a save left behind. The lock, if held, stays. */
+	/**
+	 * Deletes the saved chats, and any temporary file a save left behind, unless another RuneLite window owns them: they
+	 * are that window's to keep or delete. The lock, if held, stays; if this window hasn't taken it, it's taken only
+	 * while deleting, so it doesn't keep a window that saves its chats from owning them later.
+	 */
 	@Override
 	public synchronized void delete()
 	{
+		boolean borrowed = false;
 		try
 		{
 			Filepath dir = folder.call();
-			dir.joinSegment(ChatStore.FILE_NAME).deleteIfExists();
-			if (dir.isDirectory())
+			if (!dir.isDirectory())
 			{
-				List<Filepath> temps;
-				try (Stream<Filepath> files = dir.walk(1))
+				return;
+			}
+			if (lock == null)
+			{
+				if (!lock(dir))
 				{
-					temps = files.filter(f -> f.isFile() && f.getFileName().startsWith("chats") && f.getFileName().endsWith(".tmp"))
-						.collect(Collectors.toList());
+					return;
 				}
-				for (Filepath f : temps)
-				{
-					f.deleteIfExists();
-				}
+				borrowed = true;
+			}
+			dir.joinSegment(ChatStore.FILE_NAME).deleteIfExists();
+			List<Filepath> temps;
+			try (Stream<Filepath> files = dir.walk(1))
+			{
+				temps = files.filter(f -> f.isFile() && f.getFileName().startsWith("chats") && f.getFileName().endsWith(".tmp"))
+					.collect(Collectors.toList());
+			}
+			for (Filepath f : temps)
+			{
+				f.deleteIfExists();
 			}
 		}
 		catch (Exception e)
 		{
 			log.debug("couldn't delete the saved chats", e);
 		}
+		finally
+		{
+			if (borrowed)
+			{
+				unlock();
+			}
+		}
+	}
+
+	/** Gives the lock back (closing its channel releases it). */
+	private void unlock()
+	{
+		try
+		{
+			lockChannel.close();
+		}
+		catch (IOException e)
+		{
+			log.debug("couldn't release the saved chats' lock", e);
+		}
+		lockChannel = null;
+		lock = null;
 	}
 }
