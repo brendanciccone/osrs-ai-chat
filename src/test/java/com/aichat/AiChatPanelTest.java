@@ -2,8 +2,8 @@ package com.aichat;
 
 import java.awt.Component;
 import java.awt.Container;
-import java.awt.FontMetrics;
 import java.awt.Graphics2D;
+import java.awt.Insets;
 import java.awt.Toolkit;
 import java.awt.event.ActionEvent;
 import java.awt.event.InputEvent;
@@ -31,7 +31,6 @@ import javax.swing.text.StyleConstants;
 import org.junit.Test;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
@@ -957,6 +956,14 @@ public class AiChatPanelTest
 		}
 	}
 
+	/** How wide {@code s} must be for {@code words} to fit on its line with the chevron, as the line measures them. */
+	private static int room(ShowMore s, String words)
+	{
+		Insets in = s.line.getInsets();
+		int text = s.line.getFontMetrics(PanelStyle.SMALL_FONT).stringWidth(words + ShowMore.CHEVRON_ROOM);
+		return text + in.left + in.right + ShowMore.SPARE_WIDTH;
+	}
+
 	@Test
 	public void whatAReplyDidIsOneLineThatOpensAndClosesWithItsChevron() throws Throwable
 	{
@@ -1009,6 +1016,8 @@ public class AiChatPanelTest
 	@Test
 	public void theLineFitsItsWidthAndNeverCutsWhatWasShared() throws Throwable
 	{
+		// Every width here is worked out from the font, as the line works it out: fonts differ from one system to the
+		// next (Ubuntu's are wider than macOS's or Windows's), and the line must fit its width in any of them.
 		onEdt(() ->
 		{
 			List<String> lines = Arrays.asList(
@@ -1018,28 +1027,51 @@ public class AiChatPanelTest
 				"Checked the GE price of Dragon hunter crossbow");
 			ShowMore s = MessageRow.activityLine(StyleConstants.ALIGN_LEFT);
 			MessageRow.showActivity(s, lines);
-			PanelText.Summary summary = PanelText.summary(lines);
-			FontMetrics fm = s.line.getFontMetrics(PanelStyle.SMALL_FONT);
+			String named = PanelText.summary(lines).line(t -> true);
 			int oneRow = StackLayout.heightFor(s, 2000);
-			assertEquals(summary.line(t -> true), s.lineText());
+			assertEquals(named, s.lineText());
 
-			// The sidebar's width: the words that fit it, with the chevron, on one row.
-			assertEquals(oneRow, StackLayout.heightFor(s, 220));
-			assertEquals(summary.line(t -> fm.stringWidth(t + ShowMore.CHEVRON_ROOM) <= 218), s.lineText());
-			assertNotEquals(summary.line(t -> true), s.lineText());
-			assertTrue(s.lineText(), s.lineText().startsWith("Shared your equipment · "));
-			// Narrower than what was shared: that's never cut, so the line takes two rows.
-			assertTrue(StackLayout.heightFor(s, 80) > oneRow);
-			assertTrue(s.lineText().startsWith("Shared your equipment"));
+			// Too narrow for the names: counted, on one row, with the chevron.
+			String counted = "Shared your equipment · Looked up 3 things";
+			assertTrue("the names are longer than the count", room(s, named) > room(s, counted));
+			assertEquals(oneRow, StackLayout.heightFor(s, room(s, counted)));
+			assertEquals(counted, s.lineText());
+			// Narrower than what was shared: that's never cut, so the line takes two rows, the count on its own.
+			int wrapped = StackLayout.heightFor(s, room(s, "Shared your equipment") - 1);
+			assertEquals("Shared your equipment\n3 look-ups", s.lineText());
+			assertTrue("two rows", wrapped > oneRow);
+			// Even narrower than its words: they wrap, and all of them are still there.
+			wrapped = StackLayout.heightFor(s, room(s, "Shared your") - 1);
+			assertEquals("Shared your equipment\n3 look-ups", s.lineText());
+			assertTrue("more rows", wrapped > oneRow);
 
-			// One look-up, after more that was shared, at the sidebar's width: one row, and the look-up named,
-			// counted or left to the ellipsis, never cut down to "Looked up…" or less.
+			// One look-up, after more that was shared. As the width shrinks, the look-up is named, counted, then left
+			// to an ellipsis or left off, on one row, never cut down to "Looked up…" or less; only once what was shared
+			// can't fit by itself does the line take two rows.
 			MessageRow.showActivity(s, Arrays.asList("Shared your equipment", "Shared your inventory",
 				"Read the Wiki page \"Vorkath\""));
-			assertEquals(oneRow, StackLayout.heightFor(s, 220));
 			String shared = "Shared your equipment and inventory";
-			assertTrue(s.lineText(), Arrays.asList(shared + " · Looked up Vorkath", shared + " · Looked up 1 thing",
-				shared + " · 1 look-up", shared + " · …", shared + "…", shared).contains(s.lineText()));
+			List<String> steps = Arrays.asList(shared + " · Looked up Vorkath", shared + " · Looked up 1 thing",
+				shared + " · 1 look-up", shared + " · …", shared + "…", shared);
+			for (String step : steps)
+			{
+				// Just wide enough for this step, then a pixel short of it: the first step that fits, in that order.
+				for (int width : new int[]{room(s, step), room(s, step) - 1})
+				{
+					String fits = steps.stream().filter(t -> room(s, t) <= width).findFirst().orElse(null);
+					int height = StackLayout.heightFor(s, width);
+					if (fits != null)
+					{
+						assertEquals(step + " at " + width, fits, s.lineText());
+						assertEquals(fits, oneRow, height);
+					}
+					else
+					{
+						assertEquals(shared + "\n1 look-up", s.lineText());
+						assertTrue("two rows", height > oneRow);
+					}
+				}
+			}
 		});
 	}
 

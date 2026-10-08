@@ -28,6 +28,8 @@ final class ShowMore extends JPanel
 {
 	/** Kept after the line's last word for the chevron: spaces that never break from the word before them. */
 	static final String CHEVRON_ROOM = "    ";
+	/** Pixels of the line's width its words leave free: the text is laid out a bit differently than it's measured. */
+	static final int SPARE_WIDTH = 2;
 	private static final int CHEVRON_SIZE = 9;
 	/** The line under the mouse, when it opens: brighter, as a button would be. */
 	private static final Color HOVER_COLOR = new Color(225, 225, 225);
@@ -183,8 +185,7 @@ final class ShowMore extends JPanel
 			}
 			String room = hasMore() ? CHEVRON_ROOM : "";
 			Insets in = getInsets();
-			// A couple of pixels to spare: the text is laid out a little differently than it's measured here.
-			int width = getWidth() - in.left - in.right - 2;
+			int width = getWidth() - in.left - in.right - SPARE_WIDTH;
 			FontMetrics fm = getFontMetrics(PanelStyle.SMALL_FONT);
 			setPlainText(text.apply(s -> width <= 0 || fm.stringWidth(s + room) <= width) + room);
 		}
