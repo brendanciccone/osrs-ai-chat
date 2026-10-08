@@ -183,7 +183,8 @@ public class PanelTextTest
 		assertEquals("Wiki pages: Abyssal whip, Abyssal demon\nWiki searches: \"whip\"\n"
 			+ "GE prices: Abyssal whip, Big bones", s.details);
 		// With no page read, what was searched for is what was looked up.
-		PanelText.Summary searched = sum("Searched the Wiki for \"abyssal whip drop rate\"", "Searched the Wiki for \"whip\"");
+		PanelText.Summary searched = sum("Searched the Wiki for \"abyssal whip drop rate\"",
+			"Searched the Wiki for \"whip\"");
 		assertEquals("Looked up \"abyssal whip drop rate\", \"whip\"", searched.line(ROOMY));
 		assertEquals("Looked up 2 things", searched.line(chars(30)));
 		// One long name: cut at the end, between words.

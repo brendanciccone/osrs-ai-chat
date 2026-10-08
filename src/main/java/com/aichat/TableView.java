@@ -254,7 +254,8 @@ final class TableView extends View
 				for (int c = 0; c < row.cells.size(); c++)
 				{
 					int inner = l.columns[c] - 2 * PAD_X;
-					drawLines(g, row.cells.get(c), left + PAD_X, top + PAD_Y, inner, table.align[c], l.lineHeight, l.ascent);
+					drawLines(g, row.cells.get(c), left + PAD_X, top + PAD_Y, inner, table.align[c], l.lineHeight,
+						l.ascent);
 					left += l.columns[c];
 				}
 			}
@@ -450,7 +451,8 @@ final class TableView extends View
 				List<Run> field = new ArrayList<>();
 				if (!headerOnly && !header.get(col).isEmpty())
 				{
-					field.add(new Run(Markdown.plainText(header.get(col), false) + ": ", fonts.base, false, fonts.label));
+					String label = Markdown.plainText(header.get(col), false) + ": ";
+					field.add(new Run(label, fonts.base, false, fonts.label));
 				}
 				field.addAll(runs(cells.get(col), fonts, false));
 				card.cells.add(wrap(c, field, inner));
@@ -528,8 +530,8 @@ final class TableView extends View
 	}
 
 	/**
-	 * {@code runs} wrapped to {@code width}: lines break between words, and inside a word too long for a line of its own.
-	 * Words of one run on a line are one piece of text, measured and drawn whole, so their spaces are the font's own.
+	 * {@code runs} wrapped to {@code width}: lines break between words, and inside a word too long for a line of its
+	 * own. Words of one run on a line are one piece of text, measured and drawn whole, so their spaces are the font's.
 	 */
 	static List<Line> wrap(Component c, List<Run> runs, int width)
 	{

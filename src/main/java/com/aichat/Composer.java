@@ -93,7 +93,7 @@ final class Composer extends JPanel
 	private final Actions actions;
 	/** There's a chat to write in. */
 	private boolean usable = true;
-	/** The input box's height at the latest layout, to tell when the text makes it grow or shrink. */
+	/** The input box's height for the text as it last was, to tell when typing makes it grow or shrink. */
 	private int shownHeight = -1;
 
 	Composer(Actions actions)

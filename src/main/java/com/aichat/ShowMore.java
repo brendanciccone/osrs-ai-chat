@@ -212,7 +212,8 @@ final class ShowMore extends JPanel
 				{
 					int x = (int) Math.round(at.getX()) + 3;
 					int y = (int) Math.round(at.getCenterY() - CHEVRON_SIZE / 2.0);
-					new Glyph(chevron, CHEVRON_SIZE, hovered ? HOVER_COLOR : PanelStyle.MUTED_COLOR).paintIcon(this, g, x, y);
+					Color color = hovered ? HOVER_COLOR : PanelStyle.MUTED_COLOR;
+					new Glyph(chevron, CHEVRON_SIZE, color).paintIcon(this, g, x, y);
 				}
 			}
 			catch (BadLocationException e)

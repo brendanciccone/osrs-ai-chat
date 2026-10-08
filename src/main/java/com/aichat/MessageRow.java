@@ -21,8 +21,8 @@ import javax.swing.text.StyleConstants;
 /**
  * One message in the transcript, drawn the way chat apps draw them: the player's questions in a bubble on the right,
  * replies across the full width with one line above them saying what was shared and looked up, and small actions
- * under them, notes small and centred, errors in a red box. A row is made for one kind of message and shown again as the chat changes, so a new
- * message doesn't redraw every earlier one. Swing EDT only.
+ * under them, notes small and centred, errors in a red box. A row is made for one kind of message and shown again as
+ * the chat changes, so a new message doesn't redraw every earlier one. Swing EDT only.
  */
 abstract class MessageRow extends JPanel
 {

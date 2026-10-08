@@ -211,7 +211,8 @@ public class ModelPickerTest
 		{
 			// A model changed in the settings, a list that came in, a list that went, no model at all.
 			p.show("claude-sonnet-5-5", CLAUDE, TIP, null, null);
-			p.show("claude-sonnet-5-5", Arrays.asList("claude-sonnet-5-5", "claude-opus-5-5"), "Still the same.", null, null);
+			p.show("claude-sonnet-5-5", Arrays.asList("claude-sonnet-5-5", "claude-opus-5-5"), "Still the same.", null,
+				null);
 			assertEquals("claude-sonnet-5-5", p.button.getText());
 			assertEquals("Still the same.", p.button.getToolTipText());
 			p.show("my-model", Collections.singletonList("my-model"), TIP, "Couldn't list the models: no.", null);
@@ -279,7 +280,8 @@ public class ModelPickerTest
 			assertFalse(refresh.isEnabled());
 			assertEquals(off, refresh.getToolTipText());
 			refresh.doClick();
-			assertEquals("why the list is short, in plain words", "The list fills in once AI requests are on.", note(menu));
+			assertEquals("why the list is short, in plain words", "The list fills in once AI requests are on.",
+				note(menu));
 		});
 		assertEquals(1, refreshes);
 	}

@@ -329,8 +329,8 @@ public class LookupToolsTest
 
 		PanelText.Summary shown = PanelText.summary(activity);
 		assertEquals("Looked up Abyssal whip, Cannonball (GE price)", shown.line(s -> true));
-		assertEquals("Found no Wiki page called \"Abyssal wip\"\nWiki pages: Abyssal whip\nWiki searches: \"abyssal whip\"\n"
-			+ "GE prices: Cannonball", shown.details);
+		assertEquals("Found no Wiki page called \"Abyssal wip\"\nWiki pages: Abyssal whip\n"
+			+ "Wiki searches: \"abyssal whip\"\nGE prices: Cannonball", shown.details);
 	}
 
 	@Test

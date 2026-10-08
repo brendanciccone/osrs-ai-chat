@@ -504,7 +504,7 @@ public class AiChatPanelTest
 			for (int i = 0; i < 12; i++)
 			{
 				add(Chat.Role.USER, "Question " + i + ", long enough to wrap onto a second line in the narrow panel");
-				add(Chat.Role.ASSISTANT, "Answer " + i + ", long enough to wrap onto a second line in the narrow panel.");
+				add(Chat.Role.ASSISTANT, "Answer " + i + ", long enough to wrap onto a second line in the panel.");
 			}
 			made[0] = new AiChatPanel(host);
 			made[0].setSize(225, 400);
@@ -843,14 +843,15 @@ public class AiChatPanelTest
 			assertEquals("Shared your equipment · Looked up Abyssal whip, Dragon bones (GE price)", s.lineText());
 			assertEquals("one line, with a chevron to open it", Glyph.Shape.CHEVRON_DOWN, s.chevron());
 			assertFalse(s.isOpen());
-			assertEquals("Click to see everything that was shared and looked up for this message", s.line.getToolTipText());
+			assertEquals("Click to see everything that was shared and looked up for this message",
+				s.line.getToolTipText());
 			int closed = StackLayout.heightFor(s, 600);
 
 			click(s);
 			assertTrue(s.isOpen());
 			assertEquals(Glyph.Shape.CHEVRON_UP, s.chevron());
-			assertEquals("the line stays as it was", "Shared your equipment · Looked up Abyssal whip, Dragon bones (GE price)",
-				s.lineText());
+			assertEquals("the line stays as it was",
+				"Shared your equipment · Looked up Abyssal whip, Dragon bones (GE price)", s.lineText());
 			// Each line as recorded, then the look-ups one kind to a line; plain text, never read as HTML.
 			assertEquals("Shared your equipment\nWiki pages: Abyssal whip\nWiki searches: \"abyssal whip\"\n"
 				+ "GE prices: Dragon bones", s.more.getText());

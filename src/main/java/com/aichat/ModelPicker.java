@@ -39,10 +39,10 @@ import javax.swing.border.EmptyBorder;
 
 /**
  * The model picker next to Send, as chat apps have it: the model's name and a chevron, with no box, that opens a menu
- * of the provider's models (the one that's set ticked), then "Type a model name…" and "Refresh list". Choosing a model,
- * or typing a name and pressing Enter, sets the provider's model as the settings would. Nothing else does: not what
- * the panel shows itself (a model changed in the settings, a list that came in), not Escape, not leaving the box. Plain
- * text only, menu, box and tooltips alike: model names come from the provider. Swing EDT only.
+ * of the provider's models (the one that's set ticked), then "Type a model name…" and "Refresh list". Choosing a
+ * model, or typing a name and pressing Enter, sets the provider's model as the settings would. Nothing else does: not
+ * what the panel shows itself (a model changed in the settings, a list that came in), not Escape, not leaving the box.
+ * Plain text only, menu, box and tooltips alike: model names come from the provider. Swing EDT only.
  */
 final class ModelPicker extends JPanel
 {
@@ -396,7 +396,8 @@ final class ModelPicker extends JPanel
 			g2.setFont(getFont());
 			FontMetrics fm = g2.getFontMetrics();
 			Insets in = getInsets();
-			g2.drawString(TYPE, in.left, in.top + (getHeight() - in.top - in.bottom + fm.getAscent() - fm.getDescent()) / 2);
+			int middle = (getHeight() - in.top - in.bottom + fm.getAscent() - fm.getDescent()) / 2;
+			g2.drawString(TYPE, in.left, in.top + middle);
 			g2.dispose();
 		}
 
