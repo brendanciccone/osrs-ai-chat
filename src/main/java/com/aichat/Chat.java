@@ -25,12 +25,29 @@ class Chat
 		/** A USER message whose request failed or was stopped. Left out of later requests. */
 		boolean unanswered;
 		/**
-		 * Anthropic only: the reply's content blocks exactly as returned, with the model and system prompt that
-		 * produced them. Claude expects them back unchanged on the next turn, as long as nothing before them changed.
+		 * An ASSISTANT reply that never finished: what was shown of it before it was stopped or broke off, kept for the
+		 * player to read (the note or error after it says why). Never sent.
 		 */
-		JsonArray rawContent;
-		String rawModel;
-		String rawSystem;
+		boolean unfinished;
+		/** Covered by the chat's {@link Chat#summary}: still shown, but no longer sent. */
+		boolean summarized;
+		/**
+		 * The chat's {@link Chat#summaryVersion} when this was sent or answered. A reply goes back exactly as it came
+		 * only while that's unchanged: a new summary changes what came before it.
+		 */
+		int summaryVersion;
+		/**
+		 * Anthropic only: the messages this reply was made of (its look-ups included), exactly as exchanged, and the
+		 * {@link ChatApi#promptKey} they were made under. Claude expects them back unchanged on the next turn, as long as
+		 * nothing before them changed. In memory only.
+		 */
+		JsonArray rawMessages;
+		String rawKey;
+		/**
+		 * What was looked up or shared while this was being answered, one line each ("Searched the Wiki for ..."): on
+		 * the reply, or on the error or note that ended the request. Empty or null when nothing was.
+		 */
+		List<String> activity;
 
 		Message(Role role, String text)
 		{
@@ -43,21 +60,6 @@ class Chat
 			this.text = text;
 			this.time = time;
 		}
-
-		String author()
-		{
-			switch (role)
-			{
-				case USER:
-					return "You";
-				case ASSISTANT:
-					return who != null ? who : "Assistant";
-				case ERROR:
-					return "Error";
-				default:
-					return "Note";
-			}
-		}
 	}
 
 	final String id;
@@ -67,10 +69,47 @@ class Chat
 	/** The player named this chat themselves, so the name can appear in notifications (it isn't their question). */
 	boolean namedByPlayer;
 	final List<Message> messages = new ArrayList<>();
+	/**
+	 * What the oldest messages were summarised to, sent instead of them (see {@link ConversationBuilder}); null until a
+	 * chat gets long.
+	 */
+	String summary;
+	/** Goes up with every new summary. */
+	int summaryVersion;
+	/**
+	 * How many of the chat's oldest messages weren't kept when it was saved in an earlier session, and how many of those
+	 * the summary covers (see {@link ChatStore}). Messages still sent to the assistant are never among them.
+	 */
+	int leftOut;
+	int leftOutSummarized;
+	/** The note shown in their place, made when the chat was loaded; not saved itself. Null when none were left out. */
+	Message leftOutNote;
 
 	/** The request in flight, or null. */
 	ChatApi.Pending pending;
+	/** When the request in flight started: the summary, then the question itself. */
 	long runStartedAt;
+	/**
+	 * While the oldest messages are being summarised before a question goes out: carries on without the summary, which
+	 * is what Stop does then. Null the rest of the time.
+	 */
+	Runnable skipSummary;
+
+	// What the panel shows of the request in flight, while it runs.
+
+	/** Who's answering: "Claude", "ChatGPT", or the model of an OpenAI-compatible service. */
+	String answering;
+	/** The reply so far, as it streams in; null until its first words. */
+	String liveText;
+	/** What has been looked up or shared for it so far; it goes with the message that ends the request. */
+	List<String> liveActivity = new ArrayList<>();
+	/** The model has stopped writing to look things up, and hasn't carried on yet. */
+	boolean lookingUp;
+	/** The reply's text when the look-ups started: only text beyond it means the model is writing again. */
+	String lookupAfter;
+	/** The provider was busy: why ("Anthropic is busy"), and when it's asked again. */
+	String retryWhy;
+	long retryAt;
 
 	Chat(String name)
 	{
@@ -87,5 +126,21 @@ class Chat
 	boolean isRunning()
 	{
 		return pending != null;
+	}
+
+	boolean isSummarizing()
+	{
+		return skipSummary != null;
+	}
+
+	/** A new request starts (or the last one ended): nothing of it to show yet. */
+	void resetLive()
+	{
+		liveText = null;
+		liveActivity = new ArrayList<>();
+		lookingUp = false;
+		lookupAfter = null;
+		retryWhy = null;
+		retryAt = 0;
 	}
 }

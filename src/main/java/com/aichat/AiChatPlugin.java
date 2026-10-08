@@ -12,29 +12,28 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
-import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.events.GameStateChanged;
+import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.ScriptCallbackEvent;
 import net.runelite.api.gameval.VarClientID;
 import net.runelite.client.Notifier;
 import net.runelite.client.callback.ClientThread;
-import net.runelite.client.chat.ChatColorType;
-import net.runelite.client.chat.ChatMessageBuilder;
 import net.runelite.client.chat.ChatMessageManager;
 import net.runelite.client.chat.QueuedMessage;
 import net.runelite.client.config.ConfigManager;
+import net.runelite.client.config.RuneLiteConfig;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ClientShutdown;
 import net.runelite.client.events.ConfigChanged;
+import net.runelite.client.game.ItemManager;
 import net.runelite.client.game.chatbox.ChatboxPanelManager;
 import net.runelite.client.input.KeyManager;
 import net.runelite.client.plugins.Plugin;
@@ -43,44 +42,45 @@ import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.util.HotkeyListener;
 import net.runelite.client.util.ImageUtil;
-import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
 
 /**
- * Chat with Claude, ChatGPT or any OpenAI-compatible model from inside RuneLite, with the player's own API key.
- * Sends what the player types, and their character's name, levels and quests only if they turn that on.
+ * Chat with Claude, ChatGPT or any OpenAI-compatible model from inside RuneLite, with the player's own API key. Sends
+ * what the player types; with their settings, the assistant also looks things up on the OSRS Wiki and, only if they
+ * turn that on, sees their character, items and gear. This class runs the plugin: its lifecycle, threads and wiring.
+ * {@link RequestRunner} sends the messages, {@link AiChatPanel} shows them.
  */
 @Slf4j
 @PluginDescriptor(
 	name = "AI Chat",
 	internalName = "osrs-ai-chat",
-	description = "Chat with Claude, ChatGPT or any OpenAI-compatible model from a side panel or ::ai, with your own API key; get notified in game when it replies",
-	tags = {"claude", "chatgpt", "openai", "anthropic", "ollama", "ai", "llm", "assistant", "chat", "notifications"}
+	description = "Chat with Claude, ChatGPT or any OpenAI-compatible model from a side panel or ::ai, with your own API key; it can look things up on the OSRS Wiki, and you get notified in game when it replies",
+	tags = {"claude", "chatgpt", "openai", "anthropic", "ollama", "ai", "llm", "assistant", "chat", "wiki", "notifications"}
 )
 public class AiChatPlugin extends Plugin
 {
 	/** Typed in the chatbox: "::ai what should I train next?". */
 	private static final String PREFIX = "::ai";
-	/** Game chat messages per reply (the game wraps each one), not counting the note that it was cut. */
-	static final int ECHO_MAX_MESSAGES = 8;
-	/** Longer words (links) are shortened in game chat: the game wraps only at spaces and hyphens. */
-	static final int ECHO_MAX_WORD = 60;
-	/** "- item", "* item", "+ item", bullet, "1. item", "2) item". */
-	private static final Pattern LIST_ITEM = Pattern.compile("([-*+\u2022]|\\d{1,3}[.)])\\s+(.+)");
-	/** Markdown that's only layout (rules, code fences, table borders): left out of game chat. */
-	private static final Pattern LAYOUT_ONLY = Pattern.compile("```.*|[-*_=#|`~:+ ]+");
-	/** A paragraph isn't started with less than this much of the length setting left: it'd be a stub. */
-	private static final int ECHO_MIN_PART = 20;
-	/** Earlier messages sent with each request; older ones are left out to keep requests (and costs) bounded. */
-	private static final int MAX_HISTORY = 40;
+	private static final String CLOSED = "Stopped: RuneLite was closed.";
 
+	/**
+	 * What the assistant is told before every chat. The same words all session, whatever the settings (the tools say
+	 * what's available): providers cache the start of a request, and only an unchanged start is read from the cache.
+	 */
 	static final String SYSTEM_PROMPT = "You are the assistant in AI Chat, a RuneLite plugin: an Old School RuneScape "
 		+ "player is chatting with you from inside the game client, often while playing. Keep answers short and direct "
 		+ "by default, but when the player asks for something long, like a full list or a step-by-step guide, give all "
-		+ "of it: the side panel scrolls, and the game chat only shows the beginning. Write plain text without Markdown "
-		+ "headings, tables or bold, because the panel is narrow; lists are fine. Questions about the game are about Old School RuneScape, not "
-		+ "RuneScape 3. Game details such as drop rates, requirements and prices change, so say when you're unsure and "
-		+ "suggest the OSRS Wiki. You can't see or control the game. If the player has chosen to share their character, "
+		+ "of it: the side panel scrolls, and the game chat only shows the beginning. The panel is narrow and shows "
+		+ "Markdown: short paragraphs, lists, **bold**, links and small tables are fine (keep tables to two or three "
+		+ "columns of short cells; wider ones are shown as cards), and a short heading can break up a long guide. "
+		+ "Questions about the game are about Old School RuneScape, not RuneScape 3. Game details such as drop rates, "
+		+ "requirements and prices change, so check them with your tools when you have them (wiki_search and wiki_page "
+		+ "read the OSRS Wiki, ge_price gives Grand Exchange prices from RuneLite) rather than relying on memory. When "
+		+ "you used a Wiki page, link it, as https://oldschool.runescape.wiki/w/Page_name. Without the tools, say when "
+		+ "you're unsure and suggest the OSRS Wiki. Tools that read the player's equipment, inventory, bank, Slayer task "
+		+ "or achievement diaries are only offered when the player has chosen to share those; if you have other tools "
+		+ "but not the one you'd need, say which setting would allow it (\"Share items and gear\" or \"Share "
+		+ "character details\"). You can't see or control the game otherwise. If the player has chosen to share their character, "
 		+ "their message starts with a [Character: ...] note with details from the game.";
 
 	@Inject
@@ -107,37 +107,61 @@ public class AiChatPlugin extends Plugin
 	@Inject
 	private AiChatConfig config;
 
+	/** The chosen provider, as the settings describe it. */
+	private ProviderSetup provider;
+
+	/** For the model picker: sets the chosen provider's model, as the settings panel would. */
+	@Inject
+	private ConfigManager configManager;
+
+	/** For RuneLite's "Use actively traded price" setting, which GE prices follow. */
+	@Inject
+	private RuneLiteConfig runeLiteConfig;
+
+	@Inject
+	private ItemManager itemManager;
+
 	@Inject
 	private Gson gson;
 
 	@Inject
 	private OkHttpClient okHttpClient;
 
-	/** For reading and writing the saved chats, off the Swing and client threads. */
+	/**
+	 * For reading and writing the saved chats, off the Swing and client threads; for the AI providers' waits before a
+	 * retry; and for the short waits between redraws of a reply as it streams in. Shared with RuneLite: short tasks only.
+	 */
 	@Inject
 	private ScheduledExecutorService executor;
 
 	/** For AI requests: they can take a while, and replies shouldn't land in RuneLite's disk cache. */
 	private OkHttpClient apiHttp;
-	/** Optional request settings each OpenAI-compatible service and model has refused, while the plugin runs. */
+	/** For "Test connection" and the model picker's list: a list that takes longer than a few seconds isn't coming. */
+	private OkHttpClient testHttp;
+	/**
+	 * Optional request settings each service and model has refused, while the plugin runs: OpenAI-compatible settings,
+	 * and Claude models that don't take server-side fallback.
+	 */
 	private final Map<String, Set<String>> refusedOptions = new ConcurrentHashMap<>();
-	/** The saved chats on disk ("Remember chats"); its file work runs on {@link #executor}. */
-	private ChatFile chatFile;
-	/** EDT: whether this window owns the saved chats; null until the file has been opened. */
-	private ChatFile.State fileState;
-	/** EDT: the saved chats are being opened; a save now would overwrite them, so it waits. */
-	private boolean loading;
-	private boolean saveAfterLoading;
-	/** EDT: the next save, if one is waiting. */
-	private ScheduledFuture<?> pendingSave;
-	private long saveCount;
-	/** EDT: RuneLite is closing; save at once instead of a moment later. */
-	private boolean closing;
+	/** The player's own account, for the game-data tools, with the bank as last seen while AI Chat is on. */
+	private GameData gameData;
+	/**
+	 * What every request's tools are made from: the OSRS Wiki (which sends nothing while AI requests or Wiki look-ups
+	 * are off), RuneLite's own GE prices, and the player's account.
+	 */
+	private ToolBox.Parts tools;
+	private RequestRunner runner;
+	/**
+	 * EDT: "Save chat history", saving to the plugin's folder (its file work runs on {@link #executor}). Kept while
+	 * RuneLite runs, like the chats: the file is opened once.
+	 */
+	private ChatSaver saver;
+	/** EDT: the provider's list of models, for "Test connection" and the model picker. */
+	private ConnectionTester tester;
 	private AiChatPanel panel;
 	private NavigationButton navButton;
 
 	// Swing EDT state.
-	@Getter
 	private final List<Chat> chats = new ArrayList<>();
 	private Chat current;
 	private int chatCounter;
@@ -168,14 +192,39 @@ public class AiChatPlugin extends Plugin
 			// A redirect would carry the API key to wherever it points.
 			.followRedirects(false)
 			.followSslRedirects(false)
-			// Answers arrive in one piece once written, which can take minutes for a long reply or a local model.
+			// Replies stream in as they're written, but a model on the player's own computer can take minutes to start,
+			// and a service that ignores streaming sends nothing until the whole reply is done.
 			.readTimeout(10, TimeUnit.MINUTES)
-			.callTimeout(10, TimeUnit.MINUTES)
+			// A long reply from a slow local model streams in for a long time; Stop is there for the player.
+			.callTimeout(30, TimeUnit.MINUTES)
+			.build();
+		testHttp = apiHttp.newBuilder()
+			.readTimeout(15, TimeUnit.SECONDS)
+			.callTimeout(20, TimeUnit.SECONDS)
 			.build();
 		refusedOptions.clear();
-		if (chatFile == null)
+		provider = new ProviderSetup(config);
+		if (gameData == null)
 		{
-			chatFile = new ChatFile(this::getPluginDirectory, gson);
+			gameData = new GameData(client, itemManager);
+		}
+		forgetBankUnlessShared();
+		Requests requests = new Requests();
+		tools = new ToolBox.Parts(new WikiClient(okHttpClient, gson, () -> config.aiRequests() && config.wikiLookups()),
+			new LookupTools.RuneLitePrices(itemManager, clientThread, executor, runeLiteConfig::useWikiItemPrices),
+			gameData, clientThread::invoke, executor, this::canShareItems, requests::shareCharacter);
+		runner = new RequestRunner(requests, SwingUtilities::invokeLater, executor);
+		tester = new ConnectionTester(SwingUtilities::invokeLater, () ->
+		{
+			if (panel != null)
+			{
+				panel.refreshAll();
+			}
+		});
+		if (saver == null)
+		{
+			saver = new ChatSaver(new ChatFile(this::getPluginDirectory, gson), gson, SwingUtilities::invokeLater, executor,
+				new Saving());
 		}
 		// Chats outlive turning the plugin off and on: they're kept for as long as RuneLite runs, and, with "Remember
 		// chats", on disk for the next time.
@@ -187,7 +236,8 @@ public class AiChatPlugin extends Plugin
 		{
 			current = chats.get(chats.size() - 1);
 		}
-		panel = new AiChatPanel(this);
+		panel = new AiChatPanel(new Panel());
+		listModels();
 		BufferedImage icon = ImageUtil.loadImageResource(AiChatPlugin.class, "icon.png");
 		navButton = NavigationButton.builder()
 			.tooltip("AI Chat")
@@ -197,8 +247,8 @@ public class AiChatPlugin extends Plugin
 			.build();
 		clientToolbar.addNavigation(navButton);
 		keyManager.registerKeyListener(askHotkey);
-		// "Remember chats" may have changed while AI Chat was off, unseen by onConfigChanged: act on it now.
-		applyRememberChats();
+		// "Save chat history" may have changed while AI Chat was off, unseen by onConfigChanged: act on it now.
+		saver.apply();
 	}
 
 	@Override
@@ -206,11 +256,11 @@ public class AiChatPlugin extends Plugin
 	{
 		keyManager.unregisterKeyListener(askHotkey);
 		// The chats are kept for when the plugin is turned back on, but nothing is left waiting for a reply.
-		for (Chat c : chats)
-		{
-			stop(c, "Stopped: AI Chat was turned off.");
-		}
-		saveNow();
+		stopAll("Stopped: AI Chat was turned off.");
+		tester.stop();
+		saver.saveNow();
+		// Not kept while AI Chat is off: a setting turned off meanwhile isn't heard about.
+		clientThread.invokeLater(gameData::forgetBank);
 		panel.refreshAll();
 		clientToolbar.removeNavigation(navButton);
 		navButton = null;
@@ -223,7 +273,7 @@ public class AiChatPlugin extends Plugin
 	{
 		if (AiChatConfig.GROUP.equals(e.getGroup()))
 		{
-			SwingUtilities.invokeLater(() ->
+			Runnable apply = () ->
 			{
 				if (panel == null)
 				{
@@ -232,17 +282,58 @@ public class AiChatPlugin extends Plugin
 				// "Nothing is sent while this is off": that includes requests already on their way.
 				if ("aiRequests".equals(e.getKey()) && !config.aiRequests())
 				{
-					for (Chat c : chats)
-					{
-						stop(c, "Stopped: AI requests were turned off.");
-					}
+					stopAll("Stopped: AI requests were turned off.");
+					tester.stop();
 				}
 				if ("rememberChats".equals(e.getKey()))
 				{
-					applyRememberChats();
+					saver.apply();
 				}
+				// Another provider, key or address: the picker's list is asked for again (never with AI requests off).
+				listModels();
 				panel.refreshAll();
-			});
+			};
+			// Settings are usually changed on the Swing thread: act at once there, so that no tool round or retry
+			// that's already due can go out after "Enable AI requests" was turned off.
+			if (SwingUtilities.isEventDispatchThread())
+			{
+				apply.run();
+			}
+			else
+			{
+				SwingUtilities.invokeLater(apply);
+			}
+			if ("shareItems".equals(e.getKey()) || "aiRequests".equals(e.getKey()))
+			{
+				forgetBankUnlessShared();
+			}
+		}
+	}
+
+	/**
+	 * Client thread. The bank can only be read while it's open, so it's kept as last seen, for get_bank: only while it
+	 * could be shared.
+	 */
+	@Subscribe
+	public void onItemContainerChanged(ItemContainerChanged e)
+	{
+		if (canShareItems())
+		{
+			gameData.itemContainerChanged(e);
+		}
+	}
+
+	private boolean canShareItems()
+	{
+		return config.aiRequests() && config.shareItems();
+	}
+
+	/** The bank as last seen isn't kept where it can't be shared. Also checked when AI Chat is turned on. */
+	private void forgetBankUnlessShared()
+	{
+		if (!canShareItems())
+		{
+			clientThread.invokeLater(gameData::forgetBank);
 		}
 	}
 
@@ -253,105 +344,27 @@ public class AiChatPlugin extends Plugin
 	/** What's missing before messages can be sent, or null when the chosen provider is set up. */
 	String setupProblem()
 	{
-		if (!config.aiRequests())
-		{
-			return "Turn on \"Enable AI requests\" in the AI Chat settings, then choose a provider and add your API key.";
-		}
-		switch (config.provider())
-		{
-			case CLAUDE:
-			{
-				String key = ChatApi.cleanKey(config.claudeApiKey());
-				if (key.isEmpty())
-				{
-					return "Add your Claude API key in the Claude section of the AI Chat settings (from console.anthropic.com).";
-				}
-				if (!ChatApi.sendableKey(key))
-				{
-					return BAD_KEY;
-				}
-				return blank(config.claudeModel()) ? "Set a Claude model in the Claude section of the AI Chat settings." : null;
-			}
-			case CHATGPT:
-			{
-				String key = ChatApi.cleanKey(config.openaiApiKey());
-				if (key.isEmpty())
-				{
-					return "Add your OpenAI API key in the ChatGPT section of the AI Chat settings (from platform.openai.com).";
-				}
-				if (!ChatApi.sendableKey(key))
-				{
-					return BAD_KEY;
-				}
-				return blank(config.openaiModel()) ? "Set a ChatGPT model in the ChatGPT section of the AI Chat settings." : null;
-			}
-			default:
-			{
-				HttpUrl url = OpenAiApi.parseBaseUrl(config.compatibleUrl());
-				if (url == null)
-				{
-					return "Set the URL in the OpenAI-compatible section of the AI Chat settings, for example http://localhost:11434/v1.";
-				}
-				String key = ChatApi.cleanKey(config.compatibleApiKey());
-				if (!ChatApi.sendableKey(key))
-				{
-					return BAD_KEY;
-				}
-				if (!url.isHttps() && !key.isEmpty() && !OpenAiApi.isPrivate(url.host()))
-				{
-					return "Use an https:// URL for " + url.host() + ": with http:// your API key would cross the internet unencrypted.";
-				}
-				return blank(config.compatibleModel()) ? "Set the model in the OpenAI-compatible section of the AI Chat settings." : null;
-			}
-		}
+		return provider.problem();
 	}
 
-	/** "Claude · claude-opus-5-5": what answers new messages. */
-	String setupSummary()
+	/** What's missing before "Test" can ask the provider, or null: it needs no model, since it's how one is found. */
+	String testProblem()
 	{
-		switch (config.provider())
-		{
-			case CLAUDE:
-				return "Claude · " + config.claudeModel().trim();
-			case CHATGPT:
-				return "ChatGPT · " + config.openaiModel().trim();
-			default:
-				return config.compatibleModel().trim() + " · " + OpenAiApi.describeUrl(config.compatibleUrl());
-		}
+		return provider.connectionProblem();
 	}
 
 	/** Null if not set up; see {@link #setupProblem()}. */
 	private ChatApi api()
 	{
-		if (setupProblem() != null)
-		{
-			return null;
-		}
-		switch (config.provider())
-		{
-			case CLAUDE:
-				return new AnthropicApi(apiHttp, gson, AnthropicApi.URL, ChatApi.cleanKey(config.claudeApiKey()));
-			case CHATGPT:
-				return new OpenAiApi(apiHttp, gson, OpenAiApi.OPENAI_URL, ChatApi.cleanKey(config.openaiApiKey()), "ChatGPT", true,
-					"low", refusedOptions);
-			default:
-				String model = config.compatibleModel().trim();
-				return new OpenAiApi(apiHttp, gson, OpenAiApi.parseBaseUrl(config.compatibleUrl()), ChatApi.cleanKey(config.compatibleApiKey()), model, false,
-					config.compatibleThinking().effort, refusedOptions);
-		}
+		return provider.api(apiHttp, gson, executor, refusedOptions);
 	}
 
-	private String model()
+	/** What a message sent now goes with: the provider and the settings of this moment. Null if not set up. */
+	private RequestRunner.Setup setup()
 	{
-		switch (config.provider())
-		{
-			case CLAUDE:
-				return config.claudeModel().trim();
-			case CHATGPT:
-				return config.openaiModel().trim();
-			default:
-				return config.compatibleModel().trim();
-		}
+		ChatApi api = api();
+		return api == null ? null : new RequestRunner.Setup(api, provider.model(), systemPrompt(), config.sendCharacter(),
+			config.shareItems(), config.wikiLookups());
 	}
 
 	private String systemPrompt()
@@ -360,12 +373,73 @@ public class AiChatPlugin extends Plugin
 		return extra.isEmpty() ? SYSTEM_PROMPT : SYSTEM_PROMPT + "\n\nThe player's own instructions: " + extra;
 	}
 
-	private static final String BAD_KEY = "Your API key has a character that can't be sent, like a curly quote copied along "
-		+ "with it. Paste it into the AI Chat settings again.";
+	// ------------------------------------------------------------------
+	// Test connection and the model picker (EDT)
+	// ------------------------------------------------------------------
 
-	private static boolean blank(String s)
+	/**
+	 * "Test connection" in the panel's menu: asks the provider which models the key can use, and the banner says what
+	 * that means. Sends nothing while AI requests are off.
+	 */
+	void testConnection()
 	{
-		return s == null || s.trim().isEmpty();
+		ChatApi api = provider.testApi(testHttp, gson, executor, refusedOptions);
+		if (api == null)
+		{
+			return;
+		}
+		tester.start(api, provider.connection(), sortModels());
+		panel.refreshAll();
+	}
+
+	/**
+	 * The model picker's list: asked for quietly, once for each provider, key and address, when AI Chat starts, when AI
+	 * requests are turned on, and when those change. Never while AI requests are off, or before the provider can be
+	 * reached.
+	 */
+	private void listModels()
+	{
+		tester.list(testProblem(), provider.connection(), () -> provider.testApi(testHttp, gson, executor, refusedOptions),
+			sortModels());
+	}
+
+	/**
+	 * "Refresh list" in the model picker's menu: the list is asked for again, quietly, as the player asked. Never while
+	 * AI requests are off, or before the provider can be reached.
+	 */
+	void refreshModels()
+	{
+		if (tester.refresh(testProblem(), provider.connection(),
+			() -> provider.testApi(testHttp, gson, executor, refusedOptions), sortModels()))
+		{
+			panel.refreshAll();
+		}
+	}
+
+	/** Anthropic lists the newest models first, which is worth keeping; the others list theirs in no useful order. */
+	private boolean sortModels()
+	{
+		return config.provider() != AiChatConfig.Provider.CLAUDE;
+	}
+
+	/** What the latest "Test" says about the setup as it is now, for the banner, or null when there's nothing to say. */
+	ConnectionCheck.Note connectionNote()
+	{
+		if (testProblem() != null)
+		{
+			return null;
+		}
+		return tester.note(provider.connection(), provider.service(), provider.model(), provider.keyed(), provider.keyUnchecked());
+	}
+
+	/** The model picker: the provider's model setting becomes {@code model}, as if typed in the settings. */
+	void chooseModel(String model)
+	{
+		if (model != null && !model.trim().isEmpty())
+		{
+			// Tells onConfigChanged, which shows the new model.
+			configManager.setConfiguration(AiChatConfig.GROUP, provider.modelKey(), model.trim());
+		}
 	}
 
 	// ------------------------------------------------------------------
@@ -439,6 +513,11 @@ public class AiChatPlugin extends Plugin
 	{
 		SwingUtilities.invokeLater(() ->
 		{
+			if (panel == null)
+			{
+				// AI Chat was turned off in the meantime.
+				return;
+			}
 			String problem = setupProblem();
 			if (problem != null)
 			{
@@ -453,11 +532,11 @@ public class AiChatPlugin extends Plugin
 				gameMessage("AI Chat: still waiting for the last reply. Your message is waiting in the AI Chat panel.");
 				return;
 			}
-			if (send(text))
-			{
-				gameMessage("Asked " + api().displayName() + (chat.namedByPlayer ? " (" + chat.name + ")" : "")
-					+ ". You'll be pinged when there's a reply.");
-			}
+			RequestRunner.Setup setup = setup();
+			runner.send(chat, text, setup);
+			sent();
+			gameMessage("Asked " + setup.api.displayName() + (chat.namedByPlayer ? " (" + chat.name + ")" : "")
+				+ ". You'll be pinged when there's a reply.");
 		});
 	}
 
@@ -465,23 +544,18 @@ public class AiChatPlugin extends Plugin
 	// Chats (EDT)
 	// ------------------------------------------------------------------
 
-	Chat currentChat()
-	{
-		return current;
-	}
-
 	/** Returns false if the message can't be sent right now; the panel keeps the text. */
 	boolean send(String text)
 	{
 		Chat chat = current;
-		ChatApi api = api();
 		if (chat == null)
 		{
 			return false;
 		}
-		if (api == null)
+		RequestRunner.Setup setup = setup();
+		if (setup == null)
 		{
-			showError(setupProblem());
+			notSetUp();
 			return false;
 		}
 		if (chat.isRunning())
@@ -489,200 +563,39 @@ public class AiChatPlugin extends Plugin
 			showError("Still waiting for the last reply. Send this when it's in, or press Stop.");
 			return false;
 		}
-
-		Chat.Message message = new Chat.Message(Chat.Role.USER, text);
-		chat.messages.add(message);
-		if (chat.defaultName)
-		{
-			chat.name = ChatApi.shorten(text.replaceAll("\\s+", " "), 40);
-			chat.defaultName = false;
-		}
-		saveSoon();
-		String model = model();
-		String system = systemPrompt();
-		boolean shareCharacter = config.sendCharacter();
-		// Busy from now on, so nothing else is sent in this chat while character details are gathered.
-		chat.pending = new ChatApi.Pending();
-		chat.runStartedAt = System.currentTimeMillis();
-		panel.refreshAll();
-
-		if (shareCharacter)
-		{
-			ChatApi.Pending placeholder = chat.pending;
-			// invokeLater: reading quest states runs a game script, which can't happen inside another one.
-			clientThread.invokeLater(() ->
-			{
-				String context = null;
-				try
-				{
-					context = client.getGameState() == GameState.LOGGED_IN ? CharacterInfo.describe(client) : null;
-				}
-				catch (RuntimeException e)
-				{
-					// Send the message without it rather than leave the chat waiting forever.
-					log.debug("couldn't read character info", e);
-				}
-				String sent = context;
-				SwingUtilities.invokeLater(() ->
-				{
-					// Stopped (or the plugin turned off) while we were on the client thread.
-					if (chat.pending == placeholder && !placeholder.isCancelled())
-					{
-						dispatch(chat, message, api, model, system, true, sent);
-					}
-				});
-			});
-		}
-		else
-		{
-			dispatch(chat, message, api, model, system, false, null);
-		}
+		runner.send(chat, text, setup);
+		sent();
 		return true;
 	}
 
 	/**
-	 * Sends the chat so far. {@code shareCharacter}: the setting when the message was sent; {@code context}: the
-	 * character details read for it, if any.
+	 * "Retry" on {@code m}, the chat's last message: the question that went unanswered goes again, or, on the latest
+	 * reply, its question is asked again for a new one. With the settings of now.
 	 */
-	private void dispatch(Chat chat, Chat.Message message, ChatApi api, String model, String system,
-		boolean shareCharacter, String context)
+	void retry(Chat chat, Chat.Message m)
 	{
-		if (!config.aiRequests())
+		if (!chats.contains(chat) || chat.isRunning() || chat.messages.isEmpty()
+			|| chat.messages.get(chat.messages.size() - 1) != m)
 		{
-			stop(chat, "Stopped: AI requests are turned off.");
 			return;
 		}
-
-		ChatApi.Conversation conversation = new ChatApi.Conversation();
-		conversation.model = model;
-		conversation.system = system;
-		List<Chat.Message> history = new ArrayList<>();
-		for (Chat.Message m : chat.messages)
+		RequestRunner.Setup setup = setup();
+		if (setup == null)
 		{
-			boolean sent = m.role == Chat.Role.USER && !m.unanswered || m.role == Chat.Role.ASSISTANT;
-			if (sent)
-			{
-				history.add(m);
-			}
-		}
-		// Claude only accepts earlier replies back verbatim when everything before them is unchanged: not if the
-		// oldest messages had to be left out. A conversation also has to start with the player.
-		boolean trimmed = history.size() > MAX_HISTORY;
-		List<Chat.Message> recent = new ArrayList<>(history.subList(Math.max(0, history.size() - MAX_HISTORY), history.size()));
-		while (!recent.isEmpty() && recent.get(0).role != Chat.Role.USER)
-		{
-			recent.remove(0);
-		}
-
-		// Character details go with this message unless the latest ones the provider will see are the same. Decided
-		// from what's actually sent: an earlier note may have gone with a failed request or been trimmed off.
-		if (shareCharacter && context != null)
-		{
-			String seen = null;
-			for (Chat.Message m : recent)
-			{
-				if (m != message && m.context != null)
-				{
-					seen = m.context;
-				}
-			}
-			if (!context.equals(seen))
-			{
-				message.context = context;
-			}
-		}
-		// With sharing turned off, earlier notes stay out too. That changes earlier turns, so Claude's replies can't be
-		// replayed as they were.
-		boolean notesLeftOut = false;
-		for (Chat.Message m : recent)
-		{
-			notesLeftOut |= !shareCharacter && m.context != null;
-		}
-		for (Chat.Message m : recent)
-		{
-			boolean withNote = shareCharacter && m.context != null;
-			ChatApi.Turn t = new ChatApi.Turn(m.role == Chat.Role.USER, withNote ? m.context + "\n\n" + m.text : m.text);
-			if (!trimmed && !notesLeftOut)
-			{
-				t.rawContent = m.rawContent;
-				t.rawModel = m.rawModel;
-				t.rawSystem = m.rawSystem;
-			}
-			conversation.turns.add(t);
-		}
-
-		String who = api.displayName();
-		// Set before any answer can be handled: answers are handled on this (the EDT) thread, after this method.
-		ChatApi.Pending[] request = new ChatApi.Pending[1];
-		try
-		{
-			request[0] = api.send(conversation, new ChatApi.Listener()
-			{
-				@Override
-				public void onReply(ChatApi.Reply reply)
-				{
-					SwingUtilities.invokeLater(() -> finished(chat, request[0], message, who, system, reply, null));
-				}
-
-				@Override
-				public void onError(String error)
-				{
-					SwingUtilities.invokeLater(() -> finished(chat, request[0], message, who, system, null, error));
-				}
-			});
-		}
-		catch (RuntimeException e)
-		{
-			// Building the request failed (OkHttp rejects some header values). Its message can contain the API key:
-			// don't pass it on or log it.
-			chat.pending = null;
-			message.unanswered = true;
-			chat.messages.add(new Chat.Message(Chat.Role.ERROR, "AI Chat couldn't send this. Check the API key and URL in the settings."));
-			saveSoon();
-			panel.refreshAll();
+			notSetUp();
 			return;
 		}
-		chat.pending = request[0];
+		if (runner.retry(chat, setup) || runner.regenerate(chat, m, setup))
+		{
+			showError(null);
+			sent();
+		}
 	}
 
-	private void finished(Chat chat, ChatApi.Pending request, Chat.Message question, String who, String system,
-		ChatApi.Reply reply, String error)
+	/** A message went: a Test's good news has been read by now, and makes way for the conversation. */
+	private void sent()
 	{
-		// Only the answer to the request still in flight counts: not one that was stopped, or a chat that's gone.
-		if (chat.pending != request || request.isCancelled() || !chats.contains(chat))
-		{
-			return;
-		}
-		chat.pending = null;
-		if (reply != null)
-		{
-			if (reply.historyAsText)
-			{
-				// This reply was built on plain-text history; keep sending the earlier replies that way.
-				for (Chat.Message earlier : chat.messages)
-				{
-					earlier.rawContent = null;
-					earlier.rawModel = null;
-					earlier.rawSystem = null;
-				}
-			}
-			Chat.Message m = new Chat.Message(Chat.Role.ASSISTANT, reply.text + (reply.cutShort ? "\n\n(The reply was cut short.)" : ""));
-			m.who = who;
-			m.rawContent = reply.rawContent;
-			m.rawModel = reply.model;
-			m.rawSystem = system;
-			chat.messages.add(m);
-			ping(chat, m);
-		}
-		else
-		{
-			question.unanswered = true;
-			Chat.Message m = new Chat.Message(Chat.Role.ERROR, error);
-			chat.messages.add(m);
-			ping(chat, m);
-		}
-		saveSoon();
-		if (panel != null)
+		if (tester.sent(provider.connection(), provider.service(), provider.model(), provider.keyed(), provider.keyUnchecked()))
 		{
 			panel.refreshAll();
 		}
@@ -724,33 +637,7 @@ public class AiChatPlugin extends Plugin
 	{
 		if (current != null)
 		{
-			stop(current, "Stopped.");
-		}
-	}
-
-	private void stop(Chat chat, String note)
-	{
-		if (chat.pending == null)
-		{
-			return;
-		}
-		chat.pending.cancel();
-		chat.pending = null;
-		// The unanswered question stays in the transcript but isn't sent again.
-		for (int i = chat.messages.size() - 1; i >= 0; i--)
-		{
-			Chat.Message m = chat.messages.get(i);
-			if (m.role == Chat.Role.USER)
-			{
-				m.unanswered = true;
-				break;
-			}
-		}
-		chat.messages.add(new Chat.Message(Chat.Role.NOTE, note));
-		saveSoon();
-		if (panel != null)
-		{
-			panel.refreshAll();
+			runner.stop(current);
 		}
 	}
 
@@ -761,29 +648,25 @@ public class AiChatPlugin extends Plugin
 		chat.name = name;
 		chat.defaultName = false;
 		chat.namedByPlayer = true;
-		saveSoon();
+		saver.saveSoon();
 		panel.refreshAll();
 	}
 
 	void clearChat(Chat chat)
 	{
-		if (chat.pending != null)
-		{
-			chat.pending.cancel();
-			chat.pending = null;
-		}
+		RequestRunner.cancel(chat);
 		chat.messages.clear();
-		saveSoon();
+		chat.summary = null;
+		chat.leftOut = 0;
+		chat.leftOutSummarized = 0;
+		chat.leftOutNote = null;
+		saver.saveSoon();
 		panel.refreshAll();
 	}
 
 	void deleteChat(Chat chat)
 	{
-		if (chat.pending != null)
-		{
-			chat.pending.cancel();
-			chat.pending = null;
-		}
+		RequestRunner.cancel(chat);
 		int index = chats.indexOf(chat);
 		chats.remove(chat);
 		if (chats.isEmpty())
@@ -794,160 +677,263 @@ public class AiChatPlugin extends Plugin
 		{
 			current = chats.get(Math.max(0, Math.min(index, chats.size() - 1)));
 		}
-		saveSoon();
+		saver.saveSoon();
 		panel.refreshAll();
 	}
 
-	// ------------------------------------------------------------------
-	// Saved chats ("Remember chats")
-	// ------------------------------------------------------------------
-
-	/** EDT. Makes the saved chats match the setting: open (and load) them, save, or delete them. */
-	private void applyRememberChats()
+	/** What {@link AiChatPanel} needs from the plugin. On the EDT. */
+	private final class Panel implements AiChatPanel.Host
 	{
-		if (!config.rememberChats())
+		@Override
+		public List<Chat> chats()
 		{
-			deleteSaved();
+			return chats;
 		}
-		else if (fileState == null)
+
+		@Override
+		public Chat currentChat()
 		{
-			openSaved();
+			return current;
 		}
-		else if (fileState == ChatFile.State.OWNER)
+
+		@Override
+		public String setupProblem()
 		{
-			saveSoon();
+			return AiChatPlugin.this.setupProblem();
 		}
-		else
+
+		@Override
+		public String testProblem()
 		{
-			showFileNote();
+			return AiChatPlugin.this.testProblem();
+		}
+
+		@Override
+		public ConnectionCheck.Note connectionNote()
+		{
+			return AiChatPlugin.this.connectionNote();
+		}
+
+		@Override
+		public void dismissNote()
+		{
+			tester.dismiss();
+		}
+
+		/** The model new messages go to, as set for the chosen provider. */
+		@Override
+		public String model()
+		{
+			return provider.model();
+		}
+
+		@Override
+		public List<String> modelChoices()
+		{
+			ConnectionCheck check = tester.check(provider.connection());
+			return ConnectionCheck.choices(provider.model(), check == null ? null : check.models);
+		}
+
+		@Override
+		public String modelTip()
+		{
+			return ConnectionCheck.pickerTip(tester.check(provider.connection()), testProblem(), provider.service(),
+				provider.model());
+		}
+
+		@Override
+		public String modelNote()
+		{
+			return ConnectionCheck.listNote(tester.check(provider.connection()), testProblem(), provider.service());
+		}
+
+		@Override
+		public void refreshModels()
+		{
+			AiChatPlugin.this.refreshModels();
+		}
+
+		@Override
+		public boolean send(String text)
+		{
+			return AiChatPlugin.this.send(text);
+		}
+
+		@Override
+		public void stop()
+		{
+			AiChatPlugin.this.stop();
+		}
+
+		@Override
+		public void retry(Chat chat, Chat.Message m)
+		{
+			AiChatPlugin.this.retry(chat, m);
+		}
+
+		@Override
+		public void newChat()
+		{
+			AiChatPlugin.this.newChat();
+		}
+
+		@Override
+		public void selectChat(Chat chat)
+		{
+			AiChatPlugin.this.selectChat(chat);
+		}
+
+		@Override
+		public void renameChat(Chat chat, String name)
+		{
+			AiChatPlugin.this.renameChat(chat, name);
+		}
+
+		@Override
+		public void clearChat(Chat chat)
+		{
+			AiChatPlugin.this.clearChat(chat);
+		}
+
+		@Override
+		public void deleteChat(Chat chat)
+		{
+			AiChatPlugin.this.deleteChat(chat);
+		}
+
+		@Override
+		public void testConnection()
+		{
+			AiChatPlugin.this.testConnection();
+		}
+
+		@Override
+		public void chooseModel(String model)
+		{
+			AiChatPlugin.this.chooseModel(model);
 		}
 	}
 
-	/** EDT. Opens the saved chats in the background, brings them back, and from then on saves this window's. */
-	private void openSaved()
+	/** What {@link RequestRunner} needs from the plugin. Everything but the tools' callbacks runs on the EDT. */
+	private final class Requests implements RequestRunner.Host
 	{
-		if (loading)
+		@Override
+		public boolean aiRequests()
 		{
-			return;
+			return config.aiRequests();
 		}
-		loading = true;
-		executor.execute(() ->
+
+		@Override
+		public boolean shareCharacter()
 		{
-			ChatFile.Opened opened = chatFile.open();
-			SwingUtilities.invokeLater(() ->
+			return config.aiRequests() && config.sendCharacter();
+		}
+
+		@Override
+		public void readCharacter(Consumer<String> done)
+		{
+			// invokeLater: reading quest states runs a game script, which can't happen inside another one.
+			clientThread.invokeLater(() ->
 			{
-				loading = false;
-				fileState = opened.state;
-				if (opened.loaded != null)
+				String context = null;
+				try
 				{
-					restore(opened.loaded);
+					context = client.getGameState() == GameState.LOGGED_IN ? CharacterInfo.describe(client) : null;
 				}
-				showFileNote();
-				saveAfterLoading = false;
-				// Brings the file up to date with chats from before it was opened, if any.
-				saveSoon();
+				catch (RuntimeException e)
+				{
+					// Send the message without it rather than leave the chat waiting forever.
+					log.debug("couldn't read character info", e);
+				}
+				done.accept(context);
 			});
-		});
-	}
+		}
 
-	/** EDT. Saved chats go first; the empty chat made at start-up gives way to them. */
-	private void restore(ChatStore.Loaded loaded)
-	{
-		List<Chat> fresh = new ArrayList<>();
-		for (Chat c : loaded.chats)
+		@Override
+		public ToolBox tools(RequestRunner.Setup setup, BooleanSupplier wanted, Consumer<String> activity, Runnable started)
 		{
-			if (chats.stream().noneMatch(existing -> existing.id.equals(c.id)))
+			return tools.forRequest(setup, wanted, activity, started);
+		}
+
+		@Override
+		public boolean has(Chat chat)
+		{
+			return chats.contains(chat);
+		}
+
+		@Override
+		public void changed(Chat chat)
+		{
+			saver.saveSoon();
+			if (panel != null)
 			{
-				fresh.add(c);
+				panel.refreshAll();
 			}
 		}
-		if (fresh.isEmpty())
+
+		@Override
+		public void live(Chat chat)
 		{
-			return;
+			if (panel != null)
+			{
+				panel.refreshLive(chat);
+			}
 		}
-		chats.removeIf(c -> c.messages.isEmpty() && !c.isRunning() && !c.namedByPlayer);
-		chats.addAll(0, fresh);
-		if (current == null || !chats.contains(current))
+
+		@Override
+		public void ended(Chat chat, Chat.Message m)
 		{
-			current = loaded.current != null && chats.contains(loaded.current) ? loaded.current : fresh.get(fresh.size() - 1);
-		}
-		chatCounter = Math.max(chatCounter, chats.size());
-		if (panel != null)
-		{
-			panel.refreshAll();
+			ping(chat, m);
 		}
 	}
 
-	/** EDT. Says why this window's chats aren't being remembered, if they aren't. */
-	private void showFileNote()
+	// ------------------------------------------------------------------
+	// Saved chats ("Save chat history")
+	// ------------------------------------------------------------------
+
+	/** What {@link ChatSaver} needs from the plugin. On the EDT, except {@link #rememberChats}. */
+	private final class Saving implements ChatSaver.Host
 	{
-		if (panel == null || !config.rememberChats())
+		@Override
+		public boolean rememberChats()
 		{
-			return;
+			return config.rememberChats();
 		}
-		if (fileState == ChatFile.State.OTHER_WINDOW)
+
+		@Override
+		public List<Chat> chats()
 		{
-			panel.showNote("Chats in this window won't be remembered: AI Chat already remembers chats in another RuneLite window.");
+			return chats;
 		}
-		else if (fileState == ChatFile.State.UNREADABLE)
+
+		@Override
+		public Chat current()
 		{
-			panel.showNote("Your saved chats couldn't be read, so this session won't save over them. Restarting RuneLite may help.");
+			return current;
+		}
+
+		@Override
+		public void restored(Chat shown)
+		{
+			current = shown;
+			chatCounter = Math.max(chatCounter, chats.size());
+			if (panel != null)
+			{
+				panel.refreshAll();
+			}
+		}
+
+		@Override
+		public void note(String text)
+		{
+			showError(text);
 		}
 	}
 
-	/** EDT. Saves the chats a moment from now; more changes in the meantime make it one save. */
-	private void saveSoon()
-	{
-		save(1);
-	}
-
-	/** EDT. */
-	private void saveNow()
-	{
-		save(0);
-	}
-
-	/** EDT. The save scheduled, or null if there's nothing to save to. */
-	private ScheduledFuture<?> save(long delaySeconds)
-	{
-		if (!config.rememberChats())
-		{
-			return null;
-		}
-		if (loading)
-		{
-			saveAfterLoading = true;
-			return null;
-		}
-		if (fileState != ChatFile.State.OWNER)
-		{
-			return null;
-		}
-		// Taken now, on the EDT, where the chats live.
-		String json = ChatStore.toJson(gson, chats, current);
-		long number = ++saveCount;
-		if (pendingSave != null)
-		{
-			pendingSave.cancel(false);
-		}
-		pendingSave = executor.schedule(() -> chatFile.write(json, number, config::rememberChats),
-			closing ? 0 : delaySeconds, TimeUnit.SECONDS);
-		return pendingSave;
-	}
-
-	/** EDT. "Remember chats" is off: no saves waiting, and no saved copy left. */
-	private void deleteSaved()
-	{
-		if (pendingSave != null)
-		{
-			pendingSave.cancel(false);
-			pendingSave = null;
-		}
-		ChatFile file = chatFile;
-		executor.execute(file::delete);
-	}
-
-	/** RuneLite doesn't turn plugins off when it closes, so this is the last chance to save. */
+	/**
+	 * RuneLite doesn't turn plugins off when it closes, so this is the last chance to save. A reply on its way stops
+	 * as it does when AI Chat is turned off: what was shown of it is kept, and the question can be retried next time.
+	 */
 	@Subscribe
 	public void onClientShutdown(ClientShutdown e)
 	{
@@ -956,17 +942,26 @@ public class AiChatPlugin extends Plugin
 		{
 			SwingUtilities.invokeLater(() ->
 			{
-				closing = true;
-				saveNow();
+				stopAll(CLOSED);
+				saver.close();
 			});
 			return;
 		}
-		closing = true;
-		ScheduledFuture<?> saved = save(0);
+		stopAll(CLOSED);
+		ScheduledFuture<?> saved = saver.close();
 		if (saved != null)
 		{
 			// RuneLite waits for this (up to a few seconds) before exiting.
 			e.waitFor(saved);
+		}
+	}
+
+	/** EDT. Stops every chat's request, if any, with {@code note} saying why. */
+	private void stopAll(String note)
+	{
+		for (Chat c : chats)
+		{
+			runner.stop(c, note);
 		}
 	}
 
@@ -975,6 +970,15 @@ public class AiChatPlugin extends Plugin
 		if (panel != null)
 		{
 			panel.showNote(message);
+		}
+	}
+
+	/** A message can't go because AI Chat isn't set up: the panel points to its banner, which says why. */
+	private void notSetUp()
+	{
+		if (panel != null)
+		{
+			panel.notSetUp();
 		}
 	}
 
@@ -1027,117 +1031,15 @@ public class AiChatPlugin extends Plugin
 	/** Client thread. {@code chatName}: shown with the first message, or null. */
 	private void echo(String label, String chatName, String text)
 	{
-		for (String message : echoMessages(label, chatName, text, config.echoMaxChars()))
+		for (String message : GameChatEcho.echoMessages(label, chatName, text, config.echoMaxChars()))
 		{
 			queueChat(message);
 		}
 	}
 
-	/**
-	 * A reply as game chat: one message per paragraph or list item, which the game wraps to the chatbox's width.
-	 * Each starts with a marker drawn in the highlight colour (who it's from, or the list marker), so only the game's
-	 * own wrapped rows go unmarked. The model's text is escaped and never in the highlight colour: it can't draw a
-	 * marker, or pass for one of the game's red warnings.
-	 */
-	static List<String> echoMessages(String label, String chatName, String text, int maxChars)
-	{
-		List<String> messages = new ArrayList<>();
-		int left = maxChars;
-		boolean cut = false;
-		for (String raw : text.split("\\r\\n|[\\n\\r\u2028\u2029]"))
-		{
-			String line = chatText(raw);
-			if (line.isEmpty() || LAYOUT_ONLY.matcher(line).matches())
-			{
-				continue;
-			}
-			if (messages.size() == ECHO_MAX_MESSAGES || left <= 0)
-			{
-				cut = true;
-				break;
-			}
-			String marker = null;
-			Matcher item = LIST_ITEM.matcher(line);
-			if (item.matches())
-			{
-				marker = Character.isDigit(line.charAt(0)) ? item.group(1) : "-";
-				line = item.group(2);
-			}
-			if (line.length() > left && left < ECHO_MIN_PART && !messages.isEmpty())
-			{
-				cut = true;
-				break;
-			}
-			if (line.length() > left)
-			{
-				line = cutAtSpace(line, left) + " ...";
-				cut = true;
-			}
-			left -= line.length();
-			String lead;
-			if (messages.isEmpty())
-			{
-				lead = label + (chatName == null ? "" : " (" + ChatApi.shorten(chatName, 30) + ")") + ":"
-					+ (marker == null ? "" : " " + marker);
-			}
-			else
-			{
-				lead = marker != null ? marker : label + ":";
-			}
-			messages.add(new ChatMessageBuilder()
-				.append(ChatColorType.HIGHLIGHT).append(lead + " ")
-				.append(ChatColorType.NORMAL).append(line)
-				.build());
-			if (cut)
-			{
-				break;
-			}
-		}
-		if (messages.isEmpty())
-		{
-			messages.add(highlighted(label + ": (empty reply)"));
-		}
-		if (cut)
-		{
-			messages.add(highlighted("AI Chat: the full reply is in the side panel."));
-		}
-		return messages;
-	}
-
-	/** A line of a reply for the chat font: plain punctuation, no Markdown bold or headings, no overlong words. */
-	static String chatText(String raw)
-	{
-		String s = raw
-			.replace('\u2018', '\'').replace('\u2019', '\'')
-			.replace('\u201C', '"').replace('\u201D', '"')
-			.replace('\u2013', '-').replace('\u2014', '-')
-			.replace("\u2026", "...").replace("**", "")
-			.replaceAll("[\\s\\p{Z}\\p{Cc}]+", " ").trim()
-			.replaceFirst("^#{1,6} ", "");
-		StringBuilder out = new StringBuilder();
-		for (String word : s.split(" "))
-		{
-			out.append(out.length() == 0 ? "" : " ")
-				.append(word.length() <= ECHO_MAX_WORD ? word : word.substring(0, ECHO_MAX_WORD - 3) + "...");
-		}
-		return out.toString();
-	}
-
-	/** {@code s} cut to at most {@code max} characters, at a space if there's one in the second half. */
-	static String cutAtSpace(String s, int max)
-	{
-		int space = s.lastIndexOf(' ', max);
-		return (space > max / 2 ? s.substring(0, space) : s.substring(0, max)).trim();
-	}
-
-	private static String highlighted(String text)
-	{
-		return new ChatMessageBuilder().append(ChatColorType.HIGHLIGHT).append(text).build();
-	}
-
 	private void gameMessage(String text)
 	{
-		queueChat(highlighted(text));
+		queueChat(GameChatEcho.highlighted(text));
 	}
 
 	/** Thread-safe: the queue is flushed on the client thread. ChatMessageBuilder.append(String) escapes tags. */

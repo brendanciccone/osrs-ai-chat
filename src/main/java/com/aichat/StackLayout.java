@@ -10,10 +10,19 @@ import net.runelite.client.ui.PluginPanel;
 
 /**
  * Stacks visible children top to bottom at the container's full width. Unlike BoxLayout, each child's height is
- * asked for at that width, so wrapping text areas get the right height on the first layout instead of one line.
+ * asked for at that width, so wrapping text areas get the right height on the first layout instead of one line. A
+ * {@link Fitted} child can be narrower, such as a bubble around a short message: it's placed by its alignment (see
+ * {@link Component#getAlignmentX}: 0 left, 1 right).
  */
 class StackLayout implements LayoutManager
 {
+	/** A child that may be narrower than the container. */
+	interface Fitted
+	{
+		/** How wide it is when the container has {@code available} pixels for it: at most that. */
+		int fittedWidth(int available);
+	}
+
 	/** Width to assume before the sidebar has been laid out: the panel minus AiChatPanel's border. */
 	private static final int FALLBACK_WIDTH = PluginPanel.PANEL_WIDTH + PluginPanel.SCROLLBAR_WIDTH - 16;
 
@@ -46,7 +55,7 @@ class StackLayout implements LayoutManager
 		{
 			if (c.isVisible())
 			{
-				h += heightFor(c, w);
+				h += height(c, width(c, w));
 				n++;
 			}
 		}
@@ -75,10 +84,32 @@ class StackLayout implements LayoutManager
 			{
 				continue;
 			}
-			int h = heightFor(c, w);
-			c.setBounds(in.left, y, w, h);
+			int cw = width(c, w);
+			int h = height(c, cw);
+			int x = in.left + Math.round((w - cw) * Math.max(0f, Math.min(1f, c.getAlignmentX())));
+			c.setBounds(x, y, cw, h);
 			y += h + gap;
 		}
+	}
+
+	/** The width {@code c} gets when the container has {@code w} for it: all of it, unless it's {@link Fitted}. */
+	static int width(Component c, int w)
+	{
+		return c instanceof Fitted ? Math.max(0, Math.min(w, ((Fitted) c).fittedWidth(w))) : w;
+	}
+
+	/**
+	 * The height {@code c} gets at width {@code w}. A child that hasn't changed since the last layout (still valid, and
+	 * as wide) keeps the height it has: while a reply streams in, only its own bubble is measured again, not every
+	 * message above it.
+	 */
+	private static int height(Component c, int w)
+	{
+		if (c.isValid() && c.getWidth() == w && c.getHeight() > 0)
+		{
+			return c.getHeight();
+		}
+		return heightFor(c, w);
 	}
 
 	/** Preferred height of {@code c} when it is {@code w} wide. */
