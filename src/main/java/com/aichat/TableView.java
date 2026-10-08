@@ -38,8 +38,11 @@ import javax.swing.text.View;
  */
 final class TableView extends View
 {
-	/** Between the table's lines in the document: not a line break, which would make each line a paragraph. */
-	static final String ROW_BREAK = " ";
+	/**
+	 * Between the table's lines in the document: not a line break, which would make each line a paragraph. Unicode's
+	 * line separator, written as an escape so that it can't be lost unseen.
+	 */
+	static final String ROW_BREAK = "\u2028";
 	/** A table with more columns than this, that doesn't fit as it is, is drawn as cards. */
 	static final int MAX_COLUMNS = 3;
 	/** A column squeezed narrower than this is too narrow to read: the table is drawn as cards. */
