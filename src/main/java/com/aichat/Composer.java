@@ -32,7 +32,8 @@ import net.runelite.client.ui.ColorScheme;
  * Where the player writes, at the bottom of the panel as in chat apps: a short note when a message can't go yet, the
  * input box (saying "Ask anything..." while it's empty), and under it the model picker and one round button. The button
  * sends; while a reply is on its way it stops it, and while a long chat's summary is being made it skips that. Enter
- * sends and Shift+Enter starts a new line. Swing EDT only.
+ * sends and Shift+Enter starts a new line. The box grows with what's typed in it, up to a few lines, then scrolls.
+ * Swing EDT only.
  */
 final class Composer extends JPanel
 {
@@ -42,8 +43,10 @@ final class Composer extends JPanel
 	/** While a long chat is summarised before the question goes, the button skips the summary instead. */
 	static final String SKIP_TIP = "Skip the summary and send the whole chat this time. Press Stop after that to "
 		+ "stop the question too.";
-	/** The box's height: long messages scroll inside it instead of pushing the transcript away. */
-	private static final int INPUT_HEIGHT = 52;
+	/** The box is this many lines tall when it's empty, and grows with the text up to {@link #MAX_LINES}. */
+	static final int MIN_LINES = 2;
+	/** Past this, the text scrolls inside the box instead of pushing the transcript away. */
+	static final int MAX_LINES = 6;
 
 	/** What the button does now. */
 	enum Mode
@@ -62,17 +65,33 @@ final class Composer extends JPanel
 
 		/** The player chose {@code model} in the picker. */
 		void chooseModel(String model);
+
+		/** The input box is about to change height: the transcript above it gets shorter or taller. */
+		void inputResizing();
 	}
 
 	/** A short note above the box, such as why a message can't be sent yet; hidden when there's none. */
 	final JTextArea note = PanelStyle.textArea("");
 	final Prompt input = new Prompt();
+	/** The input box's scroll pane: as tall as the text in it, within {@link #MIN_LINES} and {@link #MAX_LINES}. */
+	final JScrollPane scroll = new JScrollPane(input)
+	{
+		@Override
+		public Dimension getPreferredSize()
+		{
+			Dimension d = super.getPreferredSize();
+			d.height = inputHeight();
+			return d;
+		}
+	};
 	final ModelPicker models;
 	final ActionButton action = new ActionButton();
 	private final RoundBox box = new RoundBox(new BorderLayout(), PanelStyle.FIELD_COLOR, PanelStyle.OUTLINE_COLOR);
 	private final Actions actions;
 	/** There's a chat to write in. */
 	private boolean usable = true;
+	/** The input box's height at the latest layout, to tell when the text makes it grow or shrink. */
+	private int shownHeight = -1;
 
 	Composer(Actions actions)
 	{
@@ -109,19 +128,19 @@ final class Composer extends JPanel
 			@Override
 			public void insertUpdate(DocumentEvent e)
 			{
-				refreshAction();
+				changed();
 			}
 
 			@Override
 			public void removeUpdate(DocumentEvent e)
 			{
-				refreshAction();
+				changed();
 			}
 
 			@Override
 			public void changedUpdate(DocumentEvent e)
 			{
-				refreshAction();
+				changed();
 			}
 		});
 		// The box's outline brightens while it has the caret, as text fields do.
@@ -139,12 +158,11 @@ final class Composer extends JPanel
 				box.setColors(PanelStyle.FIELD_COLOR, PanelStyle.OUTLINE_COLOR);
 			}
 		});
-		JScrollPane scroll = new JScrollPane(input);
 		scroll.setBorder(null);
 		scroll.setOpaque(false);
 		scroll.getViewport().setOpaque(false);
 		scroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
-		scroll.setPreferredSize(new Dimension(0, INPUT_HEIGHT));
+		scroll.getVerticalScrollBar().setUnitIncrement(lineHeight());
 		box.setBorder(new EmptyBorder(6, 8, 6, 4));
 		box.add(scroll, BorderLayout.CENTER);
 		add(box);
@@ -170,6 +188,36 @@ final class Composer extends JPanel
 		controls.add(action, BorderLayout.EAST);
 		add(controls);
 		refreshAction();
+	}
+
+	/** The text changed: Send may have something to send now, and the box may need another height. */
+	private void changed()
+	{
+		refreshAction();
+		int height = inputHeight();
+		if (height != shownHeight)
+		{
+			shownHeight = height;
+			// The scroll pane is laid out on its own (it's a validate root): the whole composer is, with the panel.
+			revalidate();
+			actions.inputResizing();
+		}
+	}
+
+	/**
+	 * How tall the input box is for the text in it, at its width: from {@link #MIN_LINES} to {@link #MAX_LINES} lines.
+	 * The text area wraps to the box's width, so its own preferred height is what the text needs.
+	 */
+	int inputHeight()
+	{
+		int line = lineHeight();
+		int text = input.getPreferredSize().height;
+		return Math.max(MIN_LINES * line, Math.min(MAX_LINES * line, text));
+	}
+
+	private int lineHeight()
+	{
+		return input.getFontMetrics(input.getFont()).getHeight();
 	}
 
 	private void send()

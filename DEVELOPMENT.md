@@ -56,9 +56,9 @@ server on 127.0.0.1 (`StandIn`), which serves canned answers (streams included) 
   `AiChatPanelTest`: the panel with a stand-in plugin (headless): Send, Stop and Skip (and a click as the button
   changes, which is ignored), the chat's title, the starters (they fill the box, never send), Retry only on the last
   message and the latest reply's Copy and Retry, the banner (and the note that points to it), the player's bubbles,
-  the reply on its way, when the transcript follows the chat down, Jump to the latest, and the lines that show more
-  when clicked. `ModelPickerTest`: what the model picker saves, and what it doesn't, and a long name shown from its
-  start. `SystemPromptTest`: the settings the assistant is told about, by the names `AiChatConfig` gives them
+  the reply on its way, when the transcript follows the chat down, Jump to the latest, the lines that show more when
+  clicked, and the input box growing with its text. `ModelPickerTest`: what the model picker saves, and what it
+  doesn't, and a long name shown from its start. `SystemPromptTest`: the settings the assistant is told about, by the names `AiChatConfig` gives them
   (`SettingName` reads those for the tests). `PrefixTest`: the `::ai` command.
 
 ## Code

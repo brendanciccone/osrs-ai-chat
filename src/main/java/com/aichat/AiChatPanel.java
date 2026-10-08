@@ -161,6 +161,17 @@ class AiChatPanel extends PluginPanel
 			{
 				host.chooseModel(model);
 			}
+
+			@Override
+			public void inputResizing()
+			{
+				// The transcript gets shorter or taller as the input box grows or shrinks: a player reading its end
+				// stays at the end, rather than have the latest lines slide under the box.
+				if (atBottom())
+				{
+					scrollToBottom();
+				}
+			}
 		});
 		// A starter only fills the input box: the player sends it.
 		empty = new EmptyChat(composer::fill);

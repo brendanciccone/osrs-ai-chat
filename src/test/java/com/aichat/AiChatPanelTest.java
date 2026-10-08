@@ -405,6 +405,76 @@ public class AiChatPanelTest
 		});
 	}
 
+	@Test
+	public void theInputBoxGrowsWithItsTextThenScrollsAndShrinksAfterSending() throws Throwable
+	{
+		onEdt(() ->
+		{
+			AiChatPanel panel = new AiChatPanel(host);
+			panel.setSize(225, 600);
+			layOut(panel);
+			Composer composer = panel.composer;
+			int line = composer.input.getFontMetrics(composer.input.getFont()).getHeight();
+			assertEquals("two lines to start with", 2 * line, composer.scroll.getHeight());
+
+			composer.input.setText("Three\nlines\nhere");
+			layOut(panel);
+			assertEquals(3 * line, composer.scroll.getHeight());
+			// A long line wraps in the narrow box, and the box grows for that too.
+			composer.input.setText("What should I bring to Vorkath with 99 Ranged and a dragon hunter crossbow, and "
+				+ "how many kills a trip?");
+			layOut(panel);
+			layOut(panel);
+			assertTrue(composer.scroll.getHeight() >= 3 * line);
+			composer.input.setText("1\n2\n3\n4\n5\n6\n7\n8\n9\n10");
+			layOut(panel);
+			assertEquals("at most six lines: then it scrolls", 6 * line, composer.scroll.getHeight());
+			assertTrue(composer.input.getPreferredSize().height > composer.scroll.getViewport().getHeight());
+
+			composer.action.doClick();
+			assertEquals("sent", "1\n2\n3\n4\n5\n6\n7\n8\n9\n10", host.sent.get(0));
+			layOut(panel);
+			assertEquals("back to two lines", 2 * line, composer.scroll.getHeight());
+		});
+	}
+
+	@Test
+	public void aGrowingInputBoxKeepsTheEndOfTheTranscriptInView() throws Throwable
+	{
+		AiChatPanel[] made = new AiChatPanel[1];
+		onEdt(() ->
+		{
+			for (int i = 0; i < 12; i++)
+			{
+				add(Chat.Role.USER, "Question " + i + ", long enough to wrap onto a second line in the narrow panel");
+				add(Chat.Role.ASSISTANT, "Answer " + i + ", long enough to wrap onto a second line in the narrow panel.");
+			}
+			made[0] = new AiChatPanel(host);
+			made[0].setSize(225, 400);
+			layOut(made[0]);
+			layOut(made[0]);
+		});
+		AiChatPanel panel = made[0];
+		JScrollBar bar = panel.transcriptScroll.getVerticalScrollBar();
+		onEdt(() ->
+		{
+			assertEquals("at the end", bar.getMaximum(), bar.getValue() + bar.getVisibleAmount());
+			panel.composer.input.setText("1\n2\n3\n4\n5");
+			layOut(panel);
+		});
+		onEdt(() ->
+		{
+			assertEquals("still at the end", bar.getMaximum(), bar.getValue() + bar.getVisibleAmount());
+			assertFalse(panel.jump.isVisible());
+
+			// Scrolled up to read: what's read stays where it is.
+			bar.setValue(100);
+			panel.composer.input.setText("");
+			layOut(panel);
+		});
+		onEdt(() -> assertEquals(100, bar.getValue()));
+	}
+
 	private static BufferedImage paint(JComponent c)
 	{
 		BufferedImage image = new BufferedImage(c.getWidth(), c.getHeight(),
