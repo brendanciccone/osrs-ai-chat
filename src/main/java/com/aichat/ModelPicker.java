@@ -1,6 +1,7 @@
 package com.aichat;
 
 import java.awt.BorderLayout;
+import java.awt.Color;
 import java.awt.Component;
 import java.awt.Container;
 import java.awt.Dimension;
@@ -35,6 +36,7 @@ import javax.swing.ListSelectionModel;
 import javax.swing.ScrollPaneConstants;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
 import javax.swing.border.EmptyBorder;
 
 /**
@@ -54,6 +56,8 @@ final class ModelPicker extends JPanel
 	static final int MENU_ROWS = 8;
 	/** The menu is at least this wide, even over a narrow picker. */
 	private static final int MENU_MIN_WIDTH = 180;
+	/** Where the text of the menu's note and of its rows starts: in line with its items' text. */
+	private static final int TEXT_INSET = 6;
 
 	/** What the picker asks the panel to do. */
 	interface Actions
@@ -150,12 +154,6 @@ final class ModelPicker extends JPanel
 		button.setToolTipText(tip);
 	}
 
-	/** The model that's set, as the picker shows it; empty for none. */
-	String current()
-	{
-		return current;
-	}
-
 	/** Whether a model's name is being typed, in place of the button. */
 	boolean isTyping()
 	{
@@ -227,8 +225,12 @@ final class ModelPicker extends JPanel
 		JMenuItem refresh = PanelStyle.menuItem(REFRESH);
 		for (JMenuItem item : new JMenuItem[]{type, refresh})
 		{
-			// The models' font, rather than the menus' own.
+			// As the models over them are: their font, colour and height, rather than a menu's own (smaller, greyer
+			// and closer together, which read as greyed out next to the models).
 			item.setFont(PanelStyle.TEXT_FONT);
+			item.setForeground(PanelStyle.TEXT_COLOR);
+			// As wide as it needs; the menu stretches it to its own width.
+			item.setPreferredSize(new Dimension(item.getPreferredSize().width, rowHeight()));
 		}
 		refresh.setEnabled(refreshProblem == null);
 		refresh.setToolTipText(refreshProblem == null ? "Ask the provider for its models again" : refreshProblem);
@@ -243,7 +245,7 @@ final class ModelPicker extends JPanel
 		JTextArea area = PanelStyle.textArea(note);
 		area.setFont(PanelStyle.SMALL_FONT);
 		area.setForeground(PanelStyle.MUTED_COLOR);
-		area.setBorder(new EmptyBorder(4, 8, 6, 8));
+		area.setBorder(new EmptyBorder(4, TEXT_INSET, 6, 8));
 		area.setFocusable(false);
 		// Its height for the menu's width: wrapped, not one long line that widens the menu.
 		area.setSize(width, Short.MAX_VALUE);
@@ -269,7 +271,7 @@ final class ModelPicker extends JPanel
 		list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
 		list.setOpaque(false);
 		list.setFocusable(false);
-		list.setFixedCellHeight(list.getFontMetrics(PanelStyle.TEXT_FONT).getHeight() + 10);
+		list.setFixedCellHeight(rowHeight());
 		list.setVisibleRowCount(Math.min(MENU_ROWS, choices.size()));
 		list.setSelectedIndex(choices.indexOf(current));
 		MouseAdapter mouse = new MouseAdapter()
@@ -308,9 +310,21 @@ final class ModelPicker extends JPanel
 		// The menu's width, the scroll bar's included when there is one.
 		int bar = choices.size() > MENU_ROWS ? scroll.getVerticalScrollBar().getPreferredSize().width : 0;
 		list.setFixedCellWidth(width - bar);
-		// Opening on the model that's set, wherever it is in a long list.
-		list.ensureIndexIsVisible(Math.max(0, list.getSelectedIndex()));
+		// Opening on the model that's set when it's further down a long list than the rows shown reach, as the last of
+		// them; from the top otherwise, so the models over it (the newest, for Anthropic) show too. Set as a position,
+		// as the list has no height yet to scroll in.
+		int set = list.getSelectedIndex();
+		if (set >= MENU_ROWS)
+		{
+			scroll.getViewport().setViewPosition(new Point(0, (set - MENU_ROWS + 1) * list.getFixedCellHeight()));
+		}
 		return scroll;
+	}
+
+	/** How tall each of the menu's rows is: models and items alike. */
+	private int rowHeight()
+	{
+		return getFontMetrics(PanelStyle.TEXT_FONT).getHeight() + 10;
 	}
 
 	/** The row at {@code p}, or -1 when it isn't on one. */
@@ -428,7 +442,7 @@ final class ModelPicker extends JPanel
 			name.setFont(PanelStyle.TEXT_FONT);
 			name.setForeground(PanelStyle.TEXT_COLOR);
 			// The names line up with the menu's items under them.
-			setBorder(new EmptyBorder(0, 6, 0, 8));
+			setBorder(new EmptyBorder(0, TEXT_INSET, 0, 8));
 			add(name, BorderLayout.CENTER);
 			add(tick, BorderLayout.EAST);
 		}
@@ -440,7 +454,9 @@ final class ModelPicker extends JPanel
 			name.setText(value);
 			tick.setIcon(Objects.equals(value, current) ? ticked : null);
 			setOpaque(selected);
-			setBackground(PanelStyle.BUBBLE_COLOR);
+			// Lit as the menu's items are under the mouse.
+			Color lit = UIManager.getColor("MenuItem.selectionBackground");
+			setBackground(lit != null ? lit : PanelStyle.BUBBLE_COLOR);
 			// The whole name, for one too long for the menu; the list shows the row's tooltip as its own.
 			setToolTipText(value);
 			return this;

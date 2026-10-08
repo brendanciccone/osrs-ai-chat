@@ -19,6 +19,7 @@ import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
 import javax.swing.SwingUtilities;
 import org.junit.Test;
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -178,6 +179,50 @@ public class ModelPickerTest
 			assertEquals(ModelPicker.TYPE, ((JMenuItem) parts[2]).getText());
 			assertEquals(ModelPicker.REFRESH, ((JMenuItem) parts[3]).getText());
 			assertTrue(item(menu, ModelPicker.REFRESH).isEnabled());
+			// Typing a name and refreshing look like the models over them, not greyed out or squeezed under them.
+			for (String text : new String[]{ModelPicker.TYPE, ModelPicker.REFRESH})
+			{
+				JMenuItem item = item(menu, text);
+				assertEquals(PanelStyle.TEXT_COLOR, item.getForeground());
+				assertEquals(PanelStyle.TEXT_FONT, item.getFont());
+				assertEquals(list.getFixedCellHeight(), item.getPreferredSize().height);
+			}
+		});
+	}
+
+	/** The rows of {@code menu}'s list that show when it's laid out as it opens: the first and the last. */
+	private static int[] shownRows(JPopupMenu menu)
+	{
+		JList<String> list = models(menu);
+		JScrollPane scroll = (JScrollPane) list.getParent().getParent();
+		menu.setSize(menu.getPreferredSize());
+		menu.doLayout();
+		scroll.doLayout();
+		scroll.getViewport().doLayout();
+		return new int[]{list.getFirstVisibleIndex(), list.getLastVisibleIndex()};
+	}
+
+	@Test
+	public void theMenuOpensWithTheModelThatsSetInViewAndTheOnesOverIt() throws Throwable
+	{
+		ModelPicker p = picker();
+		onEdt(() ->
+		{
+			List<String> twelve = new ArrayList<>();
+			for (int i = 0; i < 12; i++)
+			{
+				twelve.add("claude-model-" + i);
+			}
+			// Near the top: the list from its top, so the newer models over the one that's set show too.
+			p.show("claude-model-1", twelve, TIP, null, null);
+			assertArrayEquals(new int[]{0, ModelPicker.MENU_ROWS - 1}, shownRows(p.menu()));
+			p.show("claude-model-" + (ModelPicker.MENU_ROWS - 1), twelve, TIP, null, null);
+			assertArrayEquals(new int[]{0, ModelPicker.MENU_ROWS - 1}, shownRows(p.menu()));
+			// Further down than the rows shown reach: it's the last of them.
+			p.show("claude-model-9", twelve, TIP, null, null);
+			assertArrayEquals(new int[]{10 - ModelPicker.MENU_ROWS, 9}, shownRows(p.menu()));
+			p.show("claude-model-11", twelve, TIP, null, null);
+			assertArrayEquals(new int[]{12 - ModelPicker.MENU_ROWS, 11}, shownRows(p.menu()));
 		});
 	}
 
