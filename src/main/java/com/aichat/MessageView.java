@@ -6,6 +6,7 @@ import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
+import java.awt.Insets;
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.Shape;
@@ -256,8 +257,13 @@ class MessageView extends JTextPane
 	{
 		if (naturalWidth < 0)
 		{
-			// The views' unwrapped width, which their wrapping doesn't change. One more pixel for what rounding loses.
-			naturalWidth = super.getPreferredSize().width + 1;
+			// The views' unwrapped width, which their wrapping doesn't change. Asked of the views themselves, not the
+			// look and feel: its preferred size can be wider than the text (FlatLaf, which RuneLite's is built on, makes
+			// every text component at least 64 pixels wide), which would put "ok" in a bubble far too big for it. One
+			// more pixel for what rounding loses.
+			Insets in = getInsets();
+			float text = getUI().getRootView(this).getPreferredSpan(View.X_AXIS);
+			naturalWidth = (int) Math.ceil(text) + in.left + in.right + 1;
 		}
 		return naturalWidth;
 	}

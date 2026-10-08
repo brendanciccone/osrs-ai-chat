@@ -2,6 +2,7 @@ package com.aichat;
 
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.Point;
@@ -9,9 +10,11 @@ import java.awt.event.MouseEvent;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.lang.reflect.InvocationTargetException;
+import javax.swing.JComponent;
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
 import javax.swing.border.EmptyBorder;
+import javax.swing.plaf.basic.BasicTextPaneUI;
 import javax.swing.text.AttributeSet;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.Document;
@@ -423,6 +426,31 @@ public class MessageViewTest
 			// A box that wide holds it without a wrap.
 			v.setPlainText("How do I get a whip?");
 			assertEquals(line, StackLayout.heightFor(v, v.naturalWidth()));
+		});
+	}
+
+	@Test
+	public void itsWidthIsTheTextsWhateverTheLookAndFeelAdds() throws Throwable
+	{
+		onEdt(() ->
+		{
+			int hugged = one("ok").naturalWidth();
+			MessageView v = new MessageView();
+			// As FlatLaf, which RuneLite's look and feel is built on, does: text components are at least 64 pixels wide.
+			v.setUI(new BasicTextPaneUI()
+			{
+				@Override
+				public Dimension getPreferredSize(JComponent c)
+				{
+					Dimension d = super.getPreferredSize(c);
+					d.width = Math.max(d.width, 64);
+					return d;
+				}
+			});
+			v.setPlainText("ok");
+			assertTrue("the look and feel's minimum", v.getPreferredSize().width >= 64);
+			assertEquals("the bubble still hugs the text", hugged, v.naturalWidth());
+			assertTrue(hugged < 30);
 		});
 	}
 
