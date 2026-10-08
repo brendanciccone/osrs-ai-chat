@@ -66,6 +66,9 @@ final class Composer extends JPanel
 		/** The player chose {@code model} in the picker. */
 		void chooseModel(String model);
 
+		/** The player asked for the provider's list of models again. */
+		void refreshModels();
+
 		/** The input box is about to change height: the transcript above it gets shorter or taller. */
 		void inputResizing();
 	}
@@ -97,7 +100,20 @@ final class Composer extends JPanel
 	{
 		super(new StackLayout(6));
 		this.actions = actions;
-		models = new ModelPicker(actions::chooseModel);
+		models = new ModelPicker(new ModelPicker.Actions()
+		{
+			@Override
+			public void choose(String model)
+			{
+				actions.chooseModel(model);
+			}
+
+			@Override
+			public void refresh()
+			{
+				actions.refreshModels();
+			}
+		});
 		setOpaque(false);
 
 		note.setFont(PanelStyle.SMALL_FONT);

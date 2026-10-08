@@ -402,6 +402,19 @@ public class AiChatPlugin extends Plugin
 			sortModels());
 	}
 
+	/**
+	 * "Refresh list" in the model picker's menu: the list is asked for again, quietly, as the player asked. Never while
+	 * AI requests are off, or before the provider can be reached.
+	 */
+	void refreshModels()
+	{
+		if (tester.refresh(testProblem(), provider.connection(),
+			() -> provider.testApi(testHttp, gson, executor, refusedOptions), sortModels()))
+		{
+			panel.refreshAll();
+		}
+	}
+
 	/** Anthropic lists the newest models first, which is worth keeping; the others list theirs in no useful order. */
 	private boolean sortModels()
 	{
@@ -725,6 +738,18 @@ public class AiChatPlugin extends Plugin
 		{
 			return ConnectionCheck.pickerTip(tester.check(provider.connection()), testProblem(), provider.service(),
 				provider.model());
+		}
+
+		@Override
+		public String modelNote()
+		{
+			return ConnectionCheck.listNote(tester.check(provider.connection()), testProblem(), provider.service());
+		}
+
+		@Override
+		public void refreshModels()
+		{
+			AiChatPlugin.this.refreshModels();
 		}
 
 		@Override

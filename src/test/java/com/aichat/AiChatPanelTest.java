@@ -15,7 +15,9 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import javax.swing.JComponent;
+import javax.swing.JMenuItem;
 import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
 import javax.swing.JScrollBar;
 import javax.swing.SwingUtilities;
 import javax.swing.text.StyleConstants;
@@ -49,6 +51,7 @@ public class AiChatPanelTest
 		final List<Chat.Message> retried = new ArrayList<>();
 		final List<String> chosen = new ArrayList<>();
 		int stops;
+		int refreshes;
 		boolean accept = true;
 
 		FakeHost()
@@ -109,6 +112,18 @@ public class AiChatPanelTest
 		public String modelTip()
 		{
 			return "The model new messages go to.";
+		}
+
+		@Override
+		public String modelNote()
+		{
+			return null;
+		}
+
+		@Override
+		public void refreshModels()
+		{
+			refreshes++;
 		}
 
 		@Override
@@ -389,6 +404,45 @@ public class AiChatPanelTest
 		{
 			assertEquals("followed", bar.getMaximum(), bar.getValue() + bar.getVisibleAmount());
 			assertFalse(panel.jump.isVisible());
+		});
+	}
+
+	@Test
+	public void theModelMenuChoosesAndRefreshesThroughThePlugin() throws Throwable
+	{
+		onEdt(() ->
+		{
+			AiChatPanel panel = new AiChatPanel(host);
+			ModelPicker picker = panel.composer.models;
+			assertEquals("claude-opus-5-5", picker.button.getText());
+			JPopupMenu menu = picker.menu();
+			for (Component c : menu.getComponents())
+			{
+				if (c instanceof JMenuItem && ModelPicker.REFRESH.equals(((JMenuItem) c).getText()))
+				{
+					assertTrue(c.isEnabled());
+					((JMenuItem) c).doClick();
+				}
+			}
+			assertEquals(1, host.refreshes);
+			picker.startTyping();
+			picker.field.setText("claude-haiku-4-5");
+			picker.field.postActionEvent();
+		});
+		// The choice reaches the plugin a moment later, once the picker's own event is over.
+		onEdt(() -> assertEquals(Arrays.asList("claude-haiku-4-5"), host.chosen));
+		onEdt(() ->
+		{
+			// Refresh list asks the provider, as Test connection does: not while that can't be done.
+			host.problem = "Turn on \"Enable AI requests\" in the AI Chat settings.";
+			AiChatPanel panel = new AiChatPanel(host);
+			for (Component c : panel.composer.models.menu().getComponents())
+			{
+				if (c instanceof JMenuItem && ModelPicker.REFRESH.equals(((JMenuItem) c).getText()))
+				{
+					assertFalse(c.isEnabled());
+				}
+			}
 		});
 	}
 

@@ -1,247 +1,447 @@
 package com.aichat;
 
+import java.awt.BorderLayout;
 import java.awt.Component;
+import java.awt.Container;
+import java.awt.Dimension;
+import java.awt.FontMetrics;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.Insets;
+import java.awt.Point;
+import java.awt.RenderingHints;
+import java.awt.event.ActionEvent;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.function.Consumer;
-import javax.swing.DefaultComboBoxModel;
-import javax.swing.DefaultListCellRenderer;
-import javax.swing.JComboBox;
+import java.util.Objects;
+import javax.swing.AbstractAction;
+import javax.swing.JLabel;
 import javax.swing.JList;
+import javax.swing.JMenuItem;
+import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
+import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.JToolTip;
+import javax.swing.KeyStroke;
+import javax.swing.ListCellRenderer;
+import javax.swing.ListSelectionModel;
+import javax.swing.ScrollPaneConstants;
+import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
-import javax.swing.event.PopupMenuEvent;
-import javax.swing.event.PopupMenuListener;
-import javax.swing.plaf.basic.BasicComboBoxEditor;
-import javax.swing.text.JTextComponent;
+import javax.swing.border.EmptyBorder;
 
 /**
- * The model picker next to Send: the models the provider offers, with the one that's set always there and selected.
- * Choosing one from the list, or typing a name and pressing Enter (or leaving the box), sets the provider's model as
- * the settings would. Typing alone saves nothing, and neither does moving through the open list: only closing it on a
- * model does. Changes the panel makes itself (a model changed in the settings, a list that came in) are never taken
- * for the player's. Plain text only, list and box alike: model names come from the provider. Swing EDT only.
+ * The model picker next to Send, as chat apps have it: the model's name and a chevron, with no box, that opens a menu
+ * of the provider's models (the one that's set ticked), then "Type a model name…" and "Refresh list". Choosing a model,
+ * or typing a name and pressing Enter, sets the provider's model as the settings would. Nothing else does: not what
+ * the panel shows itself (a model changed in the settings, a list that came in), not Escape, not leaving the box. Plain
+ * text only, menu, box and tooltips alike: model names come from the provider. Swing EDT only.
  */
-final class ModelPicker extends JComboBox<String>
+final class ModelPicker extends JPanel
 {
-	private final DefaultComboBoxModel<String> items;
-	/** Hears the player's choice, a moment later on the EDT (it changes the settings, which redraws the panel). */
-	private final Consumer<String> chosen;
-	/** The panel is filling the list in: what that selects isn't the player's choice. */
-	private boolean updating;
-	/** The list is open: moving through it isn't a choice until it closes. */
-	private boolean open;
-	/** It's closing with Escape or a click elsewhere: whatever it was on isn't a choice. */
-	private boolean cancelled;
-	/** The model that's set, as far as the picker knows: what it shows when nothing's being chosen. */
-	private String current = "";
-	private List<String> shown = Collections.emptyList();
+	static final String TYPE = "Type a model name…";
+	static final String REFRESH = "Refresh list";
+	/** On the button while no model is set. */
+	static final String NONE = "Choose a model";
+	/** Models the menu shows before its list scrolls. */
+	static final int MENU_ROWS = 8;
+	/** The menu is at least this wide, even over a narrow picker. */
+	private static final int MENU_MIN_WIDTH = 180;
 
-	ModelPicker(Consumer<String> chosen)
+	/** What the picker asks the panel to do. */
+	interface Actions
 	{
-		super(new DefaultComboBoxModel<>());
-		this.items = (DefaultComboBoxModel<String>) getModel();
-		this.chosen = chosen;
-		setEditor(new PlainEditor());
-		setRenderer(new PlainRenderer());
-		setEditable(true);
-		setFont(PanelStyle.SMALL_FONT);
-		setBackground(PanelStyle.FIELD_COLOR);
-		setForeground(PanelStyle.TEXT_COLOR);
-		setMaximumRowCount(12);
-		addActionListener(e ->
+		/** The player chose {@code model}: the provider's model becomes it. */
+		void choose(String model);
+
+		/** The player asked for the provider's list of models again. */
+		void refresh();
+	}
+
+	/** The model's name and a chevron: opens the menu. */
+	final FlatButton button = new FlatButton(NONE, new Glyph(Glyph.Shape.CHEVRON_DOWN, 9), null);
+	/** Where a model's name is typed, in place of the button, after "Type a model name…". */
+	final NameField field = new NameField();
+	private final RoundBox fieldBox = new RoundBox(new BorderLayout(), PanelStyle.FIELD_COLOR, PanelStyle.OUTLINE_COLOR);
+	/** Hears the player's choice, a moment later on the EDT (it changes the settings, which redraws the panel). */
+	private final Actions actions;
+	/** The model that's set, as far as the picker knows. */
+	private String current = "";
+	private List<String> choices = Collections.emptyList();
+	/** Why the list is short, for the menu; null when it isn't. */
+	private String note;
+	/** Why Refresh list can't ask the provider now, or null when it can. */
+	private String refreshProblem;
+
+	ModelPicker(Actions actions)
+	{
+		super(null);
+		this.actions = actions;
+		setOpaque(false);
+		button.setFont(PanelStyle.SMALL_FONT);
+		button.setForeground(PanelStyle.MUTED_COLOR);
+		// The chevron after the name, as a menu button's.
+		button.setHorizontalTextPosition(SwingConstants.LEADING);
+		button.setHorizontalAlignment(SwingConstants.LEFT);
+		button.setIconTextGap(4);
+		button.setBorder(new EmptyBorder(4, 6, 4, 6));
+		button.addActionListener(e -> openMenu());
+		add(button);
+
+		field.setFont(PanelStyle.SMALL_FONT);
+		field.setForeground(PanelStyle.TEXT_COLOR);
+		field.setCaretColor(PanelStyle.TEXT_COLOR);
+		field.setOpaque(false);
+		field.setBorder(new EmptyBorder(3, 6, 3, 6));
+		// Enter saves the name; Escape, or going elsewhere, puts the button back as it was.
+		field.addActionListener(e -> typed());
+		field.getInputMap().put(KeyStroke.getKeyStroke("ESCAPE"), "ai-chat-cancel");
+		field.getActionMap().put("ai-chat-cancel", new AbstractAction()
 		{
-			// Enter in the box, or the box left with something new typed in it, comes as "comboBoxEdited".
-			if (!updating && (!open || "comboBoxEdited".equals(e.getActionCommand())))
+			@Override
+			public void actionPerformed(ActionEvent e)
 			{
-				choose(getSelectedItem());
+				stopTyping();
 			}
 		});
-		addPopupMenuListener(new PopupMenuListener()
+		field.addFocusListener(new FocusAdapter()
 		{
 			@Override
-			public void popupMenuWillBecomeVisible(PopupMenuEvent e)
+			public void focusLost(FocusEvent e)
 			{
-				open = true;
-				cancelled = false;
-			}
-
-			@Override
-			public void popupMenuWillBecomeInvisible(PopupMenuEvent e)
-			{
-				open = false;
-				if (updating)
+				// Not when the focus is only away for a moment, such as in another window.
+				if (!e.isTemporary())
 				{
-					return;
+					stopTyping();
 				}
-				if (cancelled)
-				{
-					select(current);
-				}
-				else
-				{
-					choose(getSelectedItem());
-				}
-			}
-
-			@Override
-			public void popupMenuCanceled(PopupMenuEvent e)
-			{
-				cancelled = true;
 			}
 		});
+		fieldBox.add(field, BorderLayout.CENTER);
+		fieldBox.setVisible(false);
+		add(fieldBox);
 	}
 
 	/**
-	 * Shows {@code model}, the one that's set, among {@code choices} (see {@link ConnectionCheck#choices}), with
-	 * {@code tip} saying how to choose. Leaves the box alone when nothing changed, so a redraw of the panel doesn't wipe
-	 * out a name being typed. The look and feel passes the tooltip on to the box and the arrow button, whose tooltips
-	 * can't be told not to read HTML: it's always AI Chat's own sentence, starting with its own words, so they never do
-	 * (see {@link ConnectionCheck#pickerTip}).
+	 * Shows {@code model}, the one that's set, with {@code choices} for the menu (see {@link ConnectionCheck#choices}),
+	 * {@code tip} saying how to choose (see {@link ConnectionCheck#pickerTip}), {@code note} saying why the list is
+	 * short or null, and {@code refreshProblem} saying why the list can't be asked for again now, or null. Never taken
+	 * for the player's choice, and leaves a name being typed alone.
 	 */
-	void show(String model, List<String> choices, String tip)
+	void show(String model, List<String> choices, String tip, String note, String refreshProblem)
 	{
-		setToolTipText(tip);
 		String m = model == null ? "" : model.trim();
-		if (m.equals(current) && choices.equals(shown))
+		if (!m.equals(current) || !button.getText().equals(m.isEmpty() ? NONE : m))
 		{
-			return;
+			current = m;
+			button.setText(m.isEmpty() ? NONE : m);
+			revalidate();
+			repaint();
 		}
-		current = m;
-		shown = new ArrayList<>(choices);
-		String typing = typing();
-		updating = true;
-		try
-		{
-			items.removeAllElements();
-			for (String c : choices)
-			{
-				items.addElement(c);
-			}
-			select(m);
-			if (typing != null)
-			{
-				getEditor().setItem(typing);
-			}
-		}
-		finally
-		{
-			updating = false;
-		}
+		this.choices = new ArrayList<>(choices);
+		this.note = note;
+		this.refreshProblem = refreshProblem;
+		button.setToolTipText(tip);
 	}
 
-	/** What the player is typing in the box right now, or null when they aren't. */
-	private String typing()
+	/** The model that's set, as the picker shows it; empty for none. */
+	String current()
 	{
-		Component box = getEditor().getEditorComponent();
-		Object text = getEditor().getItem();
-		return box.isFocusOwner() && text != null && !text.toString().equals(current) ? text.toString() : null;
+		return current;
 	}
 
-	private void select(String model)
+	/** Whether a model's name is being typed, in place of the button. */
+	boolean isTyping()
 	{
-		boolean was = updating;
-		updating = true;
-		try
+		return fieldBox.isVisible();
+	}
+
+	@Override
+	public void doLayout()
+	{
+		int w = getWidth();
+		int h = getHeight();
+		// As wide as the name needs, so the chevron comes right after it; a long name is cut at its end, with the whole
+		// of it in the tooltip.
+		Dimension b = button.getPreferredSize();
+		button.setBounds(0, (h - b.height) / 2, Math.min(b.width, w), b.height);
+		Dimension f = fieldBox.getPreferredSize();
+		fieldBox.setBounds(0, (h - f.height) / 2, w, f.height);
+	}
+
+	@Override
+	public Dimension getPreferredSize()
+	{
+		Dimension b = button.getPreferredSize();
+		return new Dimension(b.width, Math.max(b.height, fieldBox.getPreferredSize().height));
+	}
+
+	@Override
+	public Dimension getMinimumSize()
+	{
+		// A long name gives way to the button beside it.
+		return new Dimension(0, getPreferredSize().height);
+	}
+
+	// ------------------------------------------------------------------
+	// The menu
+	// ------------------------------------------------------------------
+
+	private void openMenu()
+	{
+		JPopupMenu menu = menu();
+		// Over the composer, from its left edge: the picker sits at the bottom of the panel.
+		menu.show(this, 0, -menu.getPreferredSize().height - 2);
+	}
+
+	/**
+	 * The menu: why the list is short (when it is), the models, then "Type a model name…" and "Refresh list". Made
+	 * again each time it opens, from what the picker was last shown.
+	 */
+	JPopupMenu menu()
+	{
+		JPopupMenu menu = new JPopupMenu();
+		Container row = getParent();
+		int width = Math.max(MENU_MIN_WIDTH, row != null ? row.getWidth() : getWidth());
+		Insets in = menu.getInsets();
+		int inner = width - in.left - in.right;
+		if (note != null)
 		{
-			items.setSelectedItem(model.isEmpty() ? null : model);
-			getEditor().setItem(model);
-			JTextComponent box = (JTextComponent) getEditor().getEditorComponent();
-			if (!box.isFocusOwner())
+			menu.add(noteArea(note, inner));
+		}
+		if (!choices.isEmpty())
+		{
+			menu.add(modelList(menu, inner));
+			menu.addSeparator();
+		}
+		JMenuItem type = PanelStyle.menuItem(TYPE);
+		type.setToolTipText("Type the name of a model that isn't listed, as the provider gives it");
+		type.addActionListener(e -> startTyping());
+		menu.add(type);
+		JMenuItem refresh = PanelStyle.menuItem(REFRESH);
+		for (JMenuItem item : new JMenuItem[]{type, refresh})
+		{
+			// The models' font, rather than the menus' own.
+			item.setFont(PanelStyle.TEXT_FONT);
+		}
+		refresh.setEnabled(refreshProblem == null);
+		refresh.setToolTipText(refreshProblem == null ? "Ask the provider for its models again" : refreshProblem);
+		refresh.addActionListener(e -> actions.refresh());
+		menu.add(refresh);
+		return menu;
+	}
+
+	/** A short, muted, wrapped line of plain text at the top of the menu. */
+	private static JTextArea noteArea(String note, int width)
+	{
+		JTextArea area = PanelStyle.textArea(note);
+		area.setFont(PanelStyle.SMALL_FONT);
+		area.setForeground(PanelStyle.MUTED_COLOR);
+		area.setBorder(new EmptyBorder(4, 8, 6, 8));
+		area.setFocusable(false);
+		// Its height for the menu's width: wrapped, not one long line that widens the menu.
+		area.setSize(width, Short.MAX_VALUE);
+		area.setPreferredSize(new Dimension(width, area.getPreferredSize().height));
+		return area;
+	}
+
+	/** The models, the one that's set ticked; it scrolls past {@link #MENU_ROWS}. */
+	private JScrollPane modelList(JPopupMenu menu, int width)
+	{
+		JList<String> list = new JList<String>(choices.toArray(new String[0]))
+		{
+			@Override
+			public JToolTip createToolTip()
 			{
-				// The start of a long name, as the list shows it: the box is narrow, and would show its end.
-				box.setCaretPosition(0);
+				JToolTip tip = super.createToolTip();
+				tip.putClientProperty("html.disable", Boolean.TRUE);
+				return tip;
 			}
-		}
-		finally
+		};
+		list.setName("models");
+		list.setCellRenderer(new ModelRow());
+		list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+		list.setOpaque(false);
+		list.setFocusable(false);
+		list.setFixedCellHeight(list.getFontMetrics(PanelStyle.TEXT_FONT).getHeight() + 10);
+		list.setVisibleRowCount(Math.min(MENU_ROWS, choices.size()));
+		list.setSelectedIndex(choices.indexOf(current));
+		MouseAdapter mouse = new MouseAdapter()
 		{
-			updating = was;
-		}
+			@Override
+			public void mouseMoved(MouseEvent e)
+			{
+				// The row under the mouse lights up, as a menu's items do.
+				int i = rowAt(list, e.getPoint());
+				if (i >= 0)
+				{
+					list.setSelectedIndex(i);
+				}
+			}
+
+			@Override
+			public void mouseReleased(MouseEvent e)
+			{
+				int i = rowAt(list, e.getPoint());
+				if (i >= 0 && SwingUtilities.isLeftMouseButton(e))
+				{
+					menu.setVisible(false);
+					choose(list.getModel().getElementAt(i));
+				}
+			}
+		};
+		list.addMouseListener(mouse);
+		list.addMouseMotionListener(mouse);
+		JScrollPane scroll = new JScrollPane(list);
+		scroll.setName("models");
+		scroll.setBorder(null);
+		scroll.setOpaque(false);
+		scroll.getViewport().setOpaque(false);
+		scroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+		scroll.getVerticalScrollBar().setUnitIncrement(list.getFixedCellHeight());
+		// The menu's width, the scroll bar's included when there is one.
+		int bar = choices.size() > MENU_ROWS ? scroll.getVerticalScrollBar().getPreferredSize().width : 0;
+		list.setFixedCellWidth(width - bar);
+		// Opening on the model that's set, wherever it is in a long list.
+		list.ensureIndexIsVisible(Math.max(0, list.getSelectedIndex()));
+		return scroll;
+	}
+
+	/** The row at {@code p}, or -1 when it isn't on one. */
+	private static int rowAt(JList<String> list, Point p)
+	{
+		int i = list.locationToIndex(p);
+		return i >= 0 && list.getCellBounds(i, i).contains(p) ? i : -1;
 	}
 
 	/** The player chose {@code item}: the provider's model becomes it, unless it's blank or already set. */
-	private void choose(Object item)
+	private void choose(String item)
 	{
-		String model = item == null ? "" : item.toString().trim();
-		if (model.isEmpty())
-		{
-			// Nothing to set: back to the model that is.
-			select(current);
-			return;
-		}
-		if (model.equals(current))
+		String model = item == null ? "" : item.trim();
+		if (model.isEmpty() || model.equals(current))
 		{
 			return;
 		}
 		current = model;
-		// Not from inside the combo box's own event: setting the model redraws the panel, this picker included.
-		SwingUtilities.invokeLater(() -> chosen.accept(model));
+		button.setText(model);
+		revalidate();
+		// Not from inside the menu's or the box's own event: setting the model redraws the panel, this picker included.
+		SwingUtilities.invokeLater(() -> actions.choose(model));
 	}
 
-	@Override
-	public JToolTip createToolTip()
+	// ------------------------------------------------------------------
+	// Typing a name
+	// ------------------------------------------------------------------
+
+	/** "Type a model name…": a small box in the button's place, with the model that's set in it, selected. */
+	void startTyping()
 	{
-		JToolTip tip = super.createToolTip();
-		tip.putClientProperty("html.disable", Boolean.TRUE);
-		return tip;
+		field.setText(current);
+		field.selectAll();
+		button.setVisible(false);
+		fieldBox.setVisible(true);
+		revalidate();
+		repaint();
+		// Once the menu that asked for this has closed, and given the focus back.
+		SwingUtilities.invokeLater(field::requestFocusInWindow);
 	}
 
-	/** The box: a text field, which shows text as it is, as does its tooltip. */
-	private static final class PlainEditor extends BasicComboBoxEditor
+	/** Enter: the name typed is chosen (nothing, if it's blank or the model that's set). */
+	private void typed()
 	{
-		@Override
-		protected JTextField createEditorComponent()
+		String name = field.getText();
+		stopTyping();
+		choose(name);
+	}
+
+	/** The button again, in the box's place. */
+	void stopTyping()
+	{
+		if (!fieldBox.isVisible())
 		{
-			JTextField field = new JTextField("", 9)
+			return;
+		}
+		fieldBox.setVisible(false);
+		button.setVisible(true);
+		revalidate();
+		repaint();
+	}
+
+	/** The box a name is typed in: plain text, as is its tooltip, saying what it's for while it's empty. */
+	static final class NameField extends JTextField
+	{
+		NameField()
+		{
+			putClientProperty("html.disable", Boolean.TRUE);
+			setToolTipText("Enter sets the model; Escape goes back");
+		}
+
+		@Override
+		protected void paintComponent(Graphics g)
+		{
+			super.paintComponent(g);
+			if (getDocument().getLength() > 0)
 			{
-				@Override
-				public JToolTip createToolTip()
-				{
-					JToolTip tip = super.createToolTip();
-					tip.putClientProperty("html.disable", Boolean.TRUE);
-					return tip;
-				}
-			};
-			field.putClientProperty("html.disable", Boolean.TRUE);
-			field.addFocusListener(new FocusAdapter()
-			{
-				@Override
-				public void focusLost(FocusEvent e)
-				{
-					// Left with the end of a long name in view, where the typing was: back to its start. (Not when
-					// the focus is only away for a moment, such as in another window: the caret is kept for then.)
-					if (!e.isTemporary())
-					{
-						field.setCaretPosition(0);
-					}
-				}
-			});
-			field.setBorder(null);
-			field.setBackground(PanelStyle.FIELD_COLOR);
-			field.setForeground(PanelStyle.TEXT_COLOR);
-			field.setCaretColor(PanelStyle.TEXT_COLOR);
-			return field;
+				return;
+			}
+			Graphics2D g2 = (Graphics2D) g.create();
+			g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+			g2.setColor(PanelStyle.MUTED_COLOR);
+			g2.setFont(getFont());
+			FontMetrics fm = g2.getFontMetrics();
+			Insets in = getInsets();
+			g2.drawString(TYPE, in.left, in.top + (getHeight() - in.top - in.bottom + fm.getAscent() - fm.getDescent()) / 2);
+			g2.dispose();
+		}
+
+		@Override
+		public JToolTip createToolTip()
+		{
+			JToolTip tip = super.createToolTip();
+			tip.putClientProperty("html.disable", Boolean.TRUE);
+			return tip;
 		}
 	}
 
-	/** The list's rows: labels that never render a model's name as HTML. */
-	private static final class PlainRenderer extends DefaultListCellRenderer
+	/** A row of the menu's list: the model's name, plain text and cut at its end if long, and a tick on the one set. */
+	private final class ModelRow extends JPanel implements ListCellRenderer<String>
 	{
-		PlainRenderer()
+		private final JLabel name = new JLabel();
+		private final JLabel tick = new JLabel();
+		private final Glyph ticked = new Glyph(Glyph.Shape.CHECK, 11, PanelStyle.TEXT_COLOR);
+
+		ModelRow()
 		{
+			super(new BorderLayout(6, 0));
 			// Before any text is set: the HTML renderer is picked when it is.
-			putClientProperty("html.disable", Boolean.TRUE);
+			for (JLabel l : new JLabel[]{name, tick})
+			{
+				l.putClientProperty("html.disable", Boolean.TRUE);
+			}
+			name.setFont(PanelStyle.TEXT_FONT);
+			name.setForeground(PanelStyle.TEXT_COLOR);
+			// The names line up with the menu's items under them.
+			setBorder(new EmptyBorder(0, 6, 0, 8));
+			add(name, BorderLayout.CENTER);
+			add(tick, BorderLayout.EAST);
 		}
 
 		@Override
-		public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean selected, boolean focus)
+		public Component getListCellRendererComponent(JList<? extends String> list, String value, int index,
+			boolean selected, boolean focus)
 		{
-			super.getListCellRendererComponent(list, value, index, selected, focus);
-			putClientProperty("html.disable", Boolean.TRUE);
+			name.setText(value);
+			tick.setIcon(Objects.equals(value, current) ? ticked : null);
+			setOpaque(selected);
+			setBackground(PanelStyle.BUBBLE_COLOR);
+			// The whole name, for one too long for the menu; the list shows the row's tooltip as its own.
+			setToolTipText(value);
 			return this;
 		}
 	}

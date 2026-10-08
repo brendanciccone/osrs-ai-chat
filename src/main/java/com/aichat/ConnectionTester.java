@@ -47,7 +47,17 @@ final class ConnectionTester
 	 */
 	boolean list(String problem, String setup, Supplier<ChatApi> api, boolean sorted)
 	{
-		if (problem != null || check != null && check.setup.equals(setup))
+		return (check == null || !check.setup.equals(setup)) && refresh(problem, setup, api, sorted);
+	}
+
+	/**
+	 * "Refresh list" in the model picker's menu: asks for the models again, quietly, even when the list for this setup
+	 * is in, instead of anything still asking. As with {@link #list}, never while {@code problem} says the provider
+	 * can't be reached. Returns whether it asked.
+	 */
+	boolean refresh(String problem, String setup, Supplier<ChatApi> api, boolean sorted)
+	{
+		if (problem != null)
 		{
 			return false;
 		}

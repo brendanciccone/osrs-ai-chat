@@ -5,6 +5,7 @@ import java.util.List;
 import org.junit.Test;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 
@@ -135,7 +136,7 @@ public class ConnectionCheckTest
 	@Test
 	public void thePickersTooltipSaysWhyItsListIsShort()
 	{
-		String how = "The model new messages go to. Pick one, or type its name and press Enter.";
+		String how = "The model new messages go to. Click to pick one, or to type its name.";
 		String off = "Turn on \"Enable AI requests\" in the AI Chat settings, then choose a provider and add your API key.";
 		assertEquals(how + " The list fills in once AI requests are on and the provider is set up.",
 			ConnectionCheck.pickerTip(null, off, "Anthropic", ""));
@@ -155,14 +156,31 @@ public class ConnectionCheckTest
 	}
 
 	@Test
+	public void thePickersMenuSaysWhyItsListIsShort()
+	{
+		String off = "Turn on \"Enable AI requests\" in the AI Chat settings, then choose a provider and add your API key.";
+		assertEquals("The list fills in once AI requests are on and the provider is set up.",
+			ConnectionCheck.listNote(null, off, "Anthropic"));
+		assertEquals("Looking up the models you can use\u2026", ConnectionCheck.listNote(ConnectionCheck.testing(SETUP),
+			null, "Anthropic"));
+		assertEquals("Couldn't list the models: Couldn't reach Anthropic.",
+			ConnectionCheck.listNote(ConnectionCheck.failed(SETUP, "Couldn't reach Anthropic."), null, "Anthropic"));
+		assertEquals("localhost:11434 listed no models to chat with.", ConnectionCheck.listNote(
+			ConnectionCheck.listed(SETUP, Arrays.asList("nomic-embed-text"), true), null, "localhost:11434"));
+		// A list that came in: nothing to say.
+		assertNull(ConnectionCheck.listNote(ConnectionCheck.listed(SETUP, Arrays.asList("claude-opus-5-5"), false), null,
+			"Anthropic"));
+	}
+
+	@Test
 	public void thePickersTooltipNamesTheModelInFull()
 	{
 		// The box is narrow: a long name is cut there, and whole here.
 		String model = "anthropic/claude-sonnet-5-5:thinking-extended-preview";
-		assertEquals("New messages go to " + model + ". Pick another, or type its name and press Enter.",
+		assertEquals("New messages go to " + model + ". Click to pick another, or to type its name.",
 			ConnectionCheck.pickerTip(ConnectionCheck.listed(SETUP, Arrays.asList(model), false), null, "OpenRouter",
 				" " + model + " "));
-		assertEquals("New messages go to llama3.2. Pick another, or type its name and press Enter. localhost:11434 "
+		assertEquals("New messages go to llama3.2. Click to pick another, or to type its name. localhost:11434 "
 			+ "doesn't list its models: type the name its website gives.", ConnectionCheck.pickerTip(
 			ConnectionCheck.failed(SETUP, OpenAiApi.NO_MODEL_LIST), null, "localhost:11434", "llama3.2"));
 		// A name of the player's own, too, comes after AI Chat's words: never read as HTML.

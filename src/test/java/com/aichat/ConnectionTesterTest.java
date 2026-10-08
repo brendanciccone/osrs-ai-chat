@@ -169,6 +169,35 @@ public class ConnectionTesterTest
 	}
 
 	@Test
+	public void refreshListAsksAgainButNeverWhileTheProviderCantBeReached()
+	{
+		tester.list(null, SETUP, () -> api, false);
+		api.listeners.get(0).onModels(List.of("claude-opus-5-5"));
+		runEdt();
+		assertFalse("the picker has its list", tester.list(null, SETUP, () -> api, false));
+
+		// The player asks for it again: asked, quietly.
+		assertTrue(tester.refresh(null, SETUP, () -> api, false));
+		assertEquals(2, api.listeners.size());
+		assertNull("the banner stays quiet", note());
+		// Asked again before that came back: the first answer is stale, and doesn't count.
+		assertTrue(tester.refresh(null, SETUP, () -> api, false));
+		assertTrue(api.requests.get(1).isCancelled());
+		api.listeners.get(1).onModels(List.of("old-model"));
+		api.listeners.get(2).onModels(List.of("claude-opus-5-5", "claude-sonnet-5-5"));
+		runEdt();
+		assertEquals(List.of("claude-opus-5-5", "claude-sonnet-5-5"), tester.check(SETUP).models);
+
+		// AI requests off: nothing is asked, and no API is even made.
+		String off = "Turn on \"Enable AI requests\" in the AI Chat settings, then choose a provider and add your API key.";
+		assertFalse(tester.refresh(off, SETUP, () ->
+		{
+			throw new AssertionError("no API is even made");
+		}, false));
+		assertEquals(3, api.listeners.size());
+	}
+
+	@Test
 	public void testAsksAgainAndTheBannerCanBeClosed()
 	{
 		tester.list(null, SETUP, () -> api, false);

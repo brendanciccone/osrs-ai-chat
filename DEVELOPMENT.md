@@ -52,13 +52,14 @@ server on 127.0.0.1 (`StandIn`), which serves canned answers (streams included) 
   looked up (named, or counted to fit the width), with every line behind it.
   `ConnectionCheckTest` and `ProviderSetupTest`: the model list (what the picker offers, what Test says, the picker's
   tooltip) and what the settings say about the provider. `ConnectionTesterTest`: which answers count, and when the
-  picker's list is asked for (once per provider, key and URL, never while AI requests are off).
+  picker's list is asked for (once per provider, key and URL, and on Refresh list; never while AI requests are off).
   `AiChatPanelTest`: the panel with a stand-in plugin (headless): Send, Stop and Skip (and a click as the button
   changes, which is ignored), the chat's title, the starters (they fill the box, never send), Retry only on the last
   message and the latest reply's Copy and Retry, the banner (and the note that points to it), the player's bubbles,
   the reply on its way, when the transcript follows the chat down, Jump to the latest, the lines that open with a
   chevron (and the one over a reply, fitted to its width), and the input box growing with its text.
-  `ModelPickerTest`: what the model picker saves, and what it doesn't, and a long name shown from its start.
+  `ModelPickerTest`: the model picker's menu (the models, the one set ticked, Type a model name…, Refresh list), what
+  it saves and what it doesn't, and a long name cut at its end.
   `SystemPromptTest`: the settings the assistant is told about, by the names `AiChatConfig` gives them (`SettingName`
   reads those for the tests). `PrefixTest`: the `::ai` command.
 
@@ -77,9 +78,10 @@ server on 127.0.0.1 (`StandIn`), which serves canned answers (streams included) 
   `CharacterInfo`: the character note.
 - `AiChatPanel` (the sidebar: header, banner, transcript, composer, kept in step with the plugin through its `Host`),
   `MessageRow` (one message: the player's bubble, a reply with Copy and Retry, a note, an error), `Composer` (the input
-  box, model picker and Send/Stop button), `ModelPicker`, `Banner`, `EmptyChat` (a new chat's welcome and starters),
-  `ShowMore` (a line with a chevron that shows more when clicked), `MessageView` and `Markdown` (formatted text), `PanelText` (the
-  panel's words: the line under a reply on its way, tooltips, notes, the look-up lines), `StackLayout`, and the small
+  box, model picker and Send/Stop button), `ModelPicker` (the model's name next to Send, and its menu), `Banner`,
+  `EmptyChat` (a new chat's welcome and starters), `ShowMore` (a line with a chevron that shows more when clicked),
+  `MessageView` and `Markdown` (formatted text), `PanelText` (the panel's words: the line under a reply on its way,
+  tooltips, notes, the line over a reply saying what was shared and looked up), `StackLayout`, and the small
   drawn parts: `Glyph` (icons), `FlatButton`, `RoundBox`, `PanelStyle` (fonts and colours). `GameChatEcho`: replies as
   game chat.
 - `Chat` (a conversation), `ChatSaver` ("Save chat history": when to load, save and delete), `ChatStore` (what's

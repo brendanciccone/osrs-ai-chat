@@ -215,31 +215,41 @@ final class ConnectionCheck
 	}
 
 	/**
-	 * The model picker's tooltip: the model that's set, in full (a long one doesn't fit in the box), how to choose, and
-	 * why the list is short when it is. {@code check}: the latest list asked for this setup, or null; {@code problem}:
-	 * why the provider can't be reached (AI requests off included), or null. Plain sentences of our own, starting with
-	 * our own words, so they can never be read as HTML.
+	 * The model picker's tooltip: the model that's set, in full (a long one doesn't fit next to Send), how to choose,
+	 * and why the list is short when it is (see {@link #listNote}). Plain sentences of our own, starting with our own
+	 * words, so they can never be read as HTML.
 	 */
 	static String pickerTip(ConnectionCheck check, String problem, String service, String model)
 	{
 		String m = model == null ? "" : model.trim();
 		String how = m.isEmpty()
-			? "The model new messages go to. Pick one, or type its name and press Enter."
-			: "New messages go to " + m + ". Pick another, or type its name and press Enter.";
+			? "The model new messages go to. Click to pick one, or to type its name."
+			: "New messages go to " + m + ". Click to pick another, or to type its name.";
+		String note = listNote(check, problem, service);
+		return note == null ? how : how + " " + note;
+	}
+
+	/**
+	 * Why the model picker's list is short, for its tooltip and its menu, or null when it isn't. {@code check}: the
+	 * latest list asked for this setup, or null; {@code problem}: why the provider can't be reached (AI requests off
+	 * included), or null.
+	 */
+	static String listNote(ConnectionCheck check, String problem, String service)
+	{
 		if (problem != null || check == null)
 		{
-			return how + " The list fills in once AI requests are on and the provider is set up.";
+			return "The list fills in once AI requests are on and the provider is set up.";
 		}
 		if (check.error != null)
 		{
 			return OpenAiApi.NO_MODEL_LIST.equals(check.error)
-				? how + " " + service + " doesn't list its models: type the name its website gives."
-				: how + " Couldn't list the models: " + check.error;
+				? service + " doesn't list its models: type the name its website gives."
+				: "Couldn't list the models: " + check.error;
 		}
 		if (check.models == null)
 		{
-			return how + " Looking up the models you can use\u2026";
+			return "Looking up the models you can use\u2026";
 		}
-		return check.models.isEmpty() ? how + " " + service + " listed no models to chat with." : how;
+		return check.models.isEmpty() ? service + " listed no models to chat with." : null;
 	}
 }

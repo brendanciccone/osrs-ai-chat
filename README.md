@@ -49,10 +49,10 @@ look things up on the OSRS Wiki while it answers. Uses your own API key. Free an
    **Provider**. Then open that provider's section (**Claude**, **ChatGPT** or **Other (OpenAI-compatible)**) and paste
    your **API key**. For an OpenAI-compatible service, also set its **Base URL** (for example
    `http://localhost:11434/v1` for Ollama).
-4. Open the AI Chat panel (the rune icon in the sidebar). The model picker next to Send lists the models your key can
-   use: pick one, or type a model's name and press Enter. To check your key and URL, choose **Test connection** from
-   the **⋯** menu (some OpenAI-compatible services, such as OpenRouter, list their models for any key, so there only
-   the URL is checked). Then ask away.
+4. Open the AI Chat panel (the rune icon in the sidebar). Click the model's name next to Send for the models your key
+   can use: pick one, or choose **Type a model name…**, type it and press Enter. To check your key and URL, choose
+   **Test connection** from the **⋯** menu (some OpenAI-compatible services, such as OpenRouter, list their models for
+   any key, so there only the URL is checked). Then ask away.
 
 ## Privacy
 
@@ -89,8 +89,8 @@ there's no server in between.
 - **The model list:** to fill in the model picker, AI Chat asks your provider which models your API key can use when
   AI Chat starts (each time RuneLite starts, and when you turn AI Chat on), when you turn on **Enable AI requests**,
   and when you change the provider, key or URL, all only while **Enable AI requests** is on; and again when you
-  choose **Test connection**. That sends the key and your IP address, nothing else, and the list is only kept in
-  memory.
+  choose **Test connection**, or **Refresh list** in the model picker's menu. That sends the key and your IP address,
+  nothing else, and the list is only kept in memory.
 - **Never sent:** your account or login details, where you are in the game, what's around you, and anything about
   other players.
 - **Your API key** is only sent to the provider it belongs to (never over plain `http://` to another computer on the

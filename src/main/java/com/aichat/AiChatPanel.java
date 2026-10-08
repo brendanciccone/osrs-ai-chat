@@ -26,7 +26,6 @@ import javax.swing.JPopupMenu;
 import javax.swing.JScrollBar;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
-import javax.swing.JToolTip;
 import javax.swing.ScrollPaneConstants;
 import javax.swing.Scrollable;
 import javax.swing.SwingConstants;
@@ -77,6 +76,12 @@ class AiChatPanel extends PluginPanel
 		List<String> modelChoices();
 
 		String modelTip();
+
+		/** Why the list of models to offer is short, for the picker's menu, or null. */
+		String modelNote();
+
+		/** The player asked for the provider's list of models again. */
+		void refreshModels();
 
 		/** Sends {@code text} in the current chat; false if it can't go now. */
 		boolean send(String text);
@@ -160,6 +165,12 @@ class AiChatPanel extends PluginPanel
 			public void chooseModel(String model)
 			{
 				host.chooseModel(model);
+			}
+
+			@Override
+			public void refreshModels()
+			{
+				host.refreshModels();
 			}
 
 			@Override
@@ -340,7 +351,8 @@ class AiChatPanel extends PluginPanel
 		{
 			banner.show(null, null, false);
 		}
-		composer.models.show(host.model(), host.modelChoices(), host.modelTip());
+		// Refresh list asks the provider, as Test connection does: not while that can't be done.
+		composer.models.show(host.model(), host.modelChoices(), host.modelTip(), host.modelNote(), host.testProblem());
 		chatSelect.setEnabled(host.currentChat() != null);
 	}
 
@@ -608,7 +620,7 @@ class AiChatPanel extends PluginPanel
 			return;
 		}
 		JPopupMenu popup = new JPopupMenu();
-		popup.add("Rename…").addActionListener(e ->
+		popup.add(PanelStyle.menuItem("Rename…")).addActionListener(e ->
 		{
 			String name = JOptionPane.showInputDialog(this, "Chat name:", chat.name);
 			if (name != null && !name.trim().isEmpty())
@@ -616,14 +628,14 @@ class AiChatPanel extends PluginPanel
 				host.renameChat(chat, name.trim());
 			}
 		});
-		popup.add("Clear chat").addActionListener(e ->
+		popup.add(PanelStyle.menuItem("Clear chat")).addActionListener(e ->
 		{
 			if (confirm("AI Chat", "Clear \"" + chat.name + "\"? The assistant forgets it too."))
 			{
 				host.clearChat(chat);
 			}
 		});
-		popup.add("Delete chat").addActionListener(e ->
+		popup.add(PanelStyle.menuItem("Delete chat")).addActionListener(e ->
 		{
 			if (confirm("AI Chat", "Delete \"" + chat.name + "\"?"))
 			{
@@ -633,16 +645,7 @@ class AiChatPanel extends PluginPanel
 		popup.addSeparator();
 		// Nothing is sent while AI requests are off, a test included; the tooltip says what's missing.
 		String problem = host.testProblem();
-		JMenuItem test = new JMenuItem("Test connection")
-		{
-			@Override
-			public JToolTip createToolTip()
-			{
-				JToolTip tip = super.createToolTip();
-				tip.putClientProperty("html.disable", Boolean.TRUE);
-				return tip;
-			}
-		};
+		JMenuItem test = PanelStyle.menuItem("Test connection");
 		test.setEnabled(problem == null);
 		test.setToolTipText(problem == null ? "Check the connection, and list the models you can use" : problem);
 		test.addActionListener(e -> host.testConnection());

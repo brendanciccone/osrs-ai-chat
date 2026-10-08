@@ -5,6 +5,7 @@ import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
+import javax.swing.JMenuItem;
 import javax.swing.JTextArea;
 import javax.swing.JToolTip;
 import net.runelite.client.ui.ColorScheme;
@@ -45,6 +46,25 @@ final class PanelStyle
 		g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 		g2.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
 		return g2;
+	}
+
+	/** A menu item whose words and tooltip are plain text, never HTML. */
+	static JMenuItem menuItem(String text)
+	{
+		JMenuItem item = new JMenuItem()
+		{
+			@Override
+			public JToolTip createToolTip()
+			{
+				JToolTip tip = super.createToolTip();
+				tip.putClientProperty("html.disable", Boolean.TRUE);
+				return tip;
+			}
+		};
+		// Before the text is set: the HTML renderer is picked when it is.
+		item.putClientProperty("html.disable", Boolean.TRUE);
+		item.setText(text);
+		return item;
 	}
 
 	/** A read-only, wrapping, selectable block of plain text (a text area never renders HTML, nor does its tooltip). */
