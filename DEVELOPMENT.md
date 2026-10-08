@@ -21,7 +21,8 @@ reads it back (a very short chat can be under Claude's minimum and isn't cached)
 services only say what they read from their own cache.
 
 To try it without paying for API use, run a local model with [Ollama](https://ollama.com) (`ollama pull llama3.2`),
-then choose the **Other (OpenAI-compatible)** provider with Base URL `http://localhost:11434/v1` and model `llama3.2`.
+then set **Provider** to **OpenAI-compatible** and, in the **Other (OpenAI-compatible)** section, set **Base URL**
+`http://localhost:11434/v1` and **Model** `llama3.2`.
 
 ## Tests
 
@@ -52,11 +53,13 @@ server on 127.0.0.1 (`StandIn`), which serves canned answers (streams included) 
   `ConnectionCheckTest` and `ProviderSetupTest`: the model list (what the picker offers, what Test says, the picker's
   tooltip) and what the settings say about the provider. `ConnectionTesterTest`: which answers count, and when the
   picker's list is asked for (once per provider, key and URL, never while AI requests are off).
-  `AiChatPanelTest`: the panel with a stand-in plugin (headless): Send, Stop and Skip, the starters (they fill the
-  box, never send), Retry only on the last message and the latest reply's Copy and Retry, the banner, the player's
-  bubbles, the reply on its way, when the transcript follows the chat down, and the lines that show more when
-  clicked. `ModelPickerTest`: what the model picker saves, and what it doesn't. `SystemPromptTest`: the settings the
-  assistant is told about, by their names. `PrefixTest`: the `::ai` command.
+  `AiChatPanelTest`: the panel with a stand-in plugin (headless): Send, Stop and Skip (and a click as the button
+  changes, which is ignored), the chat's title, the starters (they fill the box, never send), Retry only on the last
+  message and the latest reply's Copy and Retry, the banner (and the note that points to it), the player's bubbles,
+  the reply on its way, when the transcript follows the chat down, Jump to the latest, and the lines that show more
+  when clicked. `ModelPickerTest`: what the model picker saves, and what it doesn't, and a long name shown from its
+  start. `SystemPromptTest`: the settings the assistant is told about, by the names `AiChatConfig` gives them
+  (`SettingName` reads those for the tests). `PrefixTest`: the `::ai` command.
 
 ## Code
 

@@ -392,8 +392,9 @@ public class AiChatPlugin extends Plugin
 	}
 
 	/**
-	 * The model picker's list: asked for quietly, once for each provider, key and address, when the panel starts and when
-	 * those change. Never while AI requests are off, or before the provider can be reached.
+	 * The model picker's list: asked for quietly, once for each provider, key and address, when AI Chat starts, when AI
+	 * requests are turned on, and when those change. Never while AI requests are off, or before the provider can be
+	 * reached.
 	 */
 	private void listModels()
 	{

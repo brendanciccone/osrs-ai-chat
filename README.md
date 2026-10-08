@@ -87,9 +87,10 @@ there's no server in between.
   an item from your bank. Nothing from the Wiki is stored on your computer. GE prices come from the price list
   RuneLite already keeps, so checking one sends nothing anywhere.
 - **The model list:** to fill in the model picker, AI Chat asks your provider which models your API key can use when
-  the panel opens and when you change the provider, key or URL (only while **Enable AI requests** is on), and again
-  when you choose **Test connection**. That sends the key and your IP address, nothing else, and the list is only
-  kept in memory.
+  AI Chat starts (each time RuneLite starts, and when you turn AI Chat on), when you turn on **Enable AI requests**,
+  and when you change the provider, key or URL, all only while **Enable AI requests** is on; and again when you
+  choose **Test connection**. That sends the key and your IP address, nothing else, and the list is only kept in
+  memory.
 - **Never sent:** your account or login details, where you are in the game, what's around you, and anything about
   other players.
 - **Your API key** is only sent to the provider it belongs to (never over plain `http://` to another computer on the
