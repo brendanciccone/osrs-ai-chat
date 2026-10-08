@@ -125,8 +125,8 @@ final class Glyph implements Icon
 				// Most of a circle going clockwise, open at the top right where it ends in an open arrowhead. A head
 				// of two strokes stays clear at 12 pixels, where a small filled one made the icon read as a "C".
 				double r = 0.34 * s;
-				g.draw(new Arc2D.Double(0.48 * s - r, 0.52 * s - r, 2 * r, 2 * r, 30, 300, Arc2D.OPEN));
-				g.draw(path(s, 0.84, 0.14, 0.84, 0.38, 0.6, 0.38));
+				g.draw(new Arc2D.Double(0.48 * s - r, 0.52 * s - r, 2 * r, 2 * r, 50, 280, Arc2D.OPEN));
+				g.draw(path(s, 0.82, 0.08, 0.82, 0.34, 0.56, 0.34));
 				break;
 			case CHEVRON_DOWN:
 				g.draw(path(s, 0.2, 0.36, 0.5, 0.66, 0.8, 0.36));
