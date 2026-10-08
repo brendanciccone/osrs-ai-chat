@@ -4,6 +4,7 @@ import java.awt.Component;
 import java.awt.Container;
 import java.awt.FontMetrics;
 import java.awt.Graphics2D;
+import java.awt.Toolkit;
 import java.awt.event.ActionEvent;
 import java.awt.event.InputEvent;
 import java.awt.event.MouseEvent;
@@ -467,20 +468,27 @@ public class AiChatPanelTest
 	}
 
 	/**
-	 * Stands in for Swing laying out what changed, which it never does headless: keeps each component that asks for it
-	 * (revalidate), and {@link #run} lays out what Swing would on screen, from the validate root over each: the scroll
-	 * pane it's in, or else the top. So a box whose text grew, but that nothing asked to lay out again, keeps its height,
-	 * as it would on screen.
+	 * Stands in for Swing laying out what changed, which it never does off screen: keeps each component that asks for
+	 * it (revalidate), and {@link #run} lays out what Swing would on screen, from the validate root over each: the
+	 * scroll pane it's in, or else the top. So a box whose text grew, but that nothing asked to lay out again, keeps
+	 * its height, as it would on screen. Like Swing, it queues that layout on the EDT at the first ask: after what was
+	 * queued before it, and before what's queued after it, such as the panel's scroll to the end, which counts on it.
 	 */
 	private static final class Relayout extends RepaintManager
 	{
 		private final List<JComponent> asked = new ArrayList<>();
 		private RepaintManager swing;
+		private boolean queued;
 
 		@Override
 		public synchronized void addInvalidComponent(JComponent c)
 		{
 			asked.add(c);
+			if (!queued)
+			{
+				queued = true;
+				SwingUtilities.invokeLater(this::run);
+			}
 		}
 
 		void install(Component c)
@@ -494,8 +502,9 @@ public class AiChatPanelTest
 			RepaintManager.setCurrentManager(swing);
 		}
 
-		void run()
+		private synchronized void run()
 		{
+			queued = false;
 			Map<Container, Boolean> roots = new IdentityHashMap<>();
 			for (JComponent c : asked)
 			{
@@ -512,13 +521,22 @@ public class AiChatPanelTest
 	}
 
 	/**
-	 * Makes {@code edit} on the EDT, then lays out what Swing would once the events that queued are over (see
-	 * {@link Relayout}).
+	 * Makes {@code edit} on the EDT, then lets what that queued run (the box measuring itself again, the layout that
+	 * asks for, the transcript following its end), and what those queue in turn, as Swing would before the player's
+	 * next key. Waiting on the queue itself, not on a layout the test asks for: that one would go in wherever this
+	 * thread happened to post it, before or after the panel's own events, so the outcome would depend on timing.
 	 */
-	private static void edit(Relayout relayout, Runnable edit) throws Throwable
+	private static void edit(Runnable edit) throws Throwable
 	{
 		onEdt(edit);
-		onEdt(relayout::run);
+		boolean[] idle = new boolean[1];
+		// Each round runs everything queued before it, so it reaches one step further down a chain of invokeLater; the
+		// panel's chains are a few steps long. Bounded, in case something else keeps posting.
+		for (int i = 0; i < 20 && !idle[0]; i++)
+		{
+			onEdt(() -> idle[0] = Toolkit.getDefaultToolkit().getSystemEventQueue().peekEvent() == null);
+		}
+		assertTrue("the events the edit queued came to an end", idle[0]);
 	}
 
 	/** Does what {@code key} does in {@code c}, as pressing it would. */
@@ -548,31 +566,31 @@ public class AiChatPanelTest
 			onEdt(() -> assertEquals("two lines to start with", 2 * line, composer.scroll.getHeight()));
 
 			// Shift+Enter on the second line: the box is three lines tall at once, not after the next key.
-			edit(relayout, () -> input.setText("Two\nlines"));
-			edit(relayout, () -> press(input, "shift ENTER"));
+			edit(() -> input.setText("Two\nlines"));
+			edit(() -> press(input, "shift ENTER"));
 			onEdt(() -> assertEquals(3 * line, composer.scroll.getHeight()));
 			// Pasted lines.
-			edit(relayout, () -> input.replaceSelection("and\na\nfew more"));
+			edit(() -> input.replaceSelection("and\na\nfew more"));
 			onEdt(() -> assertEquals(5 * line, composer.scroll.getHeight()));
 			// A long line wraps in the narrow box, and the box grows for that too.
-			edit(relayout, () -> composer.fill("What should I bring to Vorkath with 99 Ranged and a dragon hunter "
+			edit(() -> composer.fill("What should I bring to Vorkath with 99 Ranged and a dragon hunter "
 				+ "crossbow, and how many kills a trip?"));
 			onEdt(() -> assertTrue(composer.scroll.getHeight() >= 3 * line));
-			edit(relayout, () -> input.setText("1\n2\n3\n4\n5\n6\n7\n8\n9\n10"));
+			edit(() -> input.setText("1\n2\n3\n4\n5\n6\n7\n8\n9\n10"));
 			onEdt(() ->
 			{
 				assertEquals("at most six lines: then it scrolls", 6 * line, composer.scroll.getHeight());
 				assertTrue(input.getPreferredSize().height > composer.scroll.getViewport().getHeight());
 			});
 
-			edit(relayout, () -> composer.action.doClick());
+			edit(() -> composer.action.doClick());
 			onEdt(() ->
 			{
 				assertEquals("sent", "1\n2\n3\n4\n5\n6\n7\n8\n9\n10", host.sent.get(0));
 				assertEquals("back to two lines", 2 * line, composer.scroll.getHeight());
 			});
 			// A message that couldn't go, back in the box.
-			edit(relayout, () -> composer.restoreDraft("One\ntwo\nthree\nfour"));
+			edit(() -> composer.restoreDraft("One\ntwo\nthree\nfour"));
 			onEdt(() -> assertEquals(4 * line, composer.scroll.getHeight()));
 		}
 		finally
@@ -609,8 +627,8 @@ public class AiChatPanelTest
 				assertEquals("at the end", bar.getMaximum(), bar.getValue() + bar.getVisibleAmount());
 				relayout.install(panel);
 			});
-			edit(relayout, () -> press(panel.composer.input, "shift ENTER"));
-			edit(relayout, () -> panel.composer.input.replaceSelection("3\n4\n5"));
+			edit(() -> press(panel.composer.input, "shift ENTER"));
+			edit(() -> panel.composer.input.replaceSelection("3\n4\n5"));
 			onEdt(() ->
 			{
 				int line = panel.composer.input.getFontMetrics(panel.composer.input.getFont()).getHeight();
@@ -621,7 +639,7 @@ public class AiChatPanelTest
 				// Scrolled up to read: what's read stays where it is.
 				bar.setValue(100);
 			});
-			edit(relayout, () -> panel.composer.input.setText(""));
+			edit(() -> panel.composer.input.setText(""));
 			onEdt(() -> assertEquals(100, bar.getValue()));
 		}
 		finally
