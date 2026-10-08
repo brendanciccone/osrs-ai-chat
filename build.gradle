@@ -39,6 +39,14 @@ tasks.withType(JavaCompile).configureEach {
 	options.release.set(11)
 }
 
+// CI's log is all there is of a failed test there: print each failure in full, with its message and stack trace.
+test {
+	testLogging {
+		events 'failed'
+		exceptionFormat 'full'
+	}
+}
+
 tasks.register('run', JavaExec) {
 	classpath = sourceSets.test.runtimeClasspath
 	mainClass = pluginMainClass
