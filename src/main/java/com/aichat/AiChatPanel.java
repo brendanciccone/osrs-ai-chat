@@ -6,9 +6,11 @@ import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
+import java.awt.FontMetrics;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Rectangle;
+import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -100,7 +102,7 @@ class AiChatPanel extends PluginPanel
 	private final Host host;
 
 	private final DefaultComboBoxModel<Chat> chatModel = new DefaultComboBoxModel<>();
-	final JComboBox<Chat> chatSelect = new JComboBox<>(chatModel);
+	final JComboBox<Chat> chatSelect = new TitleSelect(chatModel);
 	final FlatButton newChat = new FlatButton(null, new Glyph(Glyph.Shape.PLUS, 14), "New chat");
 	final FlatButton menu = new FlatButton(null, new Glyph(Glyph.Shape.MORE, 14),
 		"Rename, clear or delete this chat, or test the connection");
@@ -236,9 +238,31 @@ class AiChatPanel extends PluginPanel
 		chatSelect.setFont(PanelStyle.TITLE_FONT);
 		chatSelect.setForeground(PanelStyle.TEXT_COLOR);
 		chatSelect.setBackground(PanelStyle.BACKGROUND);
-		// No box around it: it reads as the chat's title, with the arrow saying it opens.
+		// No box around it: it reads as the chat's title, with the arrow saying it opens. FlatLaf, which RuneLite's look
+		// and feel is built on, would also draw the arrow on a box of its own colour, and make the whole thing at least
+		// 72 pixels wide; other looks ignore both.
 		chatSelect.setBorder(new EmptyBorder(0, 0, 0, 0));
-		row.add(chatSelect, BorderLayout.CENTER);
+		chatSelect.putClientProperty("FlatLaf.style", Collections.singletonMap("buttonBackground", PanelStyle.BACKGROUND));
+		chatSelect.putClientProperty("JComponent.minimumWidth", 0);
+		// As wide as the title needs, so the arrow comes right after it; a long title is cut to the room beside the
+		// buttons.
+		JPanel title = new JPanel(null)
+		{
+			@Override
+			public void doLayout()
+			{
+				chatSelect.setBounds(0, 0, Math.min(chatSelect.getPreferredSize().width, getWidth()), getHeight());
+			}
+
+			@Override
+			public Dimension getPreferredSize()
+			{
+				return chatSelect.getPreferredSize();
+			}
+		};
+		title.setOpaque(false);
+		title.add(chatSelect);
+		row.add(title, BorderLayout.CENTER);
 
 		JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
 		buttons.setOpaque(false);
@@ -657,6 +681,37 @@ class AiChatPanel extends PluginPanel
 		public Dimension getPreferredSize()
 		{
 			return transcriptScroll.getPreferredSize();
+		}
+	}
+
+	/**
+	 * The chat's title, which opens the list of chats. The look and feel makes it as wide as the longest chat's name; it
+	 * only needs the shown chat's, so that its arrow comes right after the title, as in chat apps.
+	 */
+	private static final class TitleSelect extends JComboBox<Chat>
+	{
+		TitleSelect(DefaultComboBoxModel<Chat> model)
+		{
+			super(model);
+		}
+
+		@Override
+		public Dimension getPreferredSize()
+		{
+			Dimension d = super.getPreferredSize();
+			Object shown = getSelectedItem();
+			if (shown instanceof Chat)
+			{
+				// The titles differ only in their names, all in the title font.
+				FontMetrics fm = getFontMetrics(PanelStyle.TITLE_FONT);
+				int widest = 0;
+				for (int i = 0; i < getItemCount(); i++)
+				{
+					widest = Math.max(widest, fm.stringWidth(getItemAt(i).name));
+				}
+				d.width -= widest - fm.stringWidth(((Chat) shown).name);
+			}
+			return d;
 		}
 	}
 

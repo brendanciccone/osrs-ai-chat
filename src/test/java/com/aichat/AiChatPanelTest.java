@@ -1,5 +1,7 @@
 package com.aichat;
 
+import java.awt.Component;
+import java.awt.Container;
 import java.awt.Graphics2D;
 import java.awt.event.InputEvent;
 import java.awt.event.MouseEvent;
@@ -176,6 +178,19 @@ public class AiChatPanelTest
 		}
 	}
 
+	/** Lays out {@code c} and everything in it, as showing it would: headless, nothing is shown. */
+	private static void layOut(Component c)
+	{
+		if (c instanceof Container)
+		{
+			((Container) c).doLayout();
+			for (Component child : ((Container) c).getComponents())
+			{
+				layOut(child);
+			}
+		}
+	}
+
 	private Chat.Message add(Chat.Role role, String text)
 	{
 		Chat.Message m = new Chat.Message(role, text);
@@ -238,6 +253,35 @@ public class AiChatPanelTest
 			panel.refreshAll();
 			assertEquals(Composer.Mode.SEND, button.mode);
 			assertFalse(button.isEnabled());
+		});
+	}
+
+	@Test
+	public void theChatsTitleIsAsWideAsItIsWithItsArrowRightAfterIt() throws Throwable
+	{
+		onEdt(() ->
+		{
+			AiChatPanel panel = new AiChatPanel(host);
+			panel.setSize(225, 600);
+			layOut(panel);
+			JComponent title = (JComponent) panel.chatSelect.getParent();
+			int room = title.getWidth();
+			int shown = panel.chatSelect.getWidth();
+			assertTrue("not stretched to the buttons", shown < room);
+
+			// The list holds a longer name: the title doesn't make room for it.
+			Chat other = new Chat("Plans for the whole Desert Treasure II quest line, start to end");
+			host.chats.add(other);
+			panel.refreshAll();
+			layOut(panel);
+			assertEquals(shown, panel.chatSelect.getWidth());
+
+			// Shown, it's cut to the room beside the buttons.
+			host.current = other;
+			panel.refreshAll();
+			layOut(panel);
+			assertEquals(room, panel.chatSelect.getWidth());
+			assertTrue(title.getX() + title.getWidth() <= panel.newChat.getParent().getX());
 		});
 	}
 
