@@ -22,6 +22,7 @@ import javax.swing.JTextArea;
 import javax.swing.JToolTip;
 import javax.swing.KeyStroke;
 import javax.swing.ScrollPaneConstants;
+import javax.swing.SwingUtilities;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.text.DefaultEditorKit;
@@ -95,6 +96,8 @@ final class Composer extends JPanel
 	private boolean usable = true;
 	/** The input box's height for the text as it last was, to tell when typing makes it grow or shrink. */
 	private int shownHeight = -1;
+	/** The box's height is checked once the change being made now is in: no need to ask again until then. */
+	private boolean resizePending;
 
 	Composer(Actions actions)
 	{
@@ -210,14 +213,26 @@ final class Composer extends JPanel
 	private void changed()
 	{
 		refreshAction();
-		int height = inputHeight();
-		if (height != shownHeight)
+		if (resizePending)
 		{
-			shownHeight = height;
-			// The scroll pane is laid out on its own (it's a validate root): the whole composer is, with the panel.
-			revalidate();
-			actions.inputResizing();
+			return;
 		}
+		// Measured once the text area has taken the change in too: this listener is told before it is (Swing tells the
+		// latest listener first), so the text's height right now is still the height before the change. Once for a
+		// change made in two steps, as setText's removing then inserting.
+		resizePending = true;
+		SwingUtilities.invokeLater(() ->
+		{
+			resizePending = false;
+			int height = inputHeight();
+			if (height != shownHeight)
+			{
+				shownHeight = height;
+				// The scroll pane is laid out on its own (it's a validate root): the whole composer is, with the panel.
+				revalidate();
+				actions.inputResizing();
+			}
+		});
 	}
 
 	/**

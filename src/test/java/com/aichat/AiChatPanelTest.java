@@ -4,6 +4,7 @@ import java.awt.Component;
 import java.awt.Container;
 import java.awt.FontMetrics;
 import java.awt.Graphics2D;
+import java.awt.event.ActionEvent;
 import java.awt.event.InputEvent;
 import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
@@ -19,6 +20,9 @@ import javax.swing.JMenuItem;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 import javax.swing.JScrollBar;
+import javax.swing.JTextArea;
+import javax.swing.KeyStroke;
+import javax.swing.RepaintManager;
 import javax.swing.SwingUtilities;
 import javax.swing.text.StyleConstants;
 import org.junit.Test;
@@ -462,42 +466,125 @@ public class AiChatPanelTest
 		});
 	}
 
+	/**
+	 * Stands in for Swing laying out what changed, which it never does headless: keeps each component that asks for it
+	 * (revalidate), and {@link #run} lays out what Swing would on screen, from the validate root over each: the scroll
+	 * pane it's in, or else the top. So a box whose text grew, but that nothing asked to lay out again, keeps its height,
+	 * as it would on screen.
+	 */
+	private static final class Relayout extends RepaintManager
+	{
+		private final List<JComponent> asked = new ArrayList<>();
+		private RepaintManager swing;
+
+		@Override
+		public synchronized void addInvalidComponent(JComponent c)
+		{
+			asked.add(c);
+		}
+
+		void install(Component c)
+		{
+			swing = RepaintManager.currentManager(c);
+			RepaintManager.setCurrentManager(this);
+		}
+
+		void uninstall()
+		{
+			RepaintManager.setCurrentManager(swing);
+		}
+
+		void run()
+		{
+			Map<Container, Boolean> roots = new IdentityHashMap<>();
+			for (JComponent c : asked)
+			{
+				Container root = c;
+				while (!root.isValidateRoot() && root.getParent() != null)
+				{
+					root = root.getParent();
+				}
+				roots.put(root, true);
+			}
+			asked.clear();
+			roots.keySet().forEach(AiChatPanelTest::layOut);
+		}
+	}
+
+	/**
+	 * Makes {@code edit} on the EDT, then lays out what Swing would once the events that queued are over (see
+	 * {@link Relayout}).
+	 */
+	private static void edit(Relayout relayout, Runnable edit) throws Throwable
+	{
+		onEdt(edit);
+		onEdt(relayout::run);
+	}
+
+	/** Does what {@code key} does in {@code c}, as pressing it would. */
+	private static void press(JComponent c, String key)
+	{
+		Object name = c.getInputMap().get(KeyStroke.getKeyStroke(key));
+		c.getActionMap().get(name).actionPerformed(new ActionEvent(c, ActionEvent.ACTION_PERFORMED, null));
+	}
+
 	@Test
 	public void theInputBoxGrowsWithItsTextThenScrollsAndShrinksAfterSending() throws Throwable
 	{
+		Relayout relayout = new Relayout();
+		AiChatPanel[] made = new AiChatPanel[1];
 		onEdt(() ->
 		{
-			AiChatPanel panel = new AiChatPanel(host);
-			panel.setSize(225, 600);
-			layOut(panel);
-			Composer composer = panel.composer;
-			int line = composer.input.getFontMetrics(composer.input.getFont()).getHeight();
-			assertEquals("two lines to start with", 2 * line, composer.scroll.getHeight());
-
-			composer.input.setText("Three\nlines\nhere");
-			layOut(panel);
-			assertEquals(3 * line, composer.scroll.getHeight());
-			// A long line wraps in the narrow box, and the box grows for that too.
-			composer.input.setText("What should I bring to Vorkath with 99 Ranged and a dragon hunter crossbow, and "
-				+ "how many kills a trip?");
-			layOut(panel);
-			layOut(panel);
-			assertTrue(composer.scroll.getHeight() >= 3 * line);
-			composer.input.setText("1\n2\n3\n4\n5\n6\n7\n8\n9\n10");
-			layOut(panel);
-			assertEquals("at most six lines: then it scrolls", 6 * line, composer.scroll.getHeight());
-			assertTrue(composer.input.getPreferredSize().height > composer.scroll.getViewport().getHeight());
-
-			composer.action.doClick();
-			assertEquals("sent", "1\n2\n3\n4\n5\n6\n7\n8\n9\n10", host.sent.get(0));
-			layOut(panel);
-			assertEquals("back to two lines", 2 * line, composer.scroll.getHeight());
+			made[0] = new AiChatPanel(host);
+			made[0].setSize(225, 600);
+			layOut(made[0]);
+			relayout.install(made[0]);
 		});
+		try
+		{
+			Composer composer = made[0].composer;
+			JTextArea input = composer.input;
+			int line = input.getFontMetrics(input.getFont()).getHeight();
+			onEdt(() -> assertEquals("two lines to start with", 2 * line, composer.scroll.getHeight()));
+
+			// Shift+Enter on the second line: the box is three lines tall at once, not after the next key.
+			edit(relayout, () -> input.setText("Two\nlines"));
+			edit(relayout, () -> press(input, "shift ENTER"));
+			onEdt(() -> assertEquals(3 * line, composer.scroll.getHeight()));
+			// Pasted lines.
+			edit(relayout, () -> input.replaceSelection("and\na\nfew more"));
+			onEdt(() -> assertEquals(5 * line, composer.scroll.getHeight()));
+			// A long line wraps in the narrow box, and the box grows for that too.
+			edit(relayout, () -> composer.fill("What should I bring to Vorkath with 99 Ranged and a dragon hunter "
+				+ "crossbow, and how many kills a trip?"));
+			onEdt(() -> assertTrue(composer.scroll.getHeight() >= 3 * line));
+			edit(relayout, () -> input.setText("1\n2\n3\n4\n5\n6\n7\n8\n9\n10"));
+			onEdt(() ->
+			{
+				assertEquals("at most six lines: then it scrolls", 6 * line, composer.scroll.getHeight());
+				assertTrue(input.getPreferredSize().height > composer.scroll.getViewport().getHeight());
+			});
+
+			edit(relayout, () -> composer.action.doClick());
+			onEdt(() ->
+			{
+				assertEquals("sent", "1\n2\n3\n4\n5\n6\n7\n8\n9\n10", host.sent.get(0));
+				assertEquals("back to two lines", 2 * line, composer.scroll.getHeight());
+			});
+			// A message that couldn't go, back in the box.
+			edit(relayout, () -> composer.restoreDraft("One\ntwo\nthree\nfour"));
+			onEdt(() -> assertEquals(4 * line, composer.scroll.getHeight()));
+		}
+		finally
+		{
+			onEdt(relayout::uninstall);
+		}
 	}
 
 	@Test
 	public void aGrowingInputBoxKeepsTheEndOfTheTranscriptInView() throws Throwable
 	{
+		Relayout relayout = new Relayout();
 		AiChatPanel[] made = new AiChatPanel[1];
 		onEdt(() ->
 		{
@@ -510,26 +597,37 @@ public class AiChatPanelTest
 			made[0].setSize(225, 400);
 			layOut(made[0]);
 			layOut(made[0]);
+			made[0].composer.input.setText("Two\nlines");
+			layOut(made[0]);
 		});
 		AiChatPanel panel = made[0];
 		JScrollBar bar = panel.transcriptScroll.getVerticalScrollBar();
-		onEdt(() ->
+		try
 		{
-			assertEquals("at the end", bar.getMaximum(), bar.getValue() + bar.getVisibleAmount());
-			panel.composer.input.setText("1\n2\n3\n4\n5");
-			layOut(panel);
-		});
-		onEdt(() ->
-		{
-			assertEquals("still at the end", bar.getMaximum(), bar.getValue() + bar.getVisibleAmount());
-			assertFalse(panel.jump.isVisible());
+			onEdt(() ->
+			{
+				assertEquals("at the end", bar.getMaximum(), bar.getValue() + bar.getVisibleAmount());
+				relayout.install(panel);
+			});
+			edit(relayout, () -> press(panel.composer.input, "shift ENTER"));
+			edit(relayout, () -> panel.composer.input.replaceSelection("3\n4\n5"));
+			onEdt(() ->
+			{
+				int line = panel.composer.input.getFontMetrics(panel.composer.input.getFont()).getHeight();
+				assertEquals(5 * line, panel.composer.scroll.getHeight());
+				assertEquals("still at the end", bar.getMaximum(), bar.getValue() + bar.getVisibleAmount());
+				assertFalse(panel.jump.isVisible());
 
-			// Scrolled up to read: what's read stays where it is.
-			bar.setValue(100);
-			panel.composer.input.setText("");
-			layOut(panel);
-		});
-		onEdt(() -> assertEquals(100, bar.getValue()));
+				// Scrolled up to read: what's read stays where it is.
+				bar.setValue(100);
+			});
+			edit(relayout, () -> panel.composer.input.setText(""));
+			onEdt(() -> assertEquals(100, bar.getValue()));
+		}
+		finally
+		{
+			onEdt(relayout::uninstall);
+		}
 	}
 
 	private static BufferedImage paint(JComponent c)
