@@ -10,7 +10,9 @@ public class SystemPromptTest
 	@Test
 	public void theSettingsItSuggestsAreNamedAsThePlayerSeesThem()
 	{
-		assertTrue(AiChatPlugin.SYSTEM_PROMPT.contains("(\"Share items and gear\" or \"Share character details\")"));
+		String items = SettingName.of("shareItems");
+		String character = SettingName.of("sendCharacter");
+		assertTrue(AiChatPlugin.SYSTEM_PROMPT.contains("(\"" + items + "\" or \"" + character + "\")"));
 		assertFalse("the old name", AiChatPlugin.SYSTEM_PROMPT.contains("Send character info"));
 	}
 }

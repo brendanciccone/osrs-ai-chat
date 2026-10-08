@@ -198,8 +198,9 @@ public class ToolBoxTest
 		assertTrue(search.content, search.content.contains("Wiki look-ups are turned off"));
 		ChatApi.ToolResult inventory = call(box, "get_inventory", new JsonObject());
 		assertTrue(inventory.error);
-		assertTrue(inventory.content, inventory.content.contains("Share items and gear"));
+		String items = SettingName.of("shareItems");
+		assertTrue(inventory.content, inventory.content.contains("\"" + items + "\""));
 		assertEquals(Arrays.asList("Skipped a Wiki search: Wiki look-ups are off",
-			"Didn't share your inventory: \"Share items and gear\" is off"), activity);
+			"Didn't share your inventory: \"" + items + "\" is off"), activity);
 	}
 }

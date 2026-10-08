@@ -24,6 +24,9 @@ import static org.junit.Assert.assertTrue;
 public class GameDataToolsTest
 {
 	private static final String CLIENT_THREAD = "test client thread";
+	/** The settings that let the assistant see the player's items, and their character, as the settings panel names them. */
+	private static final String ITEMS = SettingName.of("shareItems");
+	private static final String CHARACTER = SettingName.of("sendCharacter");
 
 	private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
 	/** Stands in for the game's client thread. */
@@ -215,14 +218,15 @@ public class GameDataToolsTest
 		shareItems = false;
 		Ended e = run(tools, "get_bank", new JsonObject());
 		assertTrue(e.result.error);
-		assertEquals("The player hasn't turned on \"Share items and gear\" in AI Chat's settings, so their bank can't be "
-			+ "read. They can turn it on if they'd like you to see it.", e.result.content);
+		// Each setting by the name the settings panel shows.
+		assertEquals("The player hasn't turned on \"" + ITEMS + "\" in AI Chat's settings, so their bank can't be read. "
+			+ "They can turn it on if they'd like you to see it.", e.result.content);
 		shareCharacter = false;
 		Ended slayer = run(tools, "get_slayer_task", new JsonObject());
-		assertTrue(slayer.result.content, slayer.result.content.contains("\"Share character details\""));
+		assertTrue(slayer.result.content, slayer.result.content.contains("\"" + CHARACTER + "\""));
 		assertEquals(0, game.reads.get());
-		assertEquals(Arrays.asList("Didn't share your bank: \"Share items and gear\" is off",
-			"Didn't share your Slayer task: \"Share character details\" is off"), activity);
+		assertEquals(Arrays.asList("Didn't share your bank: \"" + ITEMS + "\" is off",
+			"Didn't share your Slayer task: \"" + CHARACTER + "\" is off"), activity);
 	}
 
 	@Test
@@ -241,8 +245,8 @@ public class GameDataToolsTest
 	{
 		Ended e = run(tools(), "get_bank", new JsonObject());
 		assertTrue(e.result.error);
-		assertEquals("The bank can only be read while it's open, and the player hasn't opened it since AI Chat or \"Share items "
-			+ "and gear\" was turned on, or they logged in to this account. Ask them to open their bank once, then ask again.",
+		assertEquals("The bank can only be read while it's open, and the player hasn't opened it since AI Chat or \"" + ITEMS
+			+ "\" was turned on, or they logged in to this account. Ask them to open their bank once, then ask again.",
 			e.result.content);
 		assertEquals(Collections.singletonList("Couldn't share your bank: open it once so AI Chat can see it"), activity);
 	}
@@ -333,7 +337,7 @@ public class GameDataToolsTest
 		assertEquals("Read your equipment, but didn't share it: the request had stopped",
 			GameDataTools.unshared("Shared your equipment"));
 		// Nothing was shared anyway.
-		String off = "Didn't share your bank: \"Share items and gear\" is off";
+		String off = "Didn't share your bank: \"" + ITEMS + "\" is off";
 		assertEquals(off, GameDataTools.unshared(off));
 	}
 }
