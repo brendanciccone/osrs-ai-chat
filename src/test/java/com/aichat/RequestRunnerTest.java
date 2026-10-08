@@ -929,6 +929,96 @@ public class RequestRunnerTest
 		assertEquals(ConversationBuilder.SUMMARY_PROMPT, api.last().system);
 	}
 
+	/** A reply that came back with Claude's own messages, to send back as they came. */
+	private static ChatApi.Reply rawReply(String text, JsonArray raw)
+	{
+		ChatApi.Reply r = reply(text, 1, 1);
+		r.rawMessages = raw;
+		r.rawKey = "k";
+		return r;
+	}
+
+	@Test
+	public void retryOnTheLatestReplyAsksItsQuestionAgainOnTheSameHistory()
+	{
+		send("Q1");
+		JsonArray r1 = new JsonArray();
+		api.listener().onReply(rawReply("A1", r1));
+		runEdt();
+		Chat.Message a1 = chat.messages.get(1);
+		Chat.Message q2 = send("Q2");
+		ChatApi.Conversation first = api.last();
+		api.listener().onReply(rawReply("A2", new JsonArray()));
+		runEdt();
+		Chat.Message a2 = chat.messages.get(3);
+		assertSame(a2, RequestRunner.regenerable(chat));
+		assertFalse("not an older reply", runner.regenerate(chat, a1, setup()));
+
+		assertTrue(runner.regenerate(chat, a2, setup()));
+		runEdt();
+		assertTrue(chat.isRunning());
+		assertEquals("the old reply is gone", Arrays.asList(Chat.Role.USER, Chat.Role.ASSISTANT, Chat.Role.USER), roles());
+		assertNull("not while it's being written again", RequestRunner.regenerable(chat));
+		// The same question, on the same history: the earlier reply goes back exactly as it came, as it did the first time.
+		ChatApi.Conversation again = api.last();
+		assertEquals(first.turns.size(), again.turns.size());
+		for (int i = 0; i < first.turns.size(); i++)
+		{
+			assertEquals(first.turns.get(i).text, again.turns.get(i).text);
+			assertSame(first.turns.get(i).rawMessages, again.turns.get(i).rawMessages);
+		}
+		assertSame(r1, again.turns.get(1).rawMessages);
+		assertEquals("Q2", lastTurn(again));
+
+		api.listener().onReply(reply("A2, again", 1, 1));
+		runEdt();
+		assertEquals(Arrays.asList(Chat.Role.USER, Chat.Role.ASSISTANT, Chat.Role.USER, Chat.Role.ASSISTANT), roles());
+		assertEquals("A2, again", chat.messages.get(3).text);
+		assertSame(q2, chat.messages.get(2));
+		assertFalse(q2.unanswered);
+	}
+
+	@Test
+	public void onlyTheLatestFinishedReplyCanBeWrittenAgain()
+	{
+		assertNull("nothing yet", RequestRunner.regenerable(chat));
+		Chat.Message q1 = send("Q1");
+		assertNull("still on its way", RequestRunner.regenerable(chat));
+		api.listener().onReply(reply("A1", 1, 1));
+		runEdt();
+		Chat.Message a1 = chat.messages.get(1);
+		assertSame(a1, RequestRunner.regenerable(chat));
+
+		// A question after it: the reply isn't the latest message any more, whatever happens to the question.
+		send("Q2");
+		api.listener().onError(new ChatApi.Failure("Couldn't reach Anthropic."));
+		runEdt();
+		assertNull(RequestRunner.regenerable(chat));
+		assertFalse(runner.regenerate(chat, a1, setup()));
+		assertEquals("Retry goes on the error instead", "Q2", RequestRunner.retryable(chat).text);
+
+		// What was shown of a reply that didn't finish is retried through its question, not written again.
+		Chat unfinished = new Chat("x");
+		unfinished.messages.add(new Chat.Message(Chat.Role.USER, "q"));
+		Chat.Message cut = new Chat.Message(Chat.Role.ASSISTANT, "half");
+		cut.unfinished = true;
+		unfinished.messages.add(cut);
+		assertNull(RequestRunner.regenerable(unfinished));
+
+		// A reply whose question isn't sent any more (left out of an old saved chat) has nothing to ask again.
+		Chat orphan = new Chat("y");
+		orphan.messages.add(new Chat.Message(Chat.Role.NOTE, "The oldest message of this chat wasn't kept"));
+		orphan.messages.add(new Chat.Message(Chat.Role.ASSISTANT, "an answer"));
+		assertNull(RequestRunner.regenerable(orphan));
+		Chat summarised = new Chat("z");
+		Chat.Message old = new Chat.Message(Chat.Role.USER, "q");
+		old.summarized = true;
+		summarised.messages.add(old);
+		summarised.messages.add(new Chat.Message(Chat.Role.ASSISTANT, "a"));
+		assertNull(RequestRunner.regenerable(summarised));
+		assertFalse(q1.unanswered);
+	}
+
 	@Test
 	public void characterDetailsAreReadBeforeSending()
 	{

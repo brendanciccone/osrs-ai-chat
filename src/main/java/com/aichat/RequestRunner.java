@@ -174,6 +174,64 @@ final class RequestRunner
 		return true;
 	}
 
+	/**
+	 * The reply Retry would write again, or null: the chat's last message, when it's a reply that finished, to a question
+	 * that's still sent. Only the latest one: writing an older reply again would change what every later message was
+	 * built on.
+	 */
+	static Chat.Message regenerable(Chat chat)
+	{
+		if (chat.isRunning() || chat.messages.isEmpty())
+		{
+			return null;
+		}
+		Chat.Message last = chat.messages.get(chat.messages.size() - 1);
+		if (last.role != Chat.Role.ASSISTANT || last.unfinished)
+		{
+			return null;
+		}
+		Chat.Message question = questionOf(chat, last);
+		return question != null && ConversationBuilder.stillSent(question) ? last : null;
+	}
+
+	/**
+	 * The player's message {@code reply} answers: the nearest one before it, with nothing in between but notes, errors
+	 * and what was shown of replies that didn't finish. Null if there's none.
+	 */
+	private static Chat.Message questionOf(Chat chat, Chat.Message reply)
+	{
+		for (int i = chat.messages.indexOf(reply) - 1; i >= 0; i--)
+		{
+			Chat.Message m = chat.messages.get(i);
+			if (m.role == Chat.Role.USER)
+			{
+				return m;
+			}
+			if (m.role == Chat.Role.ASSISTANT && !m.unfinished)
+			{
+				return null;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Retry on the latest reply: it's taken out, and its question goes again with the settings of now, as a new
+	 * request. Everything before the question stays exactly as it was sent, so the provider's cache and Claude's earlier
+	 * replies, sent back as they came, still apply. False unless {@code reply} is the one {@link #regenerable} names.
+	 */
+	boolean regenerate(Chat chat, Chat.Message reply, Setup setup)
+	{
+		if (reply == null || reply != regenerable(chat))
+		{
+			return false;
+		}
+		Chat.Message question = questionOf(chat, reply);
+		chat.messages.remove(reply);
+		start(new Outgoing(chat, question, setup, false));
+		return true;
+	}
+
 	private void start(Outgoing out)
 	{
 		Chat chat = out.chat;
