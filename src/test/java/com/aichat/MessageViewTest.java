@@ -356,6 +356,9 @@ public class MessageViewTest
 		onEdt(() ->
 		{
 			MessageView v = new MessageView();
+			// Its letters see-through, so that what's drawn below is the table's own, whatever the font and its
+			// antialiasing: with LCD antialiasing (ClearType's), a letter at the left edge tints the pixel beside it.
+			v.setTextColor(new Color(0, 0, 0, 0));
 			v.setMarkdown(TABLE);
 			int h = StackLayout.heightFor(v, 220);
 			v.setSize(220, h);
