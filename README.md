@@ -32,17 +32,19 @@ look things up on the OSRS Wiki while it answers. Uses your own API key. Free an
 
 ## Setup
 
-1. Get an API key from your provider:
+1. Install AI Chat from the Plugin Hub: in RuneLite, open the Plugin Hub and search for **AI Chat**
+   ([its page on runelite.net](https://runelite.net/plugin-hub/show/osrs-ai-chat)).
+2. Get an API key from your provider:
    - Claude: [console.anthropic.com](https://console.anthropic.com)
    - ChatGPT: [platform.openai.com](https://platform.openai.com)
    - OpenAI-compatible: from that service, or none for local ones like [Ollama](https://ollama.com) and
      [LM Studio](https://lmstudio.ai)
 
    API use is billed per message by the provider. A Claude or ChatGPT subscription doesn't include API access.
-2. In RuneLite's settings, open **AI Chat**, turn on **Enable AI requests** and choose the **AI provider**. Then open
+3. In RuneLite's settings, open **AI Chat**, turn on **Enable AI requests** and choose the **AI provider**. Then open
    that provider's section (Claude, ChatGPT or OpenAI-compatible) and paste your key. For an OpenAI-compatible
    service, also set its URL (for example `http://localhost:11434/v1` for Ollama) and model.
-3. Open the AI Chat panel (the rune icon in the sidebar). Press **Test** to check your key and URL (some
+4. Open the AI Chat panel (the rune icon in the sidebar). Press **Test** to check your key and URL (some
    OpenAI-compatible services, such as OpenRouter, list their models for any key, so there only the URL is checked);
    if the model isn't one you can use, or you haven't set one yet, **Choose model...** lists the ones you can. Then
    ask away.

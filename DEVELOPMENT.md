@@ -76,8 +76,15 @@ through `getPluginDirectory()` and off the Swing and client threads, game data r
 nothing blocking the client thread or the EDT. Nothing is sent anywhere while "Enable AI requests" is off, and
 provider, model and Wiki text is never rendered as HTML.
 
-Suggested `warning` for the plugin's Plugin Hub manifest:
+AI Chat is on the Plugin Hub as [osrs-ai-chat](https://runelite.net/plugin-hub/show/osrs-ai-chat). Its manifest,
+[`plugins/osrs-ai-chat`](https://github.com/runelite/plugin-hub/blob/master/plugins/osrs-ai-chat) in the plugin-hub
+repository, names the commit the Hub builds and carries the Hub's own warning:
 
 ```
-warning=This plugin sends your messages, and any character or item details you choose to share, to the AI provider you configure (a 3rd-party server not controlled or verified by the RuneLite developers), and looks things up on the OSRS Wiki.
+warning=This plugin submits your IP address, and may submit various account data, to a 3rd-party server not controlled or verified by Runelite developers.
 ```
+
+That warning already covers what later versions can share (character details, items and gear, Wiki look-ups), so it
+needn't change. To release a new version: bump `version` in `runelite-plugin.properties`, merge to `main`, then open a
+pull request on runelite/plugin-hub that changes only `commit=` in that manifest to the new commit on `main` (see the
+plugin-hub README's "Updating a plugin"). The Hub's reviewers read every changed line, so a large update takes longer.
