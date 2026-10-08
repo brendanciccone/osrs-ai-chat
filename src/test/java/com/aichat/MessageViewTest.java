@@ -41,6 +41,9 @@ import static org.junit.Assert.assertTrue;
  */
 public class MessageViewTest
 {
+	/** A message wider than any table in these tests, in any font. */
+	private static final int WIDE = 320;
+
 	private static final String WIKI = "https://oldschool.runescape.wiki/w/Abyssal_whip";
 
 	/** Swing components belong on the EDT, in tests too. */
@@ -423,11 +426,12 @@ public class MessageViewTest
 			MessageView v = new MessageView();
 			v.setMarkdown("Bring these:\n\n| Item | Why |\n|---|---|\n| Extended antifire | Dragonfire |\n"
 				+ "| Anti-venom+ | His venom |\n\nThat's it.");
-			int h = StackLayout.heightFor(v, 220);
-			v.setSize(220, h);
+			// Wider than the sidebar, so there is room beside the table to look in whatever the machine's font.
+			int h = StackLayout.heightFor(v, WIDE);
+			v.setSize(WIDE, h);
 			TableView table = tables(v).get(0);
 			int right = (int) table.getPreferredSpan(View.X_AXIS);
-			assertTrue("narrower than the message", right < 200);
+			assertTrue("narrower than the message", right < WIDE - 40);
 			// The line break that ends the table's paragraph is the table's own: not a sliver of text beside it, which
 			// would show a selection of its own.
 			Element root = v.getDocument().getDefaultRootElement();
@@ -437,7 +441,7 @@ public class MessageViewTest
 
 			v.selectAll();
 			v.getCaret().setSelectionVisible(true);
-			BufferedImage image = new BufferedImage(220, h, BufferedImage.TYPE_INT_ARGB);
+			BufferedImage image = new BufferedImage(WIDE, h, BufferedImage.TYPE_INT_ARGB);
 			Graphics2D g = image.createGraphics();
 			v.print(g);
 			g.dispose();
@@ -446,7 +450,7 @@ public class MessageViewTest
 				Rectangle2D at = v.modelToView2D(text(v).indexOf("Item"));
 				for (int y = (int) at.getY(); y < (int) at.getMaxY(); y++)
 				{
-					for (int x = right; x < 220; x++)
+					for (int x = right; x < WIDE; x++)
 					{
 						assertEquals("nothing beside the table at " + x + "," + y, 0, alpha(image, x, y));
 					}

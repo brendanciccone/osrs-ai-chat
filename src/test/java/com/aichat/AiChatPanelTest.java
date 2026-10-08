@@ -283,10 +283,19 @@ public class AiChatPanelTest
 		});
 	}
 
+	/**
+	 * As if the button had only just changed what it does, however long the machine took to get here: a click now is
+	 * one meant for what it did before.
+	 */
+	private static void unsettle(Composer.ActionButton button)
+	{
+		button.changedAt = System.currentTimeMillis() + 60_000;
+	}
+
 	/** As if the player waited a moment after the button changed, as anyone does before pressing it on purpose. */
 	private static void settle(Composer.ActionButton button)
 	{
-		button.changedAt -= Composer.ActionButton.SETTLE_MILLIS;
+		button.changedAt = System.currentTimeMillis() - Composer.ActionButton.SETTLE_MILLIS;
 	}
 
 	@Test
@@ -306,7 +315,8 @@ public class AiChatPanelTest
 			assertEquals(Composer.Mode.STOP, button.mode);
 
 			// A double-click's second click was meant for Send: it doesn't stop the question just sent.
-			button.doClick();
+			unsettle(button);
+			button.doClick(0);
 			assertEquals(0, host.stops);
 			// Pressed a moment later, Stop stops.
 			settle(button);
@@ -320,7 +330,8 @@ public class AiChatPanelTest
 			panel.refreshAll();
 			assertEquals(Composer.Mode.SEND, button.mode);
 			assertTrue(button.isEnabled());
-			button.doClick();
+			unsettle(button);
+			button.doClick(0);
 			assertEquals(1, host.sent.size());
 			settle(button);
 			button.doClick();
