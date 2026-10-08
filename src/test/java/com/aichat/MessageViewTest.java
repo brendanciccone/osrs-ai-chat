@@ -369,4 +369,95 @@ public class MessageViewTest
 			}
 		});
 	}
+
+	@Test
+	public void linesCanSitCentredOrRight() throws Throwable
+	{
+		onEdt(() ->
+		{
+			MessageView v = new MessageView();
+			v.setPlainText("Stopped.");
+			assertEquals(StyleConstants.ALIGN_LEFT, StyleConstants.getAlignment(paragraph(v)));
+			v.setAlignment(StyleConstants.ALIGN_CENTER);
+			assertEquals(StyleConstants.ALIGN_CENTER, StyleConstants.getAlignment(paragraph(v)));
+			v.setAlignment(StyleConstants.ALIGN_RIGHT);
+			v.setMarkdown("one\n\ntwo");
+			assertEquals(StyleConstants.ALIGN_RIGHT, StyleConstants.getAlignment(paragraph(v)));
+
+			// Drawn at the right edge: nothing in the left half.
+			v.setSize(300, StackLayout.heightFor(v, 300));
+			try
+			{
+				assertTrue(v.modelToView2D(0).getX() > 150);
+			}
+			catch (BadLocationException e)
+			{
+				throw new AssertionError(e);
+			}
+		});
+	}
+
+	private static AttributeSet paragraph(MessageView v)
+	{
+		return v.getStyledDocument().getParagraphElement(0).getAttributes();
+	}
+
+	@Test
+	public void itKnowsHowWideItIsUnwrapped() throws Throwable
+	{
+		onEdt(() ->
+		{
+			MessageView v = new MessageView();
+			v.setPlainText("hi");
+			int small = v.naturalWidth();
+			assertTrue(small > 0 && small < 40);
+			v.setPlainText("A question long enough to wrap in the narrow panel, and then some more words");
+			int big = v.naturalWidth();
+			assertTrue(big > 300);
+			int line = StackLayout.heightFor(one("x"), 400);
+			// Its longest line, whatever width it was last laid out at.
+			assertTrue(StackLayout.heightFor(v, 150) > line);
+			assertEquals(big, v.naturalWidth());
+			v.setPlainText("short\na much longer second line");
+			assertEquals("the longest line", one("a much longer second line").naturalWidth(), v.naturalWidth());
+			// A box that wide holds it without a wrap.
+			v.setPlainText("How do I get a whip?");
+			assertEquals(line, StackLayout.heightFor(v, v.naturalWidth()));
+		});
+	}
+
+	private static MessageView one(String text)
+	{
+		MessageView v = new MessageView();
+		v.setPlainText(text);
+		return v;
+	}
+
+	@Test
+	public void theMessagesOwnTooltipShowsAwayFromLinks() throws Throwable
+	{
+		onEdt(() ->
+		{
+			MessageView v = new MessageView();
+			v.setMarkdown("[Wiki](" + WIKI + ") and some more words after it");
+			v.setToolTipText("Claude \u00b7 14:02");
+			v.setSize(400, StackLayout.heightFor(v, 400));
+			try
+			{
+				Rectangle2D wiki = v.modelToView2D(1);
+				assertEquals(WIKI, v.getToolTipText(move(v, (int) wiki.getX() + 1, (int) wiki.getCenterY())));
+				Rectangle2D after = v.modelToView2D(text(v).indexOf("after"));
+				assertEquals("Claude \u00b7 14:02", v.getToolTipText(move(v, (int) after.getX() + 1, (int) after.getCenterY())));
+			}
+			catch (BadLocationException e)
+			{
+				throw new AssertionError(e);
+			}
+		});
+	}
+
+	private static MouseEvent move(MessageView v, int x, int y)
+	{
+		return new MouseEvent(v, MouseEvent.MOUSE_MOVED, 0, 0, x, y, 0, false);
+	}
 }

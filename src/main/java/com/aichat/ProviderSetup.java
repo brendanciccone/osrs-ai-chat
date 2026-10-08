@@ -95,20 +95,6 @@ final class ProviderSetup
 		}
 	}
 
-	/** "Claude · claude-opus-5-5": what answers new messages. */
-	String summary()
-	{
-		switch (config.provider())
-		{
-			case CLAUDE:
-				return "Claude · " + model();
-			case CHATGPT:
-				return "ChatGPT · " + model();
-			default:
-				return model() + " · " + OpenAiApi.describeUrl(config.compatibleUrl());
-		}
-	}
-
 	/**
 	 * The provider's API, with the player's key; null while something's missing (see {@link #problem()}).
 	 * {@code refused}: optional request settings services and models have refused, shared while the plugin runs.
@@ -155,7 +141,7 @@ final class ProviderSetup
 		}
 	}
 
-	/** The setting {@link #model()} comes from, for "Choose model". */
+	/** The setting {@link #model()} comes from, for the model picker. */
 	String modelKey()
 	{
 		switch (config.provider())

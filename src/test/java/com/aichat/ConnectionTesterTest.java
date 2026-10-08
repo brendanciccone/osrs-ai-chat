@@ -11,8 +11,9 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * "Test" while it runs: only the answer to the latest Test counts, a stopped one says nothing, and a result belongs to
- * the setup it was made with. The provider is a stand-in that answers when the test says so.
+ * Asking for the model list, by "Test connection" or quietly for the model picker: only the answer to the latest request
+ * counts, a stopped one says nothing, a result belongs to the setup it was made with, and the picker asks once per
+ * setup and never while the provider can't be reached. The provider is a stand-in that answers when the test says so.
  */
 public class ConnectionTesterTest
 {
@@ -81,7 +82,7 @@ public class ConnectionTesterTest
 		assertEquals("not until the EDT runs it", ConnectionCheck.Kind.TESTING, note().kind);
 		runEdt();
 		assertEquals(ConnectionCheck.Kind.OK, note().kind);
-		assertEquals(List.of("claude-opus-5-5", "claude-haiku-4-5"), note().models);
+		assertEquals(List.of("claude-opus-5-5", "claude-haiku-4-5"), tester.check(SETUP).models);
 		assertEquals(1, changes);
 	}
 
@@ -139,5 +140,88 @@ public class ConnectionTesterTest
 		assertEquals(ConnectionCheck.Kind.ERROR, note.kind);
 		assertEquals(RequestRunner.COULDNT_SEND, note.text);
 		assertFalse(note.text.contains("sk-ant"));
+	}
+
+	@Test
+	public void thePickersListIsAskedForQuietlyOncePerSetup()
+	{
+		assertTrue(tester.list(null, SETUP, () -> api, false));
+		assertEquals(1, api.listeners.size());
+		assertNull("the banner stays quiet", note());
+		assertEquals(ConnectionCheck.Kind.TESTING, tester.check(SETUP).note("Anthropic", "m", true, false).kind);
+		assertFalse("not again while it's asking", tester.list(null, SETUP, () -> api, false));
+
+		api.listeners.get(0).onModels(List.of("claude-opus-5-5"));
+		runEdt();
+		assertEquals(1, changes);
+		assertEquals(List.of("claude-opus-5-5"), tester.check(SETUP).models);
+		assertNull(note());
+		assertFalse("nor once it has the list", tester.list(null, SETUP, () -> api, false));
+		assertEquals(1, api.listeners.size());
+
+		// Another key: its own list. And back: asked again, since that's a change too.
+		String other = ConnectionCheck.setupKey(AiChatConfig.Provider.CLAUDE, null, "sk-ant-2");
+		assertNull(tester.check(other));
+		assertTrue(tester.list(null, other, () -> api, false));
+		assertTrue(tester.list(null, SETUP, () -> api, false));
+		assertEquals(3, api.listeners.size());
+		assertTrue("the one before is stopped", api.requests.get(1).isCancelled());
+	}
+
+	@Test
+	public void testAsksAgainAndTheBannerCanBeClosed()
+	{
+		tester.list(null, SETUP, () -> api, false);
+		api.listeners.get(0).onModels(List.of("claude-opus-5-5"));
+		runEdt();
+
+		tester.start(api, SETUP, false);
+		assertEquals(2, api.listeners.size());
+		api.listeners.get(1).onModels(List.of("claude-opus-5-5", "claude-haiku-4-5"));
+		runEdt();
+		assertEquals(ConnectionCheck.Kind.OK, note().kind);
+
+		// Closed: the banner has nothing to say, but the picker keeps the list.
+		tester.dismiss();
+		assertNull(note());
+		assertEquals(List.of("claude-opus-5-5", "claude-haiku-4-5"), tester.check(SETUP).models);
+	}
+
+	@Test
+	public void nothingIsAskedWhileTheProviderCantBeReached()
+	{
+		String off = "Turn on \"Enable AI requests\" in the AI Chat settings, then choose a provider and add your API key.";
+		assertFalse(tester.list(off, SETUP, () ->
+		{
+			throw new AssertionError("no API is even made");
+		}, false));
+		assertTrue(api.listeners.isEmpty());
+		assertNull(tester.check(SETUP));
+
+		// Turned off after a list came in: forgotten, and asked for again once it's back on.
+		tester.list(null, SETUP, () -> api, false);
+		api.listeners.get(0).onModels(List.of("claude-opus-5-5"));
+		runEdt();
+		tester.stop();
+		assertNull(tester.check(SETUP));
+		assertTrue(tester.list(null, SETUP, () -> api, false));
+		assertEquals(2, api.listeners.size());
+	}
+
+	@Test
+	public void goodNewsGoesWithTheNextMessageButProblemsStay()
+	{
+		tester.start(api, SETUP, false);
+		assertFalse("still testing", tester.sent(SETUP, "Anthropic", "claude-opus-5-5", true, false));
+		assertEquals(ConnectionCheck.Kind.TESTING, note().kind);
+		api.listeners.get(0).onModels(List.of("claude-haiku-4-5"));
+		runEdt();
+		// The model that's set isn't listed: a warning, which stays.
+		assertFalse(tester.sent(SETUP, "Anthropic", "claude-opus-5-5", true, false));
+		assertEquals(ConnectionCheck.Kind.WARNING, note().kind);
+		// Read against the model now set, it's good news: gone once a message goes.
+		assertTrue(tester.sent(SETUP, "Anthropic", "claude-haiku-4-5", true, false));
+		assertNull(tester.note(SETUP, "Anthropic", "claude-haiku-4-5", true, false));
+		assertEquals("the picker keeps the list", List.of("claude-haiku-4-5"), tester.check(SETUP).models);
 	}
 }

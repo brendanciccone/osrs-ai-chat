@@ -6,9 +6,10 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * "Test" in the panel: the provider's list of models, asked for with the player's key, and what it says about their
- * setup. The result is kept for the provider, address and key it was made with, and read against whichever model is
- * set now, so choosing another model (here or in the settings) updates it without asking again.
+ * The provider's list of models, asked for with the player's key: by "Test connection", which says what it means for
+ * their setup, and quietly for the model picker next to Send. The result is kept for the provider, address and key it
+ * was made with, and read against whichever model is set now, so choosing another model (in the panel or in the
+ * settings) updates it without asking again.
  */
 final class ConnectionCheck
 {
@@ -26,18 +27,16 @@ final class ConnectionCheck
 		ERROR
 	}
 
-	/** What the panel shows under the setup: a sentence, and the models to choose from (empty for none). */
+	/** What the panel's banner says after a Test. */
 	static final class Note
 	{
 		final Kind kind;
 		final String text;
-		final List<String> models;
 
-		Note(Kind kind, String text, List<String> models)
+		Note(Kind kind, String text)
 		{
 			this.kind = kind;
 			this.text = text;
-			this.models = models;
 		}
 	}
 
@@ -124,58 +123,119 @@ final class ConnectionCheck
 			if (OpenAiApi.NO_MODEL_LIST.equals(error))
 			{
 				// Any web server answers "not found", so this says little: not even that the URL is right. With no model
-				// set, there's none to choose here either: say where it goes, as the setup help did before the Test.
+				// set, there's none to pick either: say where its name goes.
 				if (model == null || model.trim().isEmpty())
 				{
 					return new Note(Kind.WARNING, service + " answered, but not with a list of models, so Test can't "
-						+ "check the URL or offer a model. Set the model in the Other (OpenAI-compatible) section of the AI Chat "
-						+ "settings, with its name from the service's website.", Collections.emptyList());
+						+ "check the URL or offer a model. Type the model's name next to Send, as the service's website "
+						+ "gives it.");
 				}
 				return new Note(Kind.WARNING, service + " answered, but not with a list of models, so Test can't check "
-					+ "the URL or the model name. Check both on the service's website.", Collections.emptyList());
+					+ "the URL or the model name. Check both on the service's website.");
 			}
-			return new Note(Kind.ERROR, error, Collections.emptyList());
+			return new Note(Kind.ERROR, error);
 		}
 		if (models == null)
 		{
-			return new Note(Kind.TESTING, "Testing the connection...", Collections.emptyList());
+			return new Note(Kind.TESTING, "Testing the connection\u2026");
 		}
 		if (models.isEmpty())
 		{
-			return new Note(Kind.WARNING, "Connected to " + service + ", but it listed no models to chat with.", models);
+			return new Note(Kind.WARNING, "Connected to " + service + ", but it listed no models to chat with.");
 		}
 		// OpenRouter lists its models for anyone: a wrong key there only shows when a message is sent.
 		String key = keyUnchecked ? " Your key is checked when you send: some services list their models for anyone." : "";
 		if (model == null || model.trim().isEmpty())
 		{
-			return new Note(Kind.OK, "Connected to " + service + "." + key + " Choose a model:", models);
+			return new Note(Kind.OK, "Connected to " + service + "." + key + " Pick a model next to Send.");
 		}
 		if (has(models, model))
 		{
-			return new Note(Kind.OK, "Connected to " + service + ". " + model + " is available." + key, models);
+			return new Note(Kind.OK, "Connected to " + service + ". " + model + " is available." + key);
 		}
-		return new Note(Kind.WARNING, keyed ? "Connected, but " + model + " isn't in the list your key can use."
-			: "Connected to " + service + ", but " + model + " isn't one of its models.", models);
+		return new Note(Kind.WARNING, (keyed ? "Connected, but " + model + " isn't in the list your key can use."
+			: "Connected to " + service + ", but " + model + " isn't one of its models.") + " Pick another next to Send.");
 	}
 
-	/**
-	 * Whether {@code model} is one of {@code models}, as named there: Ollama lists "llama3.2:latest" for the model asked
-	 * for as "llama3.2", and Anthropic lists an alias such as "claude-haiku-4-5" as the dated model it points to,
-	 * "claude-haiku-4-5-20251001".
-	 */
+	/** Whether {@code model} is one of {@code models}, as named there (see {@link #sameModel}). */
 	private static boolean has(List<String> models, String model)
 	{
-		if (models.contains(model) || !model.contains(":") && models.contains(model + ":latest"))
-		{
-			return true;
-		}
 		for (String id : models)
 		{
-			if (id.length() == model.length() + 9 && id.startsWith(model + "-") && id.substring(model.length() + 1).matches("\\d{8}"))
+			if (sameModel(id, model))
 			{
 				return true;
 			}
 		}
 		return false;
+	}
+
+	/**
+	 * Whether {@code listed}, a model as the provider's list names it, is {@code model} as the player set it: Ollama
+	 * lists "llama3.2:latest" for the model asked for as "llama3.2", and Anthropic lists an alias such as
+	 * "claude-haiku-4-5" as the dated model it points to, "claude-haiku-4-5-20251001".
+	 */
+	static boolean sameModel(String listed, String model)
+	{
+		if (listed.equals(model) || !model.contains(":") && listed.equals(model + ":latest"))
+		{
+			return true;
+		}
+		return listed.length() == model.length() + 9 && listed.startsWith(model + "-")
+			&& listed.substring(model.length() + 1).matches("\\d{8}");
+	}
+
+	/**
+	 * What the model picker offers: the model that's set (blank: none), always, and the chat models {@code listed}, in
+	 * their order. The model that's set takes the place of the one it is in the list, under the name it's set as (so
+	 * "claude-haiku-4-5" isn't offered twice, once by its dated name), or goes first when the list hasn't got it.
+	 */
+	static List<String> choices(String model, List<String> listed)
+	{
+		String current = model == null ? "" : model.trim();
+		List<String> out = new ArrayList<>();
+		boolean placed = current.isEmpty();
+		for (String id : listed == null ? Collections.<String>emptyList() : listed)
+		{
+			if (current.isEmpty() || !sameModel(id, current))
+			{
+				out.add(id);
+			}
+			else if (!placed)
+			{
+				out.add(current);
+				placed = true;
+			}
+		}
+		if (!placed)
+		{
+			out.add(0, current);
+		}
+		return out;
+	}
+
+	/**
+	 * The model picker's tooltip: how to choose, and why the list is short when it is. {@code check}: the latest list
+	 * asked for this setup, or null; {@code problem}: why the provider can't be reached (AI requests off included), or
+	 * null. Plain sentences of our own, starting with our own words, so they can never be read as HTML.
+	 */
+	static String pickerTip(ConnectionCheck check, String problem, String service)
+	{
+		String how = "The model new messages go to. Pick one, or type its name and press Enter.";
+		if (problem != null || check == null)
+		{
+			return how + " The list fills in once AI requests are on and the provider is set up.";
+		}
+		if (check.error != null)
+		{
+			return OpenAiApi.NO_MODEL_LIST.equals(check.error)
+				? how + " " + service + " doesn't list its models: type the name its website gives."
+				: how + " Couldn't list the models: " + check.error;
+		}
+		if (check.models == null)
+		{
+			return how + " Looking up the models you can use\u2026";
+		}
+		return check.models.isEmpty() ? how + " " + service + " listed no models to chat with." : how;
 	}
 }

@@ -303,12 +303,12 @@ public class RequestRunnerTest
 		assertEquals("Claude", chat.answering);
 		assertEquals(1, api.sent.size());
 		assertEquals("How do I get to Zulrah?", lastTurn(api.last()));
-		assertEquals("Waiting for a reply... 0s", PanelText.status(chat, chat.runStartedAt));
+		assertEquals("Thinking.", PanelText.live(chat, chat.runStartedAt));
 
 		api.listener().onPartial("Take the");
 		runEdt();
 		assertEquals("Take the", chat.liveText);
-		assertEquals("Writing... 0s", PanelText.status(chat, chat.runStartedAt));
+		assertNull("nothing to say while it writes", PanelText.live(chat, chat.runStartedAt));
 		assertTrue(host.live > 0);
 
 		api.listener().onReply(reply("Take the Zul-Andra teleport.", 1200, 80));
@@ -446,17 +446,17 @@ public class RequestRunnerTest
 		host.started.run();
 		runEdt();
 		assertTrue(chat.lookingUp);
-		assertEquals("Looking things up...", PanelText.status(chat, chat.runStartedAt));
+		assertEquals("Looking things up\u2026", PanelText.live(chat, chat.runStartedAt));
 
 		host.activity.accept("Read the Wiki page \"Vorkath\"");
 		runEdt();
-		assertEquals("Looking things up: Read the Wiki page \"Vorkath\"", PanelText.status(chat, chat.runStartedAt));
+		assertEquals("Looking things up: Read the Wiki page \"Vorkath\"", PanelText.live(chat, chat.runStartedAt));
 		assertEquals(Collections.singletonList("Read the Wiki page \"Vorkath\""), chat.liveActivity);
 
 		api.listener().onPartial("Let me check.\n\nVorkath is weak to stab.");
 		runEdtSoon();
 		assertFalse(chat.lookingUp);
-		assertEquals("Writing... 0s", PanelText.status(chat, chat.runStartedAt));
+		assertNull("nothing to say while it writes", PanelText.live(chat, chat.runStartedAt));
 
 		api.listener().onReply(reply("Let me check.\n\nVorkath is weak to stab.", 10, 10));
 		runEdt();
@@ -506,7 +506,7 @@ public class RequestRunnerTest
 		api.listener().onRetrying("Anthropic is busy", 6);
 		runEdt();
 		assertEquals("Anthropic is busy", chat.retryWhy);
-		String status = PanelText.status(chat, System.currentTimeMillis());
+		String status = PanelText.live(chat, System.currentTimeMillis());
 		assertTrue(status, status.matches("Anthropic is busy; trying again in [56]s"));
 	}
 
@@ -787,7 +787,7 @@ public class RequestRunnerTest
 		assertEquals(ConversationBuilder.SUMMARY_PROMPT, summary.system);
 		assertEquals(ConversationBuilder.SUMMARY_MAX_TOKENS, summary.maxTokens);
 		assertTrue(summary.tools.isEmpty());
-		assertTrue(PanelText.status(chat, chat.runStartedAt).startsWith("Summarising earlier messages..."));
+		assertTrue(PanelText.live(chat, chat.runStartedAt).startsWith("Summarising earlier messages\u2026"));
 		// The summary isn't shown as it streams in.
 		api.listener().onPartial("The player");
 		runEdt();

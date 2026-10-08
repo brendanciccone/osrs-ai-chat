@@ -89,7 +89,6 @@ public class ProviderSetupTest
 	public void claude()
 	{
 		assertNull(setup.problem());
-		assertEquals("Claude · claude-opus-5-5", setup.summary());
 		assertEquals("claudeModel", setup.modelKey());
 		assertEquals("Anthropic", setup.service());
 		assertTrue(setup.keyed());
@@ -114,7 +113,6 @@ public class ProviderSetupTest
 		assertTrue(setup.problem().startsWith("Add your OpenAI API key"));
 		settings.openaiKey = "sk-proj-1";
 		assertNull(setup.problem());
-		assertEquals("ChatGPT · " + OpenAiApi.DEFAULT_MODEL, setup.summary());
 		assertEquals("openaiModel", setup.modelKey());
 		assertEquals("OpenAI", setup.service());
 	}
@@ -130,7 +128,6 @@ public class ProviderSetupTest
 			setup.problem());
 		settings.compatibleModel = "llama3.2";
 		assertNull(setup.problem());
-		assertEquals("llama3.2 · localhost:11434", setup.summary());
 		assertEquals("compatibleModel", setup.modelKey());
 		assertEquals("localhost:11434", setup.service());
 		assertTrue(!setup.keyed());

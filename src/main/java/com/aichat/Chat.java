@@ -60,21 +60,6 @@ class Chat
 			this.text = text;
 			this.time = time;
 		}
-
-		String author()
-		{
-			switch (role)
-			{
-				case USER:
-					return "You";
-				case ASSISTANT:
-					return who != null ? who : "Assistant";
-				case ERROR:
-					return "Error";
-				default:
-					return "Note";
-			}
-		}
 	}
 
 	final String id;

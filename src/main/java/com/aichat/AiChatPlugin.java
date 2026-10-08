@@ -16,7 +16,6 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
-import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
@@ -110,7 +109,7 @@ public class AiChatPlugin extends Plugin
 	/** The chosen provider, as the settings describe it. */
 	private ProviderSetup provider;
 
-	/** For "Choose model": sets the chosen provider's model, as the settings panel would. */
+	/** For the model picker: sets the chosen provider's model, as the settings panel would. */
 	@Inject
 	private ConfigManager configManager;
 
@@ -136,7 +135,7 @@ public class AiChatPlugin extends Plugin
 
 	/** For AI requests: they can take a while, and replies shouldn't land in RuneLite's disk cache. */
 	private OkHttpClient apiHttp;
-	/** For "Test": the same, but a model list that takes longer than a few seconds isn't coming. */
+	/** For "Test connection" and the model picker's list: a list that takes longer than a few seconds isn't coming. */
 	private OkHttpClient testHttp;
 	/**
 	 * Optional request settings each service and model has refused, while the plugin runs: OpenAI-compatible settings,
@@ -156,13 +155,12 @@ public class AiChatPlugin extends Plugin
 	 * RuneLite runs, like the chats: the file is opened once.
 	 */
 	private ChatSaver saver;
-	/** EDT: "Test" and its latest result. */
+	/** EDT: the provider's list of models, for "Test connection" and the model picker. */
 	private ConnectionTester tester;
 	private AiChatPanel panel;
 	private NavigationButton navButton;
 
 	// Swing EDT state.
-	@Getter
 	private final List<Chat> chats = new ArrayList<>();
 	private Chat current;
 	private int chatCounter;
@@ -237,7 +235,8 @@ public class AiChatPlugin extends Plugin
 		{
 			current = chats.get(chats.size() - 1);
 		}
-		panel = new AiChatPanel(this);
+		panel = new AiChatPanel(new Panel());
+		listModels();
 		BufferedImage icon = ImageUtil.loadImageResource(AiChatPlugin.class, "icon.png");
 		navButton = NavigationButton.builder()
 			.tooltip("AI Chat")
@@ -289,6 +288,8 @@ public class AiChatPlugin extends Plugin
 				{
 					saver.apply();
 				}
+				// Another provider, key or address: the picker's list is asked for again (never with AI requests off).
+				listModels();
 				panel.refreshAll();
 			};
 			// Settings are usually changed on the Swing thread: act at once there, so that no tool round or retry
@@ -351,18 +352,6 @@ public class AiChatPlugin extends Plugin
 		return provider.connectionProblem();
 	}
 
-	/** "Claude · claude-opus-5-5": what answers new messages. */
-	String setupSummary()
-	{
-		return provider.summary();
-	}
-
-	/** The model new messages go to, as set for the chosen provider. */
-	String model()
-	{
-		return provider.model();
-	}
-
 	/** Null if not set up; see {@link #setupProblem()}. */
 	private ChatApi api()
 	{
@@ -384,10 +373,13 @@ public class AiChatPlugin extends Plugin
 	}
 
 	// ------------------------------------------------------------------
-	// Test connection and choose a model (EDT)
+	// Test connection and the model picker (EDT)
 	// ------------------------------------------------------------------
 
-	/** "Test" in the panel: asks the provider which models the key can use. Sends nothing while AI requests are off. */
+	/**
+	 * "Test connection" in the panel's menu: asks the provider which models the key can use, and the banner says what
+	 * that means. Sends nothing while AI requests are off.
+	 */
 	void testConnection()
 	{
 		ChatApi api = provider.testApi(testHttp, gson, executor, refusedOptions);
@@ -395,12 +387,27 @@ public class AiChatPlugin extends Plugin
 		{
 			return;
 		}
-		// Anthropic lists the newest models first; the others in no useful order.
-		tester.start(api, provider.connection(), config.provider() != AiChatConfig.Provider.CLAUDE);
+		tester.start(api, provider.connection(), sortModels());
 		panel.refreshAll();
 	}
 
-	/** What the latest "Test" says about the setup as it is now, or null when there's nothing to say. */
+	/**
+	 * The model picker's list: asked for quietly, once for each provider, key and address, when the panel starts and when
+	 * those change. Never while AI requests are off, or before the provider can be reached.
+	 */
+	private void listModels()
+	{
+		tester.list(testProblem(), provider.connection(), () -> provider.testApi(testHttp, gson, executor, refusedOptions),
+			sortModels());
+	}
+
+	/** Anthropic lists the newest models first, which is worth keeping; the others list theirs in no useful order. */
+	private boolean sortModels()
+	{
+		return config.provider() != AiChatConfig.Provider.CLAUDE;
+	}
+
+	/** What the latest "Test" says about the setup as it is now, for the banner, or null when there's nothing to say. */
 	ConnectionCheck.Note connectionNote()
 	{
 		if (testProblem() != null)
@@ -410,7 +417,7 @@ public class AiChatPlugin extends Plugin
 		return tester.note(provider.connection(), provider.service(), provider.model(), provider.keyed(), provider.keyUnchecked());
 	}
 
-	/** "Choose model": the provider's model setting becomes {@code model}, as if typed in the settings. */
+	/** The model picker: the provider's model setting becomes {@code model}, as if typed in the settings. */
 	void chooseModel(String model)
 	{
 		if (model != null && !model.trim().isEmpty())
@@ -512,6 +519,7 @@ public class AiChatPlugin extends Plugin
 			}
 			RequestRunner.Setup setup = setup();
 			runner.send(chat, text, setup);
+			sent();
 			gameMessage("Asked " + setup.api.displayName() + (chat.namedByPlayer ? " (" + chat.name + ")" : "")
 				+ ". You'll be pinged when there's a reply.");
 		});
@@ -520,11 +528,6 @@ public class AiChatPlugin extends Plugin
 	// ------------------------------------------------------------------
 	// Chats (EDT)
 	// ------------------------------------------------------------------
-
-	Chat currentChat()
-	{
-		return current;
-	}
 
 	/** Returns false if the message can't be sent right now; the panel keeps the text. */
 	boolean send(String text)
@@ -546,13 +549,18 @@ public class AiChatPlugin extends Plugin
 			return false;
 		}
 		runner.send(chat, text, setup);
+		sent();
 		return true;
 	}
 
-	/** "Retry": the chat's unanswered question goes again, with the settings of now. */
-	void retry(Chat chat)
+	/**
+	 * "Retry" on {@code m}, the chat's last message: the question that went unanswered goes again, or, on the latest
+	 * reply, its question is asked again for a new one. With the settings of now.
+	 */
+	void retry(Chat chat, Chat.Message m)
 	{
-		if (!chats.contains(chat) || chat.isRunning())
+		if (!chats.contains(chat) || chat.isRunning() || chat.messages.isEmpty()
+			|| chat.messages.get(chat.messages.size() - 1) != m)
 		{
 			return;
 		}
@@ -562,9 +570,19 @@ public class AiChatPlugin extends Plugin
 			showError(setupProblem());
 			return;
 		}
-		if (runner.retry(chat, setup))
+		if (runner.retry(chat, setup) || runner.regenerate(chat, m, setup))
 		{
 			showError(null);
+			sent();
+		}
+	}
+
+	/** A message went: a Test's good news has been read by now, and makes way for the conversation. */
+	private void sent()
+	{
+		if (tester.sent(provider.connection(), provider.service(), provider.model(), provider.keyed(), provider.keyUnchecked()))
+		{
+			panel.refreshAll();
 		}
 	}
 
@@ -646,6 +664,126 @@ public class AiChatPlugin extends Plugin
 		}
 		saver.saveSoon();
 		panel.refreshAll();
+	}
+
+	/** What {@link AiChatPanel} needs from the plugin. On the EDT. */
+	private final class Panel implements AiChatPanel.Host
+	{
+		@Override
+		public List<Chat> chats()
+		{
+			return chats;
+		}
+
+		@Override
+		public Chat currentChat()
+		{
+			return current;
+		}
+
+		@Override
+		public String setupProblem()
+		{
+			return AiChatPlugin.this.setupProblem();
+		}
+
+		@Override
+		public String testProblem()
+		{
+			return AiChatPlugin.this.testProblem();
+		}
+
+		@Override
+		public ConnectionCheck.Note connectionNote()
+		{
+			return AiChatPlugin.this.connectionNote();
+		}
+
+		@Override
+		public void dismissNote()
+		{
+			tester.dismiss();
+		}
+
+		/** The model new messages go to, as set for the chosen provider. */
+		@Override
+		public String model()
+		{
+			return provider.model();
+		}
+
+		@Override
+		public List<String> modelChoices()
+		{
+			ConnectionCheck check = tester.check(provider.connection());
+			return ConnectionCheck.choices(provider.model(), check == null ? null : check.models);
+		}
+
+		@Override
+		public String modelTip()
+		{
+			return ConnectionCheck.pickerTip(tester.check(provider.connection()), testProblem(), provider.service());
+		}
+
+		@Override
+		public boolean send(String text)
+		{
+			return AiChatPlugin.this.send(text);
+		}
+
+		@Override
+		public void stop()
+		{
+			AiChatPlugin.this.stop();
+		}
+
+		@Override
+		public void retry(Chat chat, Chat.Message m)
+		{
+			AiChatPlugin.this.retry(chat, m);
+		}
+
+		@Override
+		public void newChat()
+		{
+			AiChatPlugin.this.newChat();
+		}
+
+		@Override
+		public void selectChat(Chat chat)
+		{
+			AiChatPlugin.this.selectChat(chat);
+		}
+
+		@Override
+		public void renameChat(Chat chat, String name)
+		{
+			AiChatPlugin.this.renameChat(chat, name);
+		}
+
+		@Override
+		public void clearChat(Chat chat)
+		{
+			AiChatPlugin.this.clearChat(chat);
+		}
+
+		@Override
+		public void deleteChat(Chat chat)
+		{
+			AiChatPlugin.this.deleteChat(chat);
+		}
+
+		@Override
+		public void testConnection()
+		{
+			AiChatPlugin.this.testConnection();
+		}
+
+		@Override
+		public void chooseModel(String model)
+		{
+			AiChatPlugin.this.chooseModel(model);
+		}
 	}
 
 	/** What {@link RequestRunner} needs from the plugin. Everything but the tools' callbacks runs on the EDT. */

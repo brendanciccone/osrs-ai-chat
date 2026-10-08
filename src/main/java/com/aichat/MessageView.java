@@ -44,10 +44,11 @@ import net.runelite.client.util.LinkBrowser;
 import okhttp3.HttpUrl;
 
 /**
- * One message in the transcript: {@link Markdown} drawn with text attributes, never as HTML. Read-only but selectable,
- * see-through, and wrapped to whatever width its container gives it, with the height to match (it works in
- * {@link StackLayout} like a wrapped text area). Links show their address on hover and open in the browser on click;
- * right-click copies. Swing EDT only.
+ * One message in the transcript, or a line about one: {@link Markdown} (or plain text) drawn with text attributes,
+ * never as HTML. Read-only but selectable, see-through, and wrapped to whatever width its container gives it, with the
+ * height to match (it works in {@link StackLayout} like a wrapped text area); it can also say how wide it would be
+ * unwrapped, for a bubble that hugs a short message. Links show their address on hover and open in the browser on
+ * click; right-click copies. Swing EDT only.
  *
  * <pre>
  * MessageView body = new MessageView();
@@ -91,6 +92,10 @@ class MessageView extends JTextPane
 	private List<Markdown.Block> blocks = Collections.emptyList();
 	private Color textColor = Color.WHITE;
 	private Font textFont = DEFAULT_FONT;
+	/** How lines sit across the width: one of StyleConstants' ALIGN_LEFT, ALIGN_CENTER and ALIGN_RIGHT. */
+	private int alignment = StyleConstants.ALIGN_LEFT;
+	/** {@link #naturalWidth}, worked out once per text; -1 until then. */
+	private int naturalWidth = -1;
 	private boolean overLink;
 	/** The latest mouse press or release opened the menu. */
 	private boolean menuOpened;
@@ -208,6 +213,16 @@ class MessageView extends JTextPane
 		}
 	}
 
+	/** How lines sit across the width: StyleConstants.ALIGN_LEFT (the default), ALIGN_CENTER or ALIGN_RIGHT. */
+	void setAlignment(int alignment)
+	{
+		if (alignment != this.alignment)
+		{
+			this.alignment = alignment;
+			render();
+		}
+	}
+
 	/** The text last given to {@link #setMarkdown} or {@link #setPlainText}. */
 	String getSource()
 	{
@@ -225,6 +240,26 @@ class MessageView extends JTextPane
 	{
 		String selected = getSelectedText();
 		toClipboard(selected != null && !selected.isEmpty() ? selected : plainText());
+	}
+
+	/** Copies the whole message as plain text, whatever is selected. */
+	void copyAll()
+	{
+		toClipboard(plainText());
+	}
+
+	/**
+	 * How wide the text is without wrapping, its longest line, in pixels: what a bubble needs to hug a short message.
+	 * Measured by the same views that lay the text out, so a box this wide holds it without a wrap.
+	 */
+	int naturalWidth()
+	{
+		if (naturalWidth < 0)
+		{
+			// The views' unwrapped width, which their wrapping doesn't change. One more pixel for what rounding loses.
+			naturalWidth = super.getPreferredSize().width + 1;
+		}
+		return naturalWidth;
 	}
 
 	@Override
@@ -245,10 +280,12 @@ class MessageView extends JTextPane
 		return true;
 	}
 
+	/** A link's address over a link; anywhere else, the tooltip set on the view (the message's time, say), if any. */
 	@Override
 	public String getToolTipText(MouseEvent e)
 	{
-		return linkAt(e.getPoint());
+		String url = linkAt(e.getPoint());
+		return url != null ? url : getToolTipText();
 	}
 
 	@Override
@@ -278,6 +315,7 @@ class MessageView extends JTextPane
 		}
 		int dot = getCaret().getDot();
 		int mark = getCaret().getMark();
+		naturalWidth = -1;
 		setDocument(doc);
 		// Keep a selection made while the reply streams in, as far as the new text allows.
 		if (dot != mark && Math.max(dot, mark) <= doc.getLength())
@@ -321,6 +359,7 @@ class MessageView extends JTextPane
 		SimpleAttributeSet first = new SimpleAttributeSet();
 		SimpleAttributeSet last = new SimpleAttributeSet();
 		StyleConstants.setLeftIndent(lines, base);
+		StyleConstants.setAlignment(lines, alignment);
 		StyleConstants.setSpaceAbove(first, gap);
 		switch (b.kind)
 		{

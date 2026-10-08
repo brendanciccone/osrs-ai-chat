@@ -1,12 +1,17 @@
 package com.aichat;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
- * What the panel's status line says while a reply is on its way, and the lines under each message saying what was
- * looked up or shared for it. Pure, so it's tested without Swing.
+ * The panel's words around the messages: the line under a reply on its way saying what it's doing, each message's
+ * tooltip, how notes read, and the lines saying what was looked up or shared for a message. Pure, so it's tested
+ * without Swing.
  */
 final class PanelText
 {
@@ -14,28 +19,51 @@ final class PanelText
 	static final int NAMES_SHOWN = 3;
 	/** The panel is narrow: a longer name is cut on the look-up line, and kept whole in the full list. */
 	static final int NAME_CHARS = 30;
+	/** "Thinking" counts its dots for this long; then the seconds count instead, for a model that's slow to start. */
+	static final int THINKING_DOTS_SECONDS = 5;
+	/** A summary's note, as {@link ConversationBuilder#applySummary} writes it: how many messages, then the summary. */
+	private static final Pattern SUMMARY_NOTE = Pattern.compile(
+		"Summary of the (?:(\\d+) earlier messages, sent instead of them|earlier message, sent instead of it):\\n\\n(.*)",
+		Pattern.DOTALL);
 
 	private PanelText()
 	{
 	}
 
-	/** The status line of a chat waiting for its reply, at {@code now} (milliseconds). */
-	static String status(Chat chat, long now)
+	/**
+	 * The muted line under the reply on its way, at {@code now} (milliseconds): what it's doing while there are no new
+	 * words to read. Null while it's writing.
+	 */
+	static String live(Chat chat, long now)
 	{
 		if (chat.retryWhy != null && chat.retryAt > now)
 		{
 			return chat.retryWhy + "; trying again in " + ChatApi.seconds(chat.retryAt - now) + "s";
 		}
-		String elapsed = elapsed(now - chat.runStartedAt);
+		long ms = now - chat.runStartedAt;
 		if (chat.isSummarizing())
 		{
-			return "Summarising earlier messages... " + elapsed;
+			return "Summarising earlier messages\u2026 " + elapsed(ms);
 		}
 		if (chat.lookingUp)
 		{
-			return chat.lookupLine == null ? "Looking things up..." : "Looking things up: " + chat.lookupLine;
+			return chat.lookupLine == null ? "Looking things up\u2026" : "Looking things up: " + chat.lookupLine;
 		}
-		return (chat.liveText != null ? "Writing... " : "Waiting for a reply... ") + elapsed;
+		return chat.liveText == null ? thinking(ms) : null;
+	}
+
+	/**
+	 * Before the first words: "Thinking" with one, two, then three dots, a step a second (the panel's ticker redraws it
+	 * each second), then the seconds it's been, since a model on the player's own computer can take minutes to start.
+	 */
+	static String thinking(long ms)
+	{
+		long secs = Math.max(0, ms / 1000);
+		if (secs < THINKING_DOTS_SECONDS)
+		{
+			return "Thinking" + "...".substring(0, (int) (secs % 3) + 1);
+		}
+		return "Thinking\u2026 " + elapsed(ms);
 	}
 
 	/** "12s", "3m 5s". */
@@ -43,6 +71,65 @@ final class PanelText
 	{
 		long secs = Math.max(0, ms / 1000);
 		return secs < 60 ? secs + "s" : (secs / 60) + "m " + (secs % 60) + "s";
+	}
+
+	/**
+	 * A message's tooltip: when it was sent, and for a reply who wrote it, with what the transcript no longer spells out
+	 * under each message: a question that went unanswered, a reply that didn't finish, a message the summary now
+	 * stands in for.
+	 */
+	static String tooltip(Chat.Message m)
+	{
+		String time = new SimpleDateFormat("HH:mm").format(new Date(m.time));
+		StringBuilder tip = new StringBuilder();
+		if (m.role == Chat.Role.ASSISTANT)
+		{
+			tip.append(m.who != null ? m.who : "Assistant").append(" \u00b7 ");
+		}
+		tip.append(time);
+		if (m.role == Chat.Role.USER && m.unanswered)
+		{
+			tip.append(" \u00b7 not answered");
+		}
+		if (m.unfinished)
+		{
+			tip.append(" \u00b7 didn't finish");
+		}
+		if (m.summarized)
+		{
+			tip.append(" \u00b7 summarised: the summary further down is sent instead");
+		}
+		return tip.toString();
+	}
+
+	/** How the transcript shows a note: one line, and what's a click away from it. */
+	static final class Note
+	{
+		final String line;
+		/** Null for nothing more. */
+		final String details;
+
+		private Note(String line, String details)
+		{
+			this.line = line;
+			this.details = details;
+		}
+	}
+
+	/**
+	 * A note as the transcript shows it: a summary's note is a short line, "Summary of 24 earlier messages", with the
+	 * summary itself a click away (it can be long); any other note is shown as it is.
+	 */
+	static Note note(String text)
+	{
+		Matcher m = SUMMARY_NOTE.matcher(text == null ? "" : text);
+		if (!m.matches())
+		{
+			return new Note(text == null ? "" : text, null);
+		}
+		String count = m.group(1);
+		String line = count == null ? "Summary of 1 earlier message" : "Summary of " + count + " earlier messages";
+		return new Note(line, m.group(2).trim());
 	}
 
 	/** A message's activity lines, as the panel shows them. */

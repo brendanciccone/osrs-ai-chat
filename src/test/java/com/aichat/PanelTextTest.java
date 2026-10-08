@@ -1,14 +1,17 @@
 package com.aichat;
 
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
 import org.junit.Test;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
-/** The panel's words for a reply on its way, and for what was looked up or shared for each message. */
+/** The panel's words for a reply on its way, a message's tooltip, notes, and what was looked up or shared. */
 public class PanelTextTest
 {
 	private static final long NOW = 1_000_000;
@@ -22,24 +25,36 @@ public class PanelTextTest
 	}
 
 	@Test
-	public void theStatusLineFollowsTheReply()
+	public void theLineUnderTheReplySaysWhatItsDoingUntilItWrites()
 	{
 		Chat chat = running();
-		assertEquals("Waiting for a reply... 12s", PanelText.status(chat, NOW));
+		assertEquals("Thinking… 12s", PanelText.live(chat, NOW));
 
 		chat.liveText = "Vorkath is";
-		assertEquals("Writing... 12s", PanelText.status(chat, NOW));
+		assertNull("the words say it all", PanelText.live(chat, NOW));
 
 		chat.lookingUp = true;
-		assertEquals("Looking things up...", PanelText.status(chat, NOW));
+		assertEquals("Looking things up…", PanelText.live(chat, NOW));
 		chat.lookupLine = "Read the Wiki page \"Vorkath\"";
-		assertEquals("Looking things up: Read the Wiki page \"Vorkath\"", PanelText.status(chat, NOW));
+		assertEquals("Looking things up: Read the Wiki page \"Vorkath\"", PanelText.live(chat, NOW));
 
 		chat.retryWhy = "Anthropic is busy";
 		chat.retryAt = NOW + 5_200;
-		assertEquals("Anthropic is busy; trying again in 6s", PanelText.status(chat, NOW));
+		assertEquals("Anthropic is busy; trying again in 6s", PanelText.live(chat, NOW));
 		// Once the wait is over, the request is on its way again.
-		assertEquals("Looking things up: Read the Wiki page \"Vorkath\"", PanelText.status(chat, NOW + 6_000));
+		assertEquals("Looking things up: Read the Wiki page \"Vorkath\"", PanelText.live(chat, NOW + 6_000));
+	}
+
+	@Test
+	public void thinkingCountsDotsThenSeconds()
+	{
+		assertEquals("Thinking.", PanelText.thinking(0));
+		assertEquals("Thinking..", PanelText.thinking(1_200));
+		assertEquals("Thinking...", PanelText.thinking(2_999));
+		assertEquals("Thinking.", PanelText.thinking(3_000));
+		// A model that's slow to start: the seconds show it's still waiting.
+		assertEquals("Thinking… 5s", PanelText.thinking(5_000));
+		assertEquals("Thinking… 1m 2s", PanelText.thinking(62_000));
 	}
 
 	@Test
@@ -49,9 +64,60 @@ public class PanelTextTest
 		chat.skipSummary = () ->
 		{
 		};
-		assertEquals("Summarising earlier messages... 12s", PanelText.status(chat, NOW));
+		assertEquals("Summarising earlier messages… 12s", PanelText.live(chat, NOW));
 		chat.runStartedAt = NOW - 75_000;
-		assertEquals("Summarising earlier messages... 1m 15s", PanelText.status(chat, NOW));
+		assertEquals("Summarising earlier messages… 1m 15s", PanelText.live(chat, NOW));
+	}
+
+	@Test
+	public void aMessagesTooltipSaysWhenAndWho()
+	{
+		long time = 1_700_000_000_000L;
+		String hhmm = new SimpleDateFormat("HH:mm").format(new Date(time));
+		Chat.Message question = new Chat.Message(Chat.Role.USER, "q", time);
+		assertEquals(hhmm, PanelText.tooltip(question));
+		question.unanswered = true;
+		assertEquals(hhmm + " · not answered", PanelText.tooltip(question));
+
+		Chat.Message reply = new Chat.Message(Chat.Role.ASSISTANT, "a", time);
+		assertEquals("Assistant · " + hhmm, PanelText.tooltip(reply));
+		reply.who = "Claude";
+		reply.unfinished = true;
+		reply.summarized = true;
+		assertEquals("Claude · " + hhmm + " · didn't finish · summarised: the summary further down is sent "
+			+ "instead", PanelText.tooltip(reply));
+		assertEquals(hhmm, PanelText.tooltip(new Chat.Message(Chat.Role.NOTE, "Stopped.", time)));
+	}
+
+	@Test
+	public void aSummarysNoteIsOneLineWithTheSummaryAClickAway()
+	{
+		Chat chat = new Chat("x");
+		List<Chat.Message> old = new ArrayList<>();
+		for (int i = 0; i < 24; i++)
+		{
+			Chat.Message m = new Chat.Message(i % 2 == 0 ? Chat.Role.USER : Chat.Role.ASSISTANT, "m" + i);
+			chat.messages.add(m);
+			old.add(m);
+		}
+		Chat.Message note = ConversationBuilder.applySummary(chat, old, "The player is training Agility.", null);
+		PanelText.Note shown = PanelText.note(note.text);
+		assertEquals("Summary of 24 earlier messages", shown.line);
+		assertEquals("The player is training Agility.", shown.details);
+
+		Chat one = new Chat("y");
+		Chat.Message only = new Chat.Message(Chat.Role.USER, "q");
+		one.messages.add(only);
+		PanelText.Note single = PanelText.note(ConversationBuilder.applySummary(one, Collections.singletonList(only),
+			"One question.\n\nOn two lines.", null).text);
+		assertEquals("Summary of 1 earlier message", single.line);
+		assertEquals("One question.\n\nOn two lines.", single.details);
+
+		// Any other note is shown as it is.
+		PanelText.Note stopped = PanelText.note("Stopped.");
+		assertEquals("Stopped.", stopped.line);
+		assertNull(stopped.details);
+		assertEquals("Summary of the plan: none", PanelText.note("Summary of the plan: none").line);
 	}
 
 	@Test
