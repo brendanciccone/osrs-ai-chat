@@ -140,12 +140,17 @@ final class PanelText
 		/** Between the parts of the line. */
 		static final String SEPARATOR = " \u00b7 ";
 		static final String ELLIPSIS = "\u2026";
+		/** What a line cut short doesn't end on, before its ellipsis: spaces, and the marks that join words. */
+		private static final Pattern TRAILING = Pattern.compile("[\\s:;,\u00b7]+$");
 
 		/** "Shared your equipment and inventory", or null when nothing of the player's was shared. */
 		final String sharing;
 		/** "Looked up Vorkath, Dragon bones (GE price)", or null when nothing was. */
 		final String lookups;
-		/** "Looked up 3 things", or null when fewer than two things were. */
+		/**
+		 * "Looked up 3 things", or null when nothing was. Also null for one thing when nothing was shared: its name cut
+		 * short says more than "Looked up 1 thing".
+		 */
 		final String count;
 		/** "3 look-ups": the count, shorter. Null when {@link #count} is. */
 		final String tally;
@@ -162,8 +167,9 @@ final class PanelText
 		{
 			this.sharing = sharing;
 			this.lookups = lookups;
-			this.count = things > 1 ? "Looked up " + things + " things" : null;
-			this.tally = things > 1 ? things + " look-ups" : null;
+			boolean counted = things > 1 || things == 1 && sharing != null;
+			this.count = counted ? "Looked up " + things + (things == 1 ? " thing" : " things") : null;
+			this.tally = counted ? things + (things == 1 ? " look-up" : " look-ups") : null;
 			this.other = other;
 			this.details = details;
 		}
@@ -176,8 +182,9 @@ final class PanelText
 
 		/**
 		 * The line, as long as {@code fits} says fits on one row: the look-ups by name, else counted ("Looked up 3
-		 * things", then "3 look-ups"), else cut short at the end. Never cut into what was shared: if even that doesn't
-		 * fit, the line is longer than a row (and wraps).
+		 * things", then "3 look-ups"), else cut short at the end. Never cut into what was shared: after it, the look-ups
+		 * are cut down to an ellipsis, or left off (the line's chevron says there's more); only if what was shared
+		 * doesn't fit by itself is the line longer than a row (and wraps).
 		 */
 		String line(Predicate<String> fits)
 		{
@@ -190,31 +197,40 @@ final class PanelText
 			{
 				return join(sharing, count);
 			}
-			String counted = tally != null ? join(sharing, tally) : named;
-			if (fits.test(counted))
+			if (tally != null && fits.test(join(sharing, tally)))
 			{
-				return counted;
+				return join(sharing, tally);
 			}
-			String head = sharing == null ? "" : sharing + SEPARATOR;
-			if (counted.length() <= head.length())
+			if (sharing != null)
 			{
-				// Only what was shared, which is never cut.
-				return counted;
+				if (tally == null)
+				{
+					// Only what was shared, which is never cut.
+					return sharing;
+				}
+				// A count cut short says nothing: all of it goes, after what was shared.
+				for (String shorter : new String[]{sharing + SEPARATOR + ELLIPSIS, sharing + ELLIPSIS, sharing})
+				{
+					if (fits.test(shorter))
+					{
+						return shorter;
+					}
+				}
+				return join(sharing, tally);
 			}
 			if (tally != null)
 			{
-				// A count cut short says nothing: all of it goes, after what was shared.
-				return !head.isEmpty() && fits.test(head + ELLIPSIS) ? head + ELLIPSIS : counted;
+				return tally;
 			}
-			String tail = counted.substring(head.length());
-			// The longest start of the rest that fits with the ellipsis after it; widths only grow with the length.
+			// One thing looked up, or a line of its own: the longest start of it that fits with the ellipsis after it;
+			// widths only grow with the length.
 			int lo = 0;
-			int hi = tail.length() - 1;
+			int hi = named.length() - 1;
 			int best = -1;
 			while (lo <= hi)
 			{
 				int mid = (lo + hi) >>> 1;
-				if (fits.test(cut(head, tail, mid)))
+				if (fits.test(cut(named, mid)))
 				{
 					best = mid;
 					lo = mid + 1;
@@ -226,20 +242,21 @@ final class PanelText
 			}
 			if (best < 0)
 			{
-				return counted;
+				return named;
 			}
-			if (best < tail.length() && tail.charAt(best) != ' ')
+			if (best < named.length() && named.charAt(best) != ' ')
 			{
-				// Not in the middle of a word: back to the space before it, or, after what was shared, to nothing.
-				int space = tail.lastIndexOf(' ', best - 1);
-				best = space > 0 ? space : head.isEmpty() ? best : 0;
+				// Not in the middle of a word: back to the space before it, if there's one.
+				int space = named.lastIndexOf(' ', best - 1);
+				best = space > 0 ? space : best;
 			}
-			return cut(head, tail, best);
+			return cut(named, best);
 		}
 
-		private static String cut(String head, String tail, int length)
+		/** The first {@code length} characters of {@code text}, and an ellipsis: no stray space or colon before it. */
+		static String cut(String text, int length)
 		{
-			return head + tail.substring(0, length).trim() + ELLIPSIS;
+			return TRAILING.matcher(text.substring(0, length)).replaceFirst("") + ELLIPSIS;
 		}
 
 		private static String join(String first, String second)
@@ -351,7 +368,24 @@ final class PanelText
 	/** A line on its own, as the summary shows it when it's all there is: the long ones said shorter. */
 	private static String brief(String line)
 	{
-		return RequestRunner.NO_LOOKUPS.equals(line) ? "No look-ups: this model can't use tools" : line;
+		if (RequestRunner.NO_LOOKUPS.equals(line))
+		{
+			return "No look-ups: this model can't use tools";
+		}
+		if (line.endsWith(GameDataTools.UNSHARED))
+		{
+			// What was read but never sent (see GameDataTools.unshared): the details have the line in full.
+			String read = line.substring(0, line.length() - GameDataTools.UNSHARED.length());
+			if (read.startsWith(GameDataTools.READ))
+			{
+				return "Didn't share your " + read.substring(GameDataTools.READ.length()) + " (stopped)";
+			}
+			if (read.startsWith(GameDataTools.SEARCHED))
+			{
+				return "Didn't share your bank search (stopped)";
+			}
+		}
+		return line;
 	}
 
 	/**

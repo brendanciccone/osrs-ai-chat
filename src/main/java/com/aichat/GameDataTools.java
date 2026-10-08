@@ -42,6 +42,8 @@ final class GameDataTools implements ChatApi.ToolRunner
 	static final String SEARCHED = "Searched your bank for ";
 	/** Ends the line for what was read but never sent: the request had stopped (see {@link #unshared}). */
 	static final String UNSHARED = ", but didn't share it: the request had stopped";
+	/** Starts the line for what was read but never sent, in place of {@link #SHARED}. */
+	static final String READ = "Read your ";
 	private static final String CHARACTER_SETTING = "Share character details";
 
 	/**
@@ -227,7 +229,7 @@ final class GameDataTools implements ChatApi.ToolRunner
 	{
 		if (line.startsWith(SHARED))
 		{
-			return "Read your " + line.substring(SHARED.length()) + UNSHARED;
+			return READ + line.substring(SHARED.length()) + UNSHARED;
 		}
 		return line.startsWith(SEARCHED) ? line + UNSHARED : line;
 	}

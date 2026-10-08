@@ -995,6 +995,15 @@ public class AiChatPanelTest
 			// Narrower than what was shared: that's never cut, so the line takes two rows.
 			assertTrue(StackLayout.heightFor(s, 80) > oneRow);
 			assertTrue(s.lineText().startsWith("Shared your equipment"));
+
+			// One look-up, after more that was shared, at the sidebar's width: one row, and the look-up named,
+			// counted or left to the ellipsis, never cut down to "Looked up…" or less.
+			MessageRow.showActivity(s, Arrays.asList("Shared your equipment", "Shared your inventory",
+				"Read the Wiki page \"Vorkath\""));
+			assertEquals(oneRow, StackLayout.heightFor(s, 220));
+			String shared = "Shared your equipment and inventory";
+			assertTrue(s.lineText(), Arrays.asList(shared + " · Looked up Vorkath", shared + " · Looked up 1 thing",
+				shared + " · 1 look-up", shared + " · …", shared + "…", shared).contains(s.lineText()));
 		});
 	}
 

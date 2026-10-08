@@ -167,6 +167,37 @@ public class PanelTextTest
 	}
 
 	@Test
+	public void oneLookUpAfterWhatWasSharedIsCountedRatherThanCut()
+	{
+		PanelText.Summary s = sum("Shared your equipment", "Shared your inventory",
+			"Read the Wiki page \"Vorkath/Strategies\" (Equipment)");
+		assertEquals("Shared your equipment and inventory · Looked up Vorkath/Strategies", s.line(ROOMY));
+		assertEquals("Shared your equipment and inventory · Looked up 1 thing", s.line(chars(60)));
+		assertEquals("Shared your equipment and inventory · 1 look-up", s.line(chars(50)));
+		// Then as with more look-ups: the count goes, after what was shared.
+		assertEquals("Shared your equipment and inventory · …", s.line(chars(45)));
+		// The name itself is never cut down to "Looked up…" after what was shared.
+		PanelText.Summary bank = sum("Searched your bank for \"clue\"",
+			"Read the Wiki page \"Treasure Trails/Full guide/Elite\"");
+		assertEquals("Searched your bank · Looked up 1 thing", bank.line(chars(45)));
+		assertEquals("Searched your bank · 1 look-up", bank.line(chars(32)));
+	}
+
+	@Test
+	public void whatWasSharedStaysOnOneRowWhenItFitsThere()
+	{
+		PanelText.Summary s = sum("Shared your equipment", "Shared your inventory", "Shared your bank",
+			"Read the Wiki page \"Vorkath\"", "Read the Wiki page \"Zulrah\"", "Checked the GE price of Dragon bones");
+		assertEquals("Shared your equipment, inventory and bank · 3 look-ups", s.line(chars(55)));
+		assertEquals("Shared your equipment, inventory and bank · …", s.line(chars(45)));
+		// Not even " · …" fits after it: the ellipsis alone, then nothing (the chevron says there's more).
+		assertEquals("Shared your equipment, inventory and bank…", s.line(chars(44)));
+		assertEquals("Shared your equipment, inventory and bank", s.line(chars(41)));
+		// Only when what was shared is longer than a row does the line take two.
+		assertEquals("Shared your equipment, inventory and bank · 3 look-ups", s.line(chars(40)));
+	}
+
+	@Test
 	public void lookUpsAloneAreNamedOrCounted()
 	{
 		assertEquals("Looked up Dragon bones (GE price)", sum("Checked the GE price of Dragon bones").line(ROOMY));
@@ -238,7 +269,13 @@ public class PanelTextTest
 			GameDataTools.unshared("Searched your bank for \"rune\""),
 			"Didn't share your inventory: \"Share items and gear\" is off");
 		assertNull(stopped.sharing);
-		assertEquals("Read your bank, but didn't share it: the request had stopped", stopped.line(ROOMY));
+		// Said shorter on the line; the details have it in full.
+		assertEquals("Didn't share your bank (stopped)", stopped.line(ROOMY));
+		assertTrue(stopped.details.startsWith("Read your bank, but didn't share it: the request had stopped\n"));
+		assertEquals("Didn't share your bank search (stopped)",
+			sum(GameDataTools.unshared("Searched your bank for \"rune\"")).line(ROOMY));
+		assertEquals("Didn't share your equipment (stopped)",
+			sum(GameDataTools.unshared("Shared your equipment")).line(ROOMY));
 	}
 
 	@Test
@@ -248,7 +285,9 @@ public class PanelTextTest
 		assertEquals(RequestRunner.NO_LOOKUPS, sum(RequestRunner.NO_LOOKUPS).details);
 		PanelText.Summary s = sum("Skipped a Wiki search: Wiki look-ups are off", "Couldn't read the game (get_bank)");
 		assertEquals("Skipped a Wiki search: Wiki look-ups are off", s.line(ROOMY));
-		assertEquals("Skipped a Wiki search:…", s.line(chars(25)));
+		// Cut short between words, with no colon left before the ellipsis.
+		assertEquals("Skipped a Wiki search…", s.line(chars(25)));
+		assertEquals("Skipped a Wiki…", s.line(chars(20)));
 		assertEquals("Skipped a Wiki search: Wiki look-ups are off\nCouldn't read the game (get_bank)", s.details);
 	}
 
