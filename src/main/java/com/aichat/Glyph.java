@@ -53,11 +53,6 @@ final class Glyph implements Icon
 		this.color = color;
 	}
 
-	Shape shape()
-	{
-		return shape;
-	}
-
 	@Override
 	public int getIconWidth()
 	{

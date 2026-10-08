@@ -33,11 +33,6 @@ class RoundBox extends JPanel
 		}
 	}
 
-	Color fill()
-	{
-		return fill;
-	}
-
 	@Override
 	protected void paintComponent(Graphics g)
 	{

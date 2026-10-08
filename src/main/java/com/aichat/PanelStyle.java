@@ -5,7 +5,6 @@ import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
-import javax.swing.JLabel;
 import javax.swing.JTextArea;
 import javax.swing.JToolTip;
 import net.runelite.client.ui.ColorScheme;
@@ -68,27 +67,5 @@ final class PanelStyle
 		t.setBorder(null);
 		t.setOpaque(false);
 		return t;
-	}
-
-	/**
-	 * A label that never renders its text, or its tooltip, as HTML: much of what's shown comes from settings, providers
-	 * or replies.
-	 */
-	static class PlainLabel extends JLabel
-	{
-		PlainLabel(String text)
-		{
-			// Set before any text: the HTML renderer is picked when the text is set.
-			putClientProperty("html.disable", Boolean.TRUE);
-			setText(text);
-		}
-
-		@Override
-		public JToolTip createToolTip()
-		{
-			JToolTip tip = super.createToolTip();
-			tip.putClientProperty("html.disable", Boolean.TRUE);
-			return tip;
-		}
 	}
 }
