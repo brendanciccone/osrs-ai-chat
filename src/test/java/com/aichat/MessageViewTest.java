@@ -6,19 +6,25 @@ import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.Point;
+import java.awt.datatransfer.Clipboard;
+import java.awt.datatransfer.DataFlavor;
 import java.awt.event.MouseEvent;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.lang.reflect.InvocationTargetException;
+import java.util.ArrayList;
+import java.util.List;
 import javax.swing.JComponent;
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
+import javax.swing.TransferHandler;
 import javax.swing.border.EmptyBorder;
 import javax.swing.plaf.basic.BasicTextPaneUI;
 import javax.swing.text.AttributeSet;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.Document;
 import javax.swing.text.StyleConstants;
+import javax.swing.text.View;
 import net.runelite.client.ui.ColorScheme;
 import org.junit.Test;
 import static org.junit.Assert.assertEquals;
@@ -79,8 +85,9 @@ public class MessageViewTest
 			assertEquals("", text(v));
 			v.setMarkdown("# Title\n\nHello **world**\n\n- one\n- two\n  - nested\n\n3. third\n\n> quote\n\n```\ncode\n  indented\n```\n\n"
 				+ "---\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nend");
+			// A table's lines are one paragraph, which it draws as a table.
 			assertEquals("Title\nHello world\n\u2022\tone\n\u2022\ttwo\n\u2022\tnested\n3.\tthird\nquote\ncode\n  indented\n\n"
-				+ "a | b\n--+--\n1 | 2\nend", text(v));
+				+ "a | b\u2028--+--\u20281 | 2\nend", text(v));
 		});
 	}
 
@@ -316,6 +323,126 @@ public class MessageViewTest
 			{
 				throw new AssertionError(e);
 			}
+		});
+	}
+
+	private static final String TABLE = "Bring:\n\n| Item | Why |\n|---|---|\n| **Extended antifire** | Dragonfire |\n"
+		+ "| Anti-venom+ | His venom, which hits hard if you forget it |\n\nThat's all.";
+
+	/** The views drawing tables in {@code v}, in order. */
+	private static List<TableView> tables(MessageView v)
+	{
+		List<TableView> found = new ArrayList<>();
+		collect(v.getUI().getRootView(v), found);
+		return found;
+	}
+
+	private static void collect(View view, List<TableView> found)
+	{
+		if (view instanceof TableView)
+		{
+			found.add((TableView) view);
+		}
+		for (int i = 0; i < view.getViewCount(); i++)
+		{
+			collect(view.getView(i), found);
+		}
+	}
+
+	@Test
+	public void tablesAreDrawnAsTablesAndCopiedAsText() throws Throwable
+	{
+		onEdt(() ->
+		{
+			MessageView v = new MessageView();
+			v.setMarkdown(TABLE);
+			int h = StackLayout.heightFor(v, 220);
+			v.setSize(220, h);
+			List<TableView> tables = tables(v);
+			assertEquals(1, tables.size());
+			assertFalse("two columns fit the sidebar", tables.get(0).isCards());
+
+			// Drawn: a rounded outline down its left side, across its rows; nothing there beside the text around it.
+			BufferedImage image = new BufferedImage(220, h, BufferedImage.TYPE_INT_ARGB);
+			Graphics2D g = image.createGraphics();
+			v.print(g);
+			g.dispose();
+			try
+			{
+				// The table is one piece of the text, as tall as all of it.
+				Rectangle2D table = v.modelToView2D(text(v).indexOf("Item"));
+				int top = (int) table.getY();
+				int bottom = (int) table.getMaxY();
+				double line = v.modelToView2D(text(v).indexOf("Bring")).getHeight();
+				assertTrue("three rows, one of them wrapped", table.getHeight() > 4 * line);
+				assertTrue(v.modelToView2D(text(v).indexOf("That's")).getY() >= bottom);
+				int inked = 0;
+				for (int y = top + 8; y < bottom - 8; y++)
+				{
+					inked += alpha(image, 0, y) > 0 ? 1 : 0;
+				}
+				assertTrue("the outline", inked > (bottom - top - 16) * 3 / 4);
+				int before = (int) v.modelToView2D(text(v).indexOf("Bring")).getCenterY();
+				assertEquals(0, alpha(image, 0, before));
+			}
+			catch (BadLocationException e)
+			{
+				throw new AssertionError(e);
+			}
+
+			// Selected and copied whole, as lines of text, with the text around it: by the menu, and by Ctrl+C.
+			v.selectAll();
+			String lines = "Item              | Why\n"
+				+ "------------------+--------------------------------------------\n"
+				+ "Extended antifire | Dragonfire\n"
+				+ "Anti-venom+       | His venom, which hits hard if you forget it";
+			assertEquals("Bring:\n" + lines + "\nThat's all.", v.getSelectedText());
+			Clipboard clipboard = new Clipboard("test");
+			v.getTransferHandler().exportToClipboard(v, clipboard, TransferHandler.COPY);
+			try
+			{
+				assertEquals("Bring:\n" + lines + "\nThat's all.", clipboard.getData(DataFlavor.stringFlavor));
+			}
+			catch (Exception e)
+			{
+				throw new AssertionError(e);
+			}
+			assertEquals("Bring:\n\n" + lines + "\n\nThat's all.", v.plainText());
+		});
+	}
+
+	@Test
+	public void tablesTooWideForTheSidebarAreCards() throws Throwable
+	{
+		onEdt(() ->
+		{
+			MessageView v = new MessageView();
+			v.setMarkdown("| Crossbow | Price | Accuracy | Damage | Notes |\n|---|--:|--:|--:|---|\n"
+				+ "| Dragon hunter | 72M | +95 | +122 | Best vs dragons |\n| Rune | 9k | +90 | +90 | |");
+			int narrow = StackLayout.heightFor(v, 220);
+			assertTrue(tables(v).get(0).isCards());
+			// Wide enough for all of it: a table, one line a row.
+			int wide = StackLayout.heightFor(v, 2000);
+			assertFalse(tables(v).get(0).isCards());
+			assertTrue("a card a row, a line a cell, is taller", narrow > 2 * wide);
+		});
+	}
+
+	@Test
+	public void aTableTooBigToDrawIsItsLines() throws Throwable
+	{
+		onEdt(() ->
+		{
+			StringBuilder reply = new StringBuilder("| n | square |\n|---|---|\n");
+			for (int i = 0; i <= Markdown.MAX_TABLE_ROWS; i++)
+			{
+				reply.append("| ").append(i).append(" | ").append(i * i).append(" |\n");
+			}
+			MessageView v = new MessageView();
+			v.setMarkdown(reply.toString());
+			assertTrue(StackLayout.heightFor(v, 220) > 0);
+			assertTrue(tables(v).isEmpty());
+			assertTrue(text(v).startsWith("n   | square\n----+-------\n0   | 0"));
 		});
 	}
 

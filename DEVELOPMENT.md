@@ -45,7 +45,8 @@ server on 127.0.0.1 (`StandIn`), which serves canned answers (streams included) 
   `GameDataToolsTest`: writing up the player's items, Slayer task and diaries, and when the game-data tools share.
   `CharacterInfoTest`: the character note.
 - `MarkdownTest` and `MessageViewTest`: reading replies' Markdown, and drawing it off screen (headless): alignment,
-  the width a bubble hugs, links and tooltips. `StackLayoutTest`: the transcript's layout, bubbles that hug their text
+  the width a bubble hugs, links and tooltips, tables (drawn as tables or cards, copied as text). `TableViewTest`: how
+  a table's columns share the width, and when it turns into cards. `StackLayoutTest`: the transcript's layout, bubbles that hug their text
   included. `GlyphTest`: the drawn icons.
   `GameChatEchoTest`: replies as game chat. `PanelTextTest`: the line under a reply on its way ("Thinking..."), each
   message's tooltip, summary notes, and the one line over a reply saying what was shared (always named in full) and
@@ -80,10 +81,10 @@ server on 127.0.0.1 (`StandIn`), which serves canned answers (streams included) 
   `MessageRow` (one message: the player's bubble, a reply with Copy and Retry, a note, an error), `Composer` (the input
   box, model picker and Send/Stop button), `ModelPicker` (the model's name next to Send, and its menu), `Banner`,
   `EmptyChat` (a new chat's welcome and starters), `ShowMore` (a line with a chevron that shows more when clicked),
-  `MessageView` and `Markdown` (formatted text), `PanelText` (the panel's words: the line under a reply on its way,
-  tooltips, notes, the line over a reply saying what was shared and looked up), `StackLayout`, and the small
-  drawn parts: `Glyph` (icons), `FlatButton`, `RoundBox`, `PanelStyle` (fonts and colours). `GameChatEcho`: replies as
-  game chat.
+  `MessageView`, `TableView` and `Markdown` (formatted text, tables), `PanelText` (the panel's words: the line under
+  a reply on its way, tooltips, notes, the line over a reply saying what was shared and looked up), `StackLayout`, and
+  the small drawn parts: `Glyph` (icons), `FlatButton`, `RoundBox`, `PanelStyle` (fonts and colours).
+  `GameChatEcho`: replies as game chat.
 - `Chat` (a conversation), `ChatSaver` ("Save chat history": when to load, save and delete), `ChatStore` (what's
   saved), `ChatFile` (the file itself), `AiChatConfig`.
 

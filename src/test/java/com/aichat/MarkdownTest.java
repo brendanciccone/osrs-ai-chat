@@ -6,6 +6,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 import org.junit.Test;
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
@@ -293,6 +294,41 @@ public class MarkdownTest
 		assertEquals("P0[t:| a | b |]", blocks("| a | b |"));
 		assertEquals("P0[t:| a | b |\n|--]", blocks("| a | b |\n|--"));
 		assertEquals("P0[t:a | b]\nR0", blocks("a | b\n---"));
+	}
+
+	@Test
+	public void tablesKeepTheirCellsToBeDrawn()
+	{
+		Markdown.Block b = Markdown.parse("| Item | **Price** |\n|:--|--:|\n| `whip` | 1.5m | extra |\n| Pot |").get(0);
+		assertNotNull(b.table);
+		assertArrayEquals(new int[]{Markdown.ALIGN_LEFT, Markdown.ALIGN_RIGHT}, b.table.align);
+		assertEquals(3, b.table.rows.size());
+		// Formatting kept, for the drawing; a cell per column in every row, the extra one left out.
+		assertEquals("[b:Price]", spans(b.table.rows.get(0).get(1)));
+		assertEquals("[c:whip]", spans(b.table.rows.get(1).get(0)));
+		assertEquals(2, b.table.rows.get(1).size());
+		assertEquals("[t:Pot]", spans(b.table.rows.get(2).get(0)));
+		assertTrue(b.table.rows.get(2).get(1).isEmpty());
+		// The lines, as copied: formatting marks dropped.
+		assertEquals(Arrays.asList("Item | Price", "-----+------", "whip |  1.5m", "Pot  |"), b.lines);
+	}
+
+	@Test
+	public void aTableTooBigToDrawIsShownAsItsLines()
+	{
+		StringBuilder rows = new StringBuilder("| n | sq |\n|---|---|\n");
+		for (int i = 0; i < Markdown.MAX_TABLE_ROWS - 1; i++)
+		{
+			rows.append("| ").append(i).append(" | ").append(i * i).append(" |\n");
+		}
+		assertNotNull("as many rows as can be drawn", Markdown.parse(rows.toString()).get(0).table);
+		rows.append("| one | more |\n");
+		Markdown.Block tooMany = Markdown.parse(rows.toString()).get(0);
+		assertNull(tooMany.table);
+		assertEquals(Markdown.MAX_TABLE_ROWS + 2, tooMany.lines.size());
+		// Too many characters to line up: not drawn either.
+		Markdown.Block wide = Markdown.parse("x|y\n-|-\n|" + "w".repeat(2000) + "\n|\n|\n|\n|\n|\n|\n|\n|\n|").get(0);
+		assertNull(wide.table);
 	}
 
 	@Test

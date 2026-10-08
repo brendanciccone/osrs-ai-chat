@@ -39,10 +39,20 @@ class Markdown
 		final int number;
 		/** The text of every kind but CODE, TABLE and RULE; it can contain line breaks. Empty for those. */
 		final List<Span> spans;
-		/** CODE and TABLE: the lines to show as they are, in a monospaced font. Empty for the others. */
+		/**
+		 * CODE: the lines to show as they are, in a monospaced font. TABLE: the table as such lines, cells padded to
+		 * line up, which is also how it's copied. Empty for the others.
+		 */
 		final List<String> lines;
+		/** TABLE: its cells, to draw it as a table; null when it's too big to draw, and is shown as its lines. */
+		final Table table;
 
 		Block(BlockKind kind, int level, int depth, int number, List<Span> spans, List<String> lines)
+		{
+			this(kind, level, depth, number, spans, lines, null);
+		}
+
+		Block(BlockKind kind, int level, int depth, int number, List<Span> spans, List<String> lines, Table table)
 		{
 			this.kind = kind;
 			this.level = level;
@@ -50,6 +60,25 @@ class Markdown
 			this.number = number;
 			this.spans = spans;
 			this.lines = lines;
+			this.table = table;
+		}
+	}
+
+	/** A table's cells, for drawing it as a table. */
+	static class Table
+	{
+		/** One {@code ALIGN_*} per column. */
+		final int[] align;
+		/**
+		 * The rows, the header first, each with a cell per column (an empty one where the row had too few) holding its
+		 * text with its formatting.
+		 */
+		final List<List<List<Span>>> rows;
+
+		Table(int[] align, List<List<List<Span>>> rows)
+		{
+			this.align = align;
+			this.rows = rows;
 		}
 	}
 
@@ -83,6 +112,11 @@ class Markdown
 	 * megabytes; a table past this is shown as written instead.
 	 */
 	static final int MAX_TABLE = 20_000;
+	/**
+	 * Most rows a table may have to be drawn as a table (it's drawn again with every few words of a reply that streams
+	 * in); one with more is shown as its lined-up lines, as code is.
+	 */
+	static final int MAX_TABLE_ROWS = 200;
 
 	private Markdown()
 	{
@@ -177,22 +211,8 @@ class Markdown
 	static List<String> tableLines(List<List<String>> rows, int[] align)
 	{
 		int columns = align.length;
-		int[] width = new int[columns];
-		Arrays.fill(width, 1);
-		for (List<String> row : rows)
-		{
-			// Only the cells a row has: one that's missing is empty, and looking at it would take as long as padding it.
-			for (int c = 0; c < Math.min(columns, row.size()); c++)
-			{
-				width[c] = Math.max(width[c], row.get(c).length());
-			}
-		}
-		long lineWidth = 3L * (columns - 1);
-		for (int w : width)
-		{
-			lineWidth += w;
-		}
-		boolean lineUp = lineWidth * (rows.size() + 1) <= MAX_TABLE;
+		int[] width = columnChars(rows, columns);
+		boolean lineUp = linesUp(rows, width);
 		List<String> out = new ArrayList<>();
 		for (int r = 0; r < rows.size(); r++)
 		{
@@ -213,6 +233,33 @@ class Markdown
 			}
 		}
 		return out;
+	}
+
+	/** How many characters each column's widest cell has (at least one). */
+	private static int[] columnChars(List<List<String>> rows, int columns)
+	{
+		int[] width = new int[columns];
+		Arrays.fill(width, 1);
+		for (List<String> row : rows)
+		{
+			// Only the cells a row has: one that's missing is empty, and looking at it would take as long as padding it.
+			for (int c = 0; c < Math.min(columns, row.size()); c++)
+			{
+				width[c] = Math.max(width[c], row.get(c).length());
+			}
+		}
+		return width;
+	}
+
+	/** Whether the table, its columns {@code width} characters wide, takes at most {@link #MAX_TABLE} lined up. */
+	private static boolean linesUp(List<List<String>> rows, int[] width)
+	{
+		long lineWidth = 3L * (width.length - 1);
+		for (int w : width)
+		{
+			lineWidth += w;
+		}
+		return lineWidth * (rows.size() + 1) <= MAX_TABLE;
 	}
 
 	/** The rule under a lined-up header: dashes as wide as each column, "+" where the " | " go. */
@@ -674,13 +721,37 @@ class Markdown
 		private void readTable(String header, int depth)
 		{
 			int[] align = delimiterRow(lines.get(pos++));
-			List<List<String>> rows = new ArrayList<>();
-			rows.add(tableCells(header));
+			List<List<List<Span>>> cells = new ArrayList<>();
+			cells.add(tableCells(header, align.length));
 			while (pos < lines.size() && !lines.get(pos).isBlank() && lines.get(pos).indexOf('|') >= 0)
 			{
-				rows.add(tableCells(lines.get(pos++)));
+				cells.add(tableCells(lines.get(pos++), align.length));
 			}
-			blocks.add(new Block(BlockKind.TABLE, 0, depth, 0, Collections.emptyList(), tableLines(rows, align)));
+			// As text, formatting marks dropped: how it's copied, and shown when it's too big to draw.
+			List<List<String>> rows = new ArrayList<>();
+			for (List<List<Span>> row : cells)
+			{
+				List<String> plain = new ArrayList<>();
+				for (List<Span> cell : row)
+				{
+					plain.add(plainText(cell, false));
+				}
+				rows.add(plain);
+			}
+			boolean drawn = rows.size() <= MAX_TABLE_ROWS && linesUp(rows, columnChars(rows, align.length));
+			if (drawn)
+			{
+				// Every row as many cells as there are columns, for the drawing.
+				for (List<List<Span>> row : cells)
+				{
+					while (row.size() < align.length)
+					{
+						row.add(Collections.emptyList());
+					}
+				}
+			}
+			blocks.add(new Block(BlockKind.TABLE, 0, depth, 0, Collections.emptyList(), tableLines(rows, align),
+				drawn ? new Table(align, cells) : null));
 		}
 
 		private void startText(BlockKind kind, int depth, int number, String first)
@@ -831,13 +902,17 @@ class Markdown
 		return align;
 	}
 
-	/** A table row's cells as plain text: formatting marks are dropped, as monospaced lines can't show them. */
-	private static List<String> tableCells(String line)
+	/** A table row's cells, the first {@code columns} of them: those past the header's are left out. */
+	private static List<List<Span>> tableCells(String line, int columns)
 	{
-		List<String> cells = new ArrayList<>();
+		List<List<Span>> cells = new ArrayList<>();
 		for (String cell : splitCells(line.trim()))
 		{
-			cells.add(plainText(inline(cell), false));
+			if (cells.size() == columns)
+			{
+				break;
+			}
+			cells.add(inline(cell));
 		}
 		return cells;
 	}

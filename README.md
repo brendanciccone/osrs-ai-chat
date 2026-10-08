@@ -16,9 +16,9 @@ look things up on the OSRS Wiki while it answers. Uses your own API key. Free an
   renames, clears or deletes it
 - `::ai <message>` in the chatbox to ask without opening the panel (or `::ai` alone, or a hotkey you pick in the
   settings, to open an "Ask:" box); the line is handled by the plugin and isn't sent to the game
-- Replies appear in the panel as they're written, with light formatting (lists, bold, links you can click). Under each
-  reply, **Copy** copies it as plain text and **Retry** (on the latest reply) asks the same question again for a new
-  answer. Once a reply is complete, it's echoed into the game chat, with a RuneLite notification
+- Replies appear in the panel as they're written, with light formatting (lists, bold, tables, links you can click).
+  Under each reply, **Copy** copies it as plain text and **Retry** (on the latest reply) asks the same question again
+  for a new answer. Once a reply is complete, it's echoed into the game chat, with a RuneLite notification
 - **Wiki look-ups:** the assistant can search and read the OSRS Wiki and check Grand Exchange prices (from RuneLite's
   own price data) while it answers, and links the pages it used. A line above each reply says what of yours was
   shared for it and what it looked up; click it for the full list. Look-ups need a model that can use tools; a model

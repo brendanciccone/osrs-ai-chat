@@ -61,6 +61,8 @@ class MessageView extends JTextPane
 {
 	/** The character attribute holding a link's address. */
 	static final Object LINK = new AttributeKey("link");
+	/** The character attribute holding a table to draw, on the table's text: a {@link Markdown.Table}. */
+	private static final Object TABLE = new AttributeKey("table");
 	/** The paragraph attribute holding what to draw behind it: a {@link Decor}. */
 	private static final Object DECOR = new AttributeKey("decor");
 
@@ -236,6 +238,17 @@ class MessageView extends JTextPane
 		return markdown ? Markdown.plainText(blocks) : source;
 	}
 
+	/**
+	 * The selection as plain text, with a table in it as its lines: in the document, a table's lines are kept apart by
+	 * {@link TableView#ROW_BREAK}, as a line break would split it into paragraphs. Ctrl+C copies this too.
+	 */
+	@Override
+	public String getSelectedText()
+	{
+		String selected = super.getSelectedText();
+		return selected == null ? null : selected.replace(TableView.ROW_BREAK, "\n");
+	}
+
 	/** Copies the selection, or the whole message if nothing is selected. */
 	void copyToClipboard()
 	{
@@ -393,17 +406,20 @@ class MessageView extends JTextPane
 				first.addAttribute(DECOR, new Decor(Decor.BAR, LINE_COLOR, base, gap));
 				writeSpans(doc, b.spans, text);
 				break;
-			case CODE:
 			case TABLE:
-				StyleConstants.setFontFamily(text, Font.MONOSPACED);
-				StyleConstants.setFontSize(text, Math.max(1, textFont.getSize() - 1));
-				StyleConstants.setLeftIndent(lines, base + CODE_PAD_X);
-				StyleConstants.setRightIndent(lines, CODE_PAD_X);
-				lines.addAttribute(DECOR, new Decor(Decor.BOX, CODE_BACKGROUND, base, 0));
-				first.addAttribute(DECOR, new Decor(Decor.BOX, CODE_BACKGROUND, base, gap));
-				StyleConstants.setSpaceAbove(first, gap + CODE_PAD_Y);
-				StyleConstants.setSpaceBelow(last, CODE_PAD_Y);
-				doc.insertString(doc.getLength(), String.join("\n", b.lines), text);
+				if (b.table != null)
+				{
+					// Drawn by a TableView. Its lines are its text, so selecting and copying the message takes it.
+					SimpleAttributeSet table = new SimpleAttributeSet(text);
+					table.addAttribute(TABLE, b.table);
+					doc.insertString(doc.getLength(), String.join(TableView.ROW_BREAK, b.lines), table);
+					break;
+				}
+				// Too big to draw: its lines, as code.
+				writeLines(doc, b, base, gap, text, lines, first, last);
+				break;
+			case CODE:
+				writeLines(doc, b, base, gap, text, lines, first, last);
 				break;
 			case RULE:
 				// An empty line in a small font, with a line drawn through it.
@@ -426,6 +442,21 @@ class MessageView extends JTextPane
 			doc.setParagraphAttributes(end, 0, last, false);
 		}
 		return text;
+	}
+
+	/** A block's lines as they are, monospaced, in a box: code, or a table too big to draw. */
+	private void writeLines(DefaultStyledDocument doc, Markdown.Block b, int base, int gap, SimpleAttributeSet text,
+		SimpleAttributeSet lines, SimpleAttributeSet first, SimpleAttributeSet last) throws BadLocationException
+	{
+		StyleConstants.setFontFamily(text, Font.MONOSPACED);
+		StyleConstants.setFontSize(text, Math.max(1, textFont.getSize() - 1));
+		StyleConstants.setLeftIndent(lines, base + CODE_PAD_X);
+		StyleConstants.setRightIndent(lines, CODE_PAD_X);
+		lines.addAttribute(DECOR, new Decor(Decor.BOX, CODE_BACKGROUND, base, 0));
+		first.addAttribute(DECOR, new Decor(Decor.BOX, CODE_BACKGROUND, base, gap));
+		StyleConstants.setSpaceAbove(first, gap + CODE_PAD_Y);
+		StyleConstants.setSpaceBelow(last, CODE_PAD_Y);
+		doc.insertString(doc.getLength(), String.join("\n", b.lines), text);
 	}
 
 	/** How far a list item's text is from its marker's left edge: the same for every item up to 99 in a list. */
@@ -672,13 +703,19 @@ class MessageView extends JTextPane
 	}
 
 	/** Paragraphs that draw their {@link Decor} first. */
-	private static class BlockView extends ParagraphView
+	static class BlockView extends ParagraphView
 	{
 		private boolean firstRowPainted;
 
 		BlockView(Element elem)
 		{
 			super(elem);
+		}
+
+		/** The width its lines are laid out in, or {@link Integer#MAX_VALUE} before they have been. */
+		int flowWidth()
+		{
+			return layoutSpan;
 		}
 
 		@Override
@@ -737,6 +774,11 @@ class MessageView extends JTextPane
 			if (AbstractDocument.SectionElementName.equals(name))
 			{
 				return new BoxView(elem, View.Y_AXIS);
+			}
+			// A table's text, which it draws as a table. Its own attribute only: a paragraph's don't count.
+			if (elem.getAttributes().isDefined(TABLE))
+			{
+				return new TableView(elem, (Markdown.Table) elem.getAttributes().getAttribute(TABLE));
 			}
 			// Only text is ever inserted: no components or icons.
 			return new WrapLabelView(elem);
