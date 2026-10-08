@@ -34,11 +34,12 @@ final class ProviderSetup
 		switch (config.provider())
 		{
 			case CLAUDE:
-				return "Set a Claude model in the Claude section of the AI Chat settings, or press Test to choose one.";
+				return "Pick a Claude model next to Send, or set one in the Claude section of the AI Chat settings.";
 			case CHATGPT:
-				return "Set a ChatGPT model in the ChatGPT section of the AI Chat settings, or press Test to choose one.";
+				return "Pick a ChatGPT model next to Send, or set one in the ChatGPT section of the AI Chat settings.";
 			default:
-				return "Set the model in the OpenAI-compatible section of the AI Chat settings, or press Test to choose one.";
+				return "Pick a model next to Send, or set one in the Other (OpenAI-compatible) section of the AI Chat "
+					+ "settings.";
 		}
 	}
 
@@ -77,7 +78,8 @@ final class ProviderSetup
 				HttpUrl url = OpenAiApi.parseBaseUrl(config.compatibleUrl());
 				if (url == null)
 				{
-					return "Set the URL in the OpenAI-compatible section of the AI Chat settings, for example http://localhost:11434/v1.";
+					return "Set the Base URL in the Other (OpenAI-compatible) section of the AI Chat settings, for example "
+						+ "http://localhost:11434/v1.";
 				}
 				String key = ChatApi.cleanKey(config.compatibleApiKey());
 				if (!ChatApi.sendableKey(key))

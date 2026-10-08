@@ -32,7 +32,7 @@ final class RequestRunner
 		boolean aiRequests();
 
 		/**
-		 * "Send character info" (and AI requests), right now. A message keeps the setting it was sent with, but a summary
+		 * "Share character details" (and AI requests), right now. A message keeps the setting it was sent with, but a summary
 		 * first can take a while: turning it off meanwhile leaves the details out all the same.
 		 */
 		boolean shareCharacter();

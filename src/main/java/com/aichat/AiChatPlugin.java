@@ -79,8 +79,8 @@ public class AiChatPlugin extends Plugin
 		+ "you used a Wiki page, link it, as https://oldschool.runescape.wiki/w/Page_name. Without the tools, say when "
 		+ "you're unsure and suggest the OSRS Wiki. Tools that read the player's equipment, inventory, bank, Slayer task "
 		+ "or achievement diaries are only offered when the player has chosen to share those; if you have other tools "
-		+ "but not the one you'd need, say which setting would allow it (\"Share items and gear\" or \"Send character "
-		+ "info\"). You can't see or control the game otherwise. If the player has chosen to share their character, "
+		+ "but not the one you'd need, say which setting would allow it (\"Share items and gear\" or \"Share "
+		+ "character details\"). You can't see or control the game otherwise. If the player has chosen to share their character, "
 		+ "their message starts with a [Character: ...] note with details from the game.";
 
 	@Inject
@@ -152,7 +152,7 @@ public class AiChatPlugin extends Plugin
 	private ToolBox.Parts tools;
 	private RequestRunner runner;
 	/**
-	 * EDT: "Remember chats", saving to the plugin's folder (its file work runs on {@link #executor}). Kept while
+	 * EDT: "Save chat history", saving to the plugin's folder (its file work runs on {@link #executor}). Kept while
 	 * RuneLite runs, like the chats: the file is opened once.
 	 */
 	private ChatSaver saver;
@@ -247,7 +247,7 @@ public class AiChatPlugin extends Plugin
 			.build();
 		clientToolbar.addNavigation(navButton);
 		keyManager.registerKeyListener(askHotkey);
-		// "Remember chats" may have changed while AI Chat was off, unseen by onConfigChanged: act on it now.
+		// "Save chat history" may have changed while AI Chat was off, unseen by onConfigChanged: act on it now.
 		saver.apply();
 	}
 
@@ -722,7 +722,7 @@ public class AiChatPlugin extends Plugin
 	}
 
 	// ------------------------------------------------------------------
-	// Saved chats ("Remember chats")
+	// Saved chats ("Save chat history")
 	// ------------------------------------------------------------------
 
 	/** What {@link ChatSaver} needs from the plugin. On the EDT, except {@link #rememberChats}. */

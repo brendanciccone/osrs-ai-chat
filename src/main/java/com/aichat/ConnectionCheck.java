@@ -128,7 +128,7 @@ final class ConnectionCheck
 				if (model == null || model.trim().isEmpty())
 				{
 					return new Note(Kind.WARNING, service + " answered, but not with a list of models, so Test can't "
-						+ "check the URL or offer a model. Set the model in the OpenAI-compatible section of the AI Chat "
+						+ "check the URL or offer a model. Set the model in the Other (OpenAI-compatible) section of the AI Chat "
 						+ "settings, with its name from the service's website.", Collections.emptyList());
 				}
 				return new Note(Kind.WARNING, service + " answered, but not with a list of models, so Test can't check "

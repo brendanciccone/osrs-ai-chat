@@ -58,7 +58,7 @@ public class ConnectionCheckTest
 		assertEquals(ConnectionCheck.Kind.TESTING, testing.kind);
 		assertEquals("Testing the connection...", testing.text);
 
-		String bad = "Anthropic didn't accept your API key. Check \"Claude API key\" in the AI Chat settings.";
+		String bad = "Anthropic didn't accept your API key. Check the API key in the Claude section of the AI Chat settings.";
 		ConnectionCheck.Note error = ConnectionCheck.failed(SETUP, bad).note("Anthropic", "claude-opus-5-5", true, false);
 		assertEquals(ConnectionCheck.Kind.ERROR, error.kind);
 		assertEquals(bad, error.text);
@@ -73,7 +73,7 @@ public class ConnectionCheckTest
 		ConnectionCheck.Note noListNoModel = ConnectionCheck.failed(SETUP, OpenAiApi.NO_MODEL_LIST).note("localhost:11434", " ", false, false);
 		assertEquals(ConnectionCheck.Kind.WARNING, noListNoModel.kind);
 		assertEquals("localhost:11434 answered, but not with a list of models, so Test can't check the URL or offer a "
-			+ "model. Set the model in the OpenAI-compatible section of the AI Chat settings, with its name from the "
+			+ "model. Set the model in the Other (OpenAI-compatible) section of the AI Chat settings, with its name from the "
 			+ "service's website.", noListNoModel.text);
 	}
 

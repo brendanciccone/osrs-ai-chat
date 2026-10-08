@@ -98,7 +98,8 @@ public class ConnectionTesterTest
 		assertEquals(ConnectionCheck.Kind.TESTING, note().kind);
 		assertEquals(0, changes);
 
-		api.listeners.get(1).onError("Anthropic didn't accept your API key. Check \"Claude API key\" in the AI Chat settings.");
+		api.listeners.get(1).onError("Anthropic didn't accept your API key. Check the API key in the Claude section of the AI Chat "
+			+ "settings.");
 		runEdt();
 		assertEquals(ConnectionCheck.Kind.ERROR, note().kind);
 		assertEquals(1, changes);

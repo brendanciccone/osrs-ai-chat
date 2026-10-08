@@ -966,7 +966,7 @@ public class RequestRunnerTest
 		runner.send(chat, "Q21", setup(true, false, true));
 		runEdt();
 		assertTrue(chat.isSummarizing());
-		// "Send character info" is turned off while the summary is being made.
+		// "Share character details" is turned off while the summary is being made.
 		host.character = false;
 		api.listener().onReply(reply("The player is training Agility.", 50, 10));
 		runEdt();

@@ -219,10 +219,10 @@ public class GameDataToolsTest
 			+ "read. They can turn it on if they'd like you to see it.", e.result.content);
 		shareCharacter = false;
 		Ended slayer = run(tools, "get_slayer_task", new JsonObject());
-		assertTrue(slayer.result.content, slayer.result.content.contains("\"Send character info\""));
+		assertTrue(slayer.result.content, slayer.result.content.contains("\"Share character details\""));
 		assertEquals(0, game.reads.get());
 		assertEquals(Arrays.asList("Didn't share your bank: \"Share items and gear\" is off",
-			"Didn't share your Slayer task: \"Send character info\" is off"), activity);
+			"Didn't share your Slayer task: \"Share character details\" is off"), activity);
 	}
 
 	@Test

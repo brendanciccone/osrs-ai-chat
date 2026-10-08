@@ -637,7 +637,7 @@ public class OpenAiApiTest
 		server.answer("/v1/models", json(200, "{\"object\":\"list\",\"data\":[{\"id\":\"llama3.2:latest\"}]}"));
 		AnthropicApiTest.Models models = new AnthropicApiTest.Models();
 		bare.listModels(models);
-		assertEquals("The URL is missing /v1: set the Compatible API URL to " + server.url("/v1") + " in the AI Chat settings.",
+		assertEquals("The URL is missing /v1: set the Base URL in the AI Chat settings to " + server.url("/v1") + ".",
 			models.await().error);
 		assertEquals("/models", server.uris.get(0).getPath());
 		assertEquals("/v1/models", server.uris.get(1).getPath());

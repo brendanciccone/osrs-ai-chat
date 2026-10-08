@@ -59,11 +59,11 @@ public interface AiChatConfig extends Config
 	}
 
 	@ConfigSection(
-		name = "Assistant",
-		description = "Turn AI requests on, choose which AI answers, and add your own instructions",
+		name = "General",
+		description = "Turn AI requests on, choose who answers, and add your own instructions",
 		position = 0
 	)
-	String ASSISTANT = "assistant";
+	String GENERAL = "assistant";
 
 	@ConfigSection(
 		name = "Claude",
@@ -81,7 +81,7 @@ public interface AiChatConfig extends Config
 	String CHATGPT_SECTION = "chatgpt";
 
 	@ConfigSection(
-		name = "OpenAI-compatible",
+		name = "Other (OpenAI-compatible)",
 		description = "Settings for an OpenAI-compatible service: OpenRouter, Groq, Ollama, LM Studio, Unsloth...",
 		position = 3,
 		closedByDefault = true
@@ -89,25 +89,27 @@ public interface AiChatConfig extends Config
 	String COMPATIBLE_SECTION = "compatible";
 
 	@ConfigSection(
-		name = "Your character",
-		description = "Optionally let the assistant know your character, and see your items and gear",
+		name = "Data & privacy",
+		description = "What the assistant may see of your account, and whether your chats are saved",
 		position = 4
 	)
-	String CHARACTER = "character";
+	String PRIVACY = "character";
 
 	@ConfigSection(
-		name = "Chat and notifications",
+		name = "Notifications & game chat",
 		description = "How replies show up in game",
 		position = 5
 	)
-	String CHAT = "chat";
+	String GAME_CHAT = "chat";
+
+	// General
 
 	@ConfigItem(
 		keyName = "aiRequests",
 		name = "Enable AI requests",
 		description = "Send your messages to the AI provider you choose. Nothing is sent anywhere while this is off, Wiki look-ups included.",
 		warning = "This feature submits your IP address and the messages you type to the AI provider you choose, and (with \"Wiki look-ups\", on by default) the search words and page titles the assistant looks up to the OSRS Wiki: 3rd-party servers not controlled or verified by RuneLite developers.",
-		section = ASSISTANT,
+		section = GENERAL,
 		position = 0
 	)
 	default boolean aiRequests()
@@ -117,9 +119,9 @@ public interface AiChatConfig extends Config
 
 	@ConfigItem(
 		keyName = "provider",
-		name = "AI provider",
+		name = "Provider",
 		description = "Claude (Anthropic), ChatGPT (OpenAI), or any service with an OpenAI-compatible API, such as OpenRouter, Groq, or a model on your own computer with Ollama, LM Studio or Unsloth. Then fill in its section below.",
-		section = ASSISTANT,
+		section = GENERAL,
 		position = 1
 	)
 	default Provider provider()
@@ -128,9 +130,35 @@ public interface AiChatConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "instructions",
+		name = "Custom instructions",
+		description = "Added to what the assistant is told before every chat, for example \"I'm an ironman\" or \"Answer in Dutch\".",
+		section = GENERAL,
+		position = 2
+	)
+	default String instructions()
+	{
+		return "";
+	}
+
+	@ConfigItem(
+		keyName = "wikiLookups",
+		name = "Wiki look-ups",
+		description = "Let the assistant search and read the OSRS Wiki while it answers, and link the pages it used. The Wiki gets the search words and page titles, and your IP address. AI Chat adds nothing about your account, but the assistant writes the search words from your question and anything you've shared. GE prices come from RuneLite's own price data and stay available with this off: they never go to the Wiki.",
+		section = GENERAL,
+		position = 3
+	)
+	default boolean wikiLookups()
+	{
+		return true;
+	}
+
+	// Claude
+
+	@ConfigItem(
 		keyName = "claudeApiKey",
-		name = "Claude API key",
-		description = "From console.anthropic.com (billed per use by Anthropic; a Claude subscription doesn't include API access). Only sent to Anthropic.",
+		name = "API key",
+		description = "Your Claude API key, from console.anthropic.com (billed per use by Anthropic; a Claude subscription doesn't include API access). Only sent to Anthropic.",
 		secret = true,
 		section = CLAUDE_SECTION,
 		position = 0
@@ -142,8 +170,8 @@ public interface AiChatConfig extends Config
 
 	@ConfigItem(
 		keyName = "claudeModel",
-		name = "Claude model",
-		description = "For example claude-opus-5-5, claude-sonnet-5-5 or claude-haiku-4-5.",
+		name = "Model",
+		description = "For example claude-opus-5-5, claude-sonnet-5-5 or claude-haiku-4-5. You can also pick a model in the AI Chat panel, next to Send.",
 		section = CLAUDE_SECTION,
 		position = 1
 	)
@@ -152,9 +180,11 @@ public interface AiChatConfig extends Config
 		return "claude-opus-5-5";
 	}
 
+	// ChatGPT
+
 	@ConfigItem(
 		keyName = "openaiApiKey",
-		name = "ChatGPT API key",
+		name = "API key",
 		description = "An OpenAI API key from platform.openai.com (billed per use by OpenAI; a ChatGPT subscription doesn't include API access). Only sent to OpenAI.",
 		secret = true,
 		section = CHATGPT_SECTION,
@@ -167,8 +197,8 @@ public interface AiChatConfig extends Config
 
 	@ConfigItem(
 		keyName = "openaiModel",
-		name = "ChatGPT model",
-		description = "For example gpt-6-luna (fast and cheap) or gpt-6.1-sol.",
+		name = "Model",
+		description = "For example gpt-6-luna (fast and cheap) or gpt-6.1-sol. You can also pick a model in the AI Chat panel, next to Send.",
 		section = CHATGPT_SECTION,
 		position = 1
 	)
@@ -177,9 +207,11 @@ public interface AiChatConfig extends Config
 		return OpenAiApi.DEFAULT_MODEL;
 	}
 
+	// Other (OpenAI-compatible)
+
 	@ConfigItem(
 		keyName = "compatibleUrl",
-		name = "Compatible API URL",
+		name = "Base URL",
 		description = "The service's base URL, usually ending in /v1. For example http://localhost:11434/v1 (Ollama), http://localhost:1234/v1 (LM Studio), http://127.0.0.1:8888/v1 (Unsloth) or https://openrouter.ai/api/v1.",
 		section = COMPATIBLE_SECTION,
 		position = 0
@@ -191,8 +223,8 @@ public interface AiChatConfig extends Config
 
 	@ConfigItem(
 		keyName = "compatibleApiKey",
-		name = "Compatible API key",
-		description = "The service's API key, if it needs one (Ollama and LM Studio don't). Only sent to that URL.",
+		name = "API key",
+		description = "The service's API key, if it needs one (Ollama and LM Studio don't). Only sent to the Base URL.",
 		secret = true,
 		section = COMPATIBLE_SECTION,
 		position = 1
@@ -204,8 +236,8 @@ public interface AiChatConfig extends Config
 
 	@ConfigItem(
 		keyName = "compatibleModel",
-		name = "Compatible model",
-		description = "The model name the service expects, for example llama3.2 for Ollama.",
+		name = "Model",
+		description = "The model name the service expects, for example llama3.2 for Ollama. You can also pick a model in the AI Chat panel, next to Send.",
 		section = COMPATIBLE_SECTION,
 		position = 2
 	)
@@ -226,36 +258,14 @@ public interface AiChatConfig extends Config
 		return Thinking.SHORT;
 	}
 
-	@ConfigItem(
-		keyName = "instructions",
-		name = "Extra instructions",
-		description = "Added to what the assistant is told before every chat, for example \"I'm an ironman\" or \"Answer in Dutch\".",
-		section = ASSISTANT,
-		position = 2
-	)
-	default String instructions()
-	{
-		return "";
-	}
-
-	@ConfigItem(
-		keyName = "wikiLookups",
-		name = "Wiki look-ups",
-		description = "Let the assistant search and read the OSRS Wiki while it answers, and link the pages it used. The Wiki gets the search words and page titles, and your IP address. AI Chat adds nothing about your account, but the assistant writes the search words from your question and anything you've shared.",
-		section = ASSISTANT,
-		position = 3
-	)
-	default boolean wikiLookups()
-	{
-		return true;
-	}
+	// Data & privacy
 
 	@ConfigItem(
 		keyName = "sendCharacter",
-		name = "Send character info",
+		name = "Share character details",
 		description = "Send your character name, account type (ironman or not), levels and quest progress with your messages, and let the assistant look up your Slayer task and achievement diaries, for answers that fit your account. Off by default.",
 		warning = "This feature submits your IP address, character name, account type, skill levels, quest progress, Slayer task and achievement diaries with your messages to the AI provider you choose: a 3rd-party server not controlled or verified by RuneLite developers.",
-		section = CHARACTER,
+		section = PRIVACY,
 		position = 0
 	)
 	default boolean sendCharacter()
@@ -266,9 +276,9 @@ public interface AiChatConfig extends Config
 	@ConfigItem(
 		keyName = "shareItems",
 		name = "Share items and gear",
-		description = "Let the assistant look at your equipment, inventory and bank (as it was when you last had it open) when a question needs them. Each look is listed under the reply. Off by default.",
+		description = "Let the assistant look at your equipment, inventory and bank (as it was when you last had it open) when a question needs them. Each look is listed with the reply. Off by default.",
 		warning = "This feature submits your IP address and the items you wear, carry and keep in your bank, with their prices, to the AI provider you choose when the assistant looks at them: a 3rd-party server not controlled or verified by RuneLite developers.",
-		section = CHARACTER,
+		section = PRIVACY,
 		position = 1
 	)
 	default boolean shareItems()
@@ -277,10 +287,24 @@ public interface AiChatConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "rememberChats",
+		name = "Save chat history",
+		description = "Keep your chats when RuneLite closes, saved on this computer in .runelite/plugin-data/osrs-ai-chat (the latest 200 messages of each, and older ones still sent to the assistant). Turning this off deletes the saved copy; chats then last only while RuneLite is open.",
+		section = PRIVACY,
+		position = 2
+	)
+	default boolean rememberChats()
+	{
+		return true;
+	}
+
+	// Notifications & game chat
+
+	@ConfigItem(
 		keyName = "notifyOnDone",
 		name = "Notify on reply",
 		description = "Notification when a reply arrives. RuneLite skips notifications while the game is focused unless you enable that here.",
-		section = CHAT,
+		section = GAME_CHAT,
 		position = 0
 	)
 	default Notification notifyOnDone()
@@ -292,7 +316,7 @@ public interface AiChatConfig extends Config
 		keyName = "echoToChat",
 		name = "Show replies in game chat",
 		description = "Print replies in the chatbox, not only in the side panel.",
-		section = CHAT,
+		section = GAME_CHAT,
 		position = 1
 	)
 	default boolean echoToChat()
@@ -303,9 +327,9 @@ public interface AiChatConfig extends Config
 	@Range(min = 50, max = 4000)
 	@ConfigItem(
 		keyName = "echoMaxChars",
-		name = "Chat reply length",
+		name = "Game chat reply length",
 		description = "Longer replies are cut short in the chatbox; the side panel always has the full text.",
-		section = CHAT,
+		section = GAME_CHAT,
 		position = 2
 	)
 	default int echoMaxChars()
@@ -317,23 +341,11 @@ public interface AiChatConfig extends Config
 		keyName = "askHotkey",
 		name = "Ask hotkey",
 		description = "Opens an 'Ask:' prompt in the chatbox.",
-		section = CHAT,
+		section = GAME_CHAT,
 		position = 3
 	)
 	default Keybind askHotkey()
 	{
 		return Keybind.NOT_SET;
-	}
-
-	@ConfigItem(
-		keyName = "rememberChats",
-		name = "Remember chats",
-		description = "Keep your chats when RuneLite closes, saved on this computer in .runelite/plugin-data/osrs-ai-chat (the latest 200 messages of each, and older ones still sent to the assistant). Turning this off deletes the saved copy; chats then last only while RuneLite is open.",
-		section = CHAT,
-		position = 4
-	)
-	default boolean rememberChats()
-	{
-		return true;
 	}
 }

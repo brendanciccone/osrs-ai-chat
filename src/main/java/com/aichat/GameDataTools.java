@@ -16,7 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * The tools that read the player's own account, offered only with the settings that share it: equipment, inventory
- * and bank with "Share items and gear", Slayer task and achievement diaries with "Send character info". Made for one
+ * and bank with "Share items and gear", Slayer task and achievement diaries with "Share character details". Made for one
  * reply: every call reads the game on the client thread, writes the answer up off it, and ends with one line for the
  * panel saying what was shared ("Shared your equipment"), told to {@code activity} just before the result goes back.
  */
@@ -37,7 +37,7 @@ final class GameDataTools implements ChatApi.ToolRunner
 	/** How the lines for what was shared start. */
 	private static final String SHARED = "Shared your ";
 	private static final String SEARCHED = "Searched your bank for ";
-	private static final String CHARACTER_SETTING = "Send character info";
+	private static final String CHARACTER_SETTING = "Share character details";
 
 	/**
 	 * Where the answers come from: {@link GameData} in the game, canned data in tests. Client thread only, and only
@@ -252,7 +252,7 @@ final class GameDataTools implements ChatApi.ToolRunner
 		readThenWrite(report, what, read, write);
 	}
 
-	/** Slayer task and diaries: only with "Send character info". */
+	/** Slayer task and diaries: only with "Share character details". */
 	private <T> void readCharacter(Report report, String what, Supplier<T> read, Function<T, Outcome> write)
 	{
 		if (!shareCharacter.getAsBoolean())

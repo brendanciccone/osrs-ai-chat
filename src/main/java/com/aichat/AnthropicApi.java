@@ -46,7 +46,7 @@ class AnthropicApi implements ChatApi
 	private static final String BUSY = "Anthropic is busy";
 	private static final String RATE_LIMITED = "Anthropic's rate limit was hit";
 	private static final String TOO_LONG = "Claude took too long to answer. Try again, maybe with a shorter question or a faster model.";
-	private static final String COULDNT_SEND = "AI Chat couldn't send the next part of this. Check the Claude API key in the settings.";
+	private static final String COULDNT_SEND = "AI Chat couldn't send the next part of this. Check the API key in the Claude section of the settings.";
 
 	private final OkHttpClient http;
 	private final Gson gson;
@@ -1156,14 +1156,15 @@ class AnthropicApi implements ChatApi
 			case 0:
 				return "Anthropic reported a problem" + detail + ".";
 			case 401:
-				return "Anthropic didn't accept your API key. Check \"Claude API key\" in the AI Chat settings.";
+				return "Anthropic didn't accept your API key. Check the API key in the Claude section of the AI Chat settings.";
 			case 402:
 				return "Anthropic says there's a billing problem with your account" + detail + ".";
 			case 403:
 				return "Your Anthropic API key isn't allowed to do that" + detail + ".";
 			case 404:
 				return model == null ? "Anthropic answered HTTP 404" + detail + "."
-					: "The Claude model \"" + model + "\" isn't available to your key. Check \"Claude model\" in the AI Chat settings" + detail + ".";
+					: "The Claude model \"" + model + "\" isn't available to your key. Pick another model next to Send, or check the model in the Claude section of the AI "
+						+ "Chat settings" + detail + ".";
 			case 413:
 				return "This chat has grown too long to send. Start a new chat.";
 			case 429:

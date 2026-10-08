@@ -103,7 +103,7 @@ public class ProviderSetupTest
 		assertEquals(ProviderSetup.BAD_KEY, setup.problem());
 		settings.claudeKey = "sk-ant-abc";
 		settings.claudeModel = "";
-		assertEquals("Set a Claude model in the Claude section of the AI Chat settings, or press Test to choose one.",
+		assertEquals("Pick a Claude model next to Send, or set one in the Claude section of the AI Chat settings.",
 			setup.problem());
 	}
 
@@ -123,9 +123,10 @@ public class ProviderSetupTest
 	public void openAiCompatible()
 	{
 		settings.provider = AiChatConfig.Provider.OPENAI_COMPATIBLE;
-		assertTrue(setup.problem().startsWith("Set the URL"));
+		assertTrue(setup.problem().startsWith("Set the Base URL"));
 		settings.url = "http://localhost:11434/v1";
-		assertEquals("Set the model in the OpenAI-compatible section of the AI Chat settings, or press Test to choose one.",
+		assertEquals("Pick a model next to Send, or set one in the Other (OpenAI-compatible) section of the AI Chat "
+			+ "settings.",
 			setup.problem());
 		settings.compatibleModel = "llama3.2";
 		assertNull(setup.problem());
@@ -175,14 +176,14 @@ public class ProviderSetupTest
 			// A new Ollama user who doesn't know the model's name yet: Test is how they find it.
 			settings.provider = AiChatConfig.Provider.OPENAI_COMPATIBLE;
 			settings.url = "http://localhost:11434/v1";
-			assertTrue(setup.problem().startsWith("Set the model"));
+			assertTrue(setup.problem().startsWith("Pick a model"));
 			assertNull(setup.connectionProblem());
 			assertNull(setup.api(new okhttp3.OkHttpClient(), new com.google.gson.Gson(), scheduler, new HashMap<>()));
 			assertNotNull(setup.testApi(new okhttp3.OkHttpClient(), new com.google.gson.Gson(), scheduler, new HashMap<>()));
 
 			// But it does need what it takes to reach the provider, and AI requests on.
 			settings.url = "";
-			assertTrue(setup.connectionProblem().startsWith("Set the URL"));
+			assertTrue(setup.connectionProblem().startsWith("Set the Base URL"));
 			assertNull(setup.testApi(new okhttp3.OkHttpClient(), new com.google.gson.Gson(), scheduler, new HashMap<>()));
 			settings.url = "http://localhost:11434/v1";
 			settings.aiRequests = false;

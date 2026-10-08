@@ -1008,7 +1008,7 @@ class OpenAiApi implements ChatApi
 				{
 					String fixed = base.resolve("v1").toString();
 					listener.onError(response.isSuccessful() && modelIds(gson, text) != null
-						? "The URL is missing /v1: set the Compatible API URL to " + fixed + " in the AI Chat settings."
+						? "The URL is missing /v1: set the Base URL in the AI Chat settings to " + fixed + "."
 						: NO_MODEL_LIST);
 					return;
 				}

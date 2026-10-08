@@ -573,7 +573,7 @@ public class AnthropicApiTest
 		// Turned away before anything was answered: nothing used.
 		server.answer(PATH, json(401, "{\"type\":\"error\",\"error\":{\"type\":\"authentication_error\",\"message\":\"invalid x-api-key\"}}"));
 		heard = send(api(), conversation("claude-opus-5-5", "hi"));
-		assertTrue(heard.error().contains("Claude API key"));
+		assertTrue(heard.error().contains("API key in the Claude section"));
 		assertEquals(0, StandIn.tokens(heard.failure.usage));
 	}
 
@@ -778,7 +778,7 @@ public class AnthropicApiTest
 		AnthropicApi api = new AnthropicApi(http, gson, server.url(PATH), "bad", scheduler, refused);
 		server.answer(PATH, json(401, "{\"type\":\"error\",\"error\":{\"type\":\"authentication_error\",\"message\":\"invalid x-api-key\"}}"));
 		String unauthorized = send(api, conversation("claude-opus-5-5", "hi")).error();
-		assertTrue(unauthorized, unauthorized.contains("Claude API key"));
+		assertTrue(unauthorized, unauthorized.contains("API key in the Claude section"));
 		assertFalse("the key is never in a message", unauthorized.contains("bad"));
 		server.answer(PATH, json(404, "{\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-nope\"}}"));
 		assertTrue(send(api, conversation("claude-nope", "hi")).error().contains("claude-nope"));
@@ -879,7 +879,7 @@ public class AnthropicApiTest
 		server.answer("/v1/models", json(401, "{\"type\":\"error\",\"error\":{\"type\":\"authentication_error\",\"message\":\"invalid x-api-key\"}}"));
 		models = new Models();
 		api().listModels(models);
-		assertTrue(models.await().error.contains("Claude API key"));
+		assertTrue(models.await().error.contains("API key in the Claude section"));
 	}
 
 	/** What a model list request heard. */
