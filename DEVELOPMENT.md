@@ -29,6 +29,12 @@ then set **Provider** to **OpenAI-compatible** and, in the **Other (OpenAI-compa
 `./gradlew build` runs them all. No test calls a real AI provider or the Wiki: the network tests use a stand-in
 server on 127.0.0.1 (`StandIn`), which serves canned answers (streams included) and records each request.
 
+CI builds on Ubuntu, macOS and Windows, and the panel's tests measure text in whatever fonts the machine has: Ubuntu's
+DejaVu Sans is wider than the fonts on macOS and Windows, and Windows ends lines with `\r\n` and isn't headless. So
+those tests work out widths and heights from the font, as the panel does, never in fixed pixels; read what a text pane
+shows from its document (its `getText()` writes the system's line ends); and let the events the panel queues run in
+their own order rather than lay it out themselves at a moment of their choosing.
+
 - `AnthropicApiTest`, `OpenAiApiTest`: the two providers against `StandIn`: streaming, tool rounds, retries,
   token counts, model lists, and the settings a service may refuse. `ChatApiTest`: what they share (keys, retry
   waits, running tools). `SseTest`: the event-stream reader.
