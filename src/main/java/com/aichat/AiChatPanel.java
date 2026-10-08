@@ -110,7 +110,7 @@ class AiChatPanel extends PluginPanel
 	private final CardLayout cards = new CardLayout();
 	private final JPanel center = new JPanel(cards);
 	private final JPanel transcript = new TranscriptPanel();
-	private final JScrollPane transcriptScroll = new JScrollPane(transcript);
+	final JScrollPane transcriptScroll = new JScrollPane(transcript);
 	/** Over the transcript's bottom right corner while the player isn't reading its end: takes them there. */
 	final FlatButton jump = new FlatButton(null, new Glyph(Glyph.Shape.DOWN, 14), "Jump to the latest message")
 		.filled(PanelStyle.FIELD_COLOR, PanelStyle.OUTLINE_COLOR, true);
@@ -128,6 +128,8 @@ class AiChatPanel extends PluginPanel
 	private final Map<Chat.Message, MessageRow> rows = new IdentityHashMap<>();
 	/** The reply on its way, at the end of the transcript; null when none is. */
 	private MessageRow.Reply live;
+	/** Scrolls down to the end that are queued and haven't run yet. */
+	private int follows;
 
 	AiChatPanel(Host host)
 	{
@@ -485,18 +487,24 @@ class AiChatPanel extends PluginPanel
 
 	private void scrollToBottom()
 	{
+		// Until it's there, what the transcript grows by isn't the player scrolling up: Jump to the latest message
+		// stays hidden, rather than flash for a frame each time a question is sent or a reply grows by a paragraph.
+		follows++;
+		refreshJump();
 		// After the layout the change asked for, which is queued before this.
 		SwingUtilities.invokeLater(() ->
 		{
 			JScrollBar bar = transcriptScroll.getVerticalScrollBar();
 			bar.setValue(bar.getMaximum());
+			follows--;
+			refreshJump();
 		});
 	}
 
-	/** Jump to the latest message shows whenever the player isn't reading the end. */
+	/** Jump to the latest message shows whenever the player isn't reading the end, and isn't on the way there. */
 	private void refreshJump()
 	{
-		boolean show = !atBottom();
+		boolean show = follows == 0 && !atBottom();
 		if (show != jump.isVisible() && jump.getParent() != null)
 		{
 			jump.setVisible(show);

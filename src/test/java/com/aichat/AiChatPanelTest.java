@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import javax.swing.JComponent;
 import javax.swing.JPanel;
+import javax.swing.JScrollBar;
 import javax.swing.SwingUtilities;
 import javax.swing.text.StyleConstants;
 import org.junit.Test;
@@ -282,6 +283,62 @@ public class AiChatPanelTest
 			layOut(panel);
 			assertEquals(room, panel.chatSelect.getWidth());
 			assertTrue(title.getX() + title.getWidth() <= panel.newChat.getParent().getX());
+		});
+	}
+
+	@Test
+	public void jumpToTheLatestShowsWhileThePlayerIsntReadingTheEnd() throws Throwable
+	{
+		AiChatPanel[] made = new AiChatPanel[1];
+		onEdt(() ->
+		{
+			for (int i = 0; i < 12; i++)
+			{
+				add(Chat.Role.USER, "Question " + i + ", long enough to wrap onto a second line in the narrow panel");
+				add(Chat.Role.ASSISTANT, "Answer " + i + ", long enough to wrap onto a second line in the narrow panel, "
+					+ "and onto a third one too.");
+			}
+			made[0] = new AiChatPanel(host);
+			made[0].setSize(225, 400);
+			layOut(made[0]);
+			layOut(made[0]);
+		});
+		AiChatPanel panel = made[0];
+		JScrollBar bar = panel.transcriptScroll.getVerticalScrollBar();
+		// A chat opens at its end.
+		onEdt(() ->
+		{
+			assertTrue("the chat is longer than the panel", bar.getMaximum() > 2 * bar.getVisibleAmount());
+			assertEquals(bar.getMaximum(), bar.getValue() + bar.getVisibleAmount());
+			assertFalse(panel.jump.isVisible());
+
+			bar.setValue(0);
+			assertTrue("scrolled up", panel.jump.isVisible());
+			bar.setValue(bar.getMaximum());
+			assertFalse("back at the end", panel.jump.isVisible());
+
+			bar.setValue(0);
+			panel.jump.doClick();
+		});
+		onEdt(() ->
+		{
+			assertEquals("taken to the end", bar.getMaximum(), bar.getValue() + bar.getVisibleAmount());
+			assertFalse(panel.jump.isVisible());
+
+			// A question sent from the end: the transcript grows before it's followed down, and that isn't the player
+			// scrolling up.
+			add(Chat.Role.USER, "And how long does the Slayer task take, roughly, if I bring a cannon along with me?");
+			host.current.pending = new ChatApi.Pending();
+			host.current.runStartedAt = System.currentTimeMillis();
+			panel.refreshAll();
+			layOut(panel);
+			assertTrue(bar.getValue() + bar.getVisibleAmount() < bar.getMaximum() - 24);
+			assertFalse("no flash", panel.jump.isVisible());
+		});
+		onEdt(() ->
+		{
+			assertEquals("followed", bar.getMaximum(), bar.getValue() + bar.getVisibleAmount());
+			assertFalse(panel.jump.isVisible());
 		});
 	}
 
