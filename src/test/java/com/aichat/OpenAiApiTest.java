@@ -889,11 +889,11 @@ public class OpenAiApiTest
 		assertEquals("B", OpenAiApi.withoutThinking("a</think>B<think>c"));
 
 		// Opening tags with no closing one: each isn't a search through the rest of the reply.
-		String opened = "<think>".repeat(20_000);
+		String opened = "<think>".repeat(40_000);
 		long started = System.nanoTime();
 		assertEquals("", OpenAiApi.withoutThinking(opened));
 		long ms = (System.nanoTime() - started) / 1_000_000;
-		assertTrue("took " + ms + "ms", ms < 1000);
+		assertTrue("took " + ms + "ms", ms < 3000);
 	}
 
 	@Test

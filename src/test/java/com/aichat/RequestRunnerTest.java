@@ -678,7 +678,7 @@ public class RequestRunnerTest
 			// A service's name for its model stays on its line: it can't add lines of its own to the log.
 			send("Q23");
 			ChatApi.Reply odd = reply("Hi.", 10, 2);
-			odd.model = "m\r\nreply from claude-opus-5-5: 0 input";
+			odd.model = "m\r\nreply from\u00A0claude-opus-5-5: 0 input";
 			api.listener().onReply(odd);
 			runEdt();
 

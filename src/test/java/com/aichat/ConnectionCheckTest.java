@@ -35,15 +35,15 @@ public class ConnectionCheckTest
 	{
 		// It's filtered on the Swing thread, whatever length the service sends.
 		List<String> ids = new ArrayList<>();
-		for (int i = 0; i < 50_000; i++)
+		for (int i = 0; i < 100_000; i++)
 		{
 			ids.add("model-" + i);
 		}
 		ids.add("model-0");
 		long started = System.nanoTime();
-		assertEquals(50_000, ConnectionCheck.chatModels(ids, false).size());
+		assertEquals(100_000, ConnectionCheck.chatModels(ids, false).size());
 		long ms = (System.nanoTime() - started) / 1_000_000;
-		assertTrue("took " + ms + "ms", ms < 1000);
+		assertTrue("took " + ms + "ms", ms < 3000);
 	}
 
 	@Test

@@ -647,7 +647,7 @@ final class RequestRunner
 		String model = reply != null ? reply.model : failure.model;
 		// On one line: a name the service sent could otherwise pass for more lines of the log.
 		String shown = ChatApi.shorten(String.valueOf(model != null ? model : out.setup.model)
-			.replaceAll("[\\s\\p{Cc}\\p{Zl}\\p{Zp}]+", " "), 100);
+			.replaceAll("[\\s\\p{Cc}\\p{Z}]+", " "), 100);
 		log.debug("{} from {}: {} input, {} from cache, {} written to cache, {} output tokens",
 			reply != null ? what : "failed " + what, shown, usage.input, usage.cacheRead, usage.cacheWrite, usage.output);
 	}

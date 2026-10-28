@@ -67,12 +67,12 @@ public class GameChatEchoTest
 	public void aLongLineUnderATableLineIsQuickToCheck()
 	{
 		// Read on the game's thread: checking whether it's a table's rule mustn't try every way to split its spaces.
-		for (String line : List.of(" ".repeat(30_000) + "x", "|-|" + " ".repeat(30_000) + "x"))
+		for (String line : List.of(" ".repeat(50_000) + "x", "|-|" + " ".repeat(50_000) + "x"))
 		{
 			long started = System.nanoTime();
 			GameChatEcho.echoMessages("Claude", null, "| a | b |\n" + line, 500);
 			long ms = (System.nanoTime() - started) / 1_000_000;
-			assertTrue("took " + ms + "ms", ms < 1000);
+			assertTrue("took " + ms + "ms", ms < 3000);
 		}
 	}
 
