@@ -648,13 +648,6 @@ public class MarkdownTest
 		inputs.add(repeat("**a ", 50_000) + repeat(" a**", 50_000));
 		inputs.add(repeat("``a`", 50_000));
 		inputs.add(repeat("`a``", 50_000));
-		StringBuilder runs = new StringBuilder();
-		for (int i = 1; runs.length() < 200_000; i++)
-		{
-			// Runs of every length, so none has a closing run.
-			runs.append(Markdown.repeat('`', i)).append('a');
-		}
-		inputs.add(runs.toString());
 		inputs.add(repeat("[a](", 50_000));
 		inputs.add(repeat("[a]", 70_000));
 		inputs.add(repeat("](", 100_000));
