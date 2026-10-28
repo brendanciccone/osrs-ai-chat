@@ -26,8 +26,11 @@ final class GameChatEcho
 	private static final Pattern LAYOUT_ONLY = Pattern.compile("[-*_=#|`~:+ ]+");
 	/** A Markdown table's line: "| a | b |". */
 	private static final Pattern TABLE_LINE = Pattern.compile("\\s*\\|.*\\|\\s*");
-	/** The line under a table's header: "|---|:--:|". */
-	private static final Pattern TABLE_RULE = Pattern.compile("\\s*\\|?(\\s*:?-+:?\\s*\\|)+\\s*:?-*:?\\s*");
+	/**
+	 * The line under a table's header: "|---|:--:|". Matched against the trimmed line (see {@link #isRule}): spaces
+	 * at either end, with a pattern for them, could be split between two of its parts every possible way.
+	 */
+	private static final Pattern TABLE_RULE = Pattern.compile("\\|?(\\s*:?-+:?\\s*\\|)+\\s*:?-*:?");
 	/** A cell border: a pipe that isn't escaped. */
 	private static final Pattern CELL_BORDER = Pattern.compile("(?<!\\\\)\\|");
 	/** The first and last line of a code block. */
@@ -176,17 +179,21 @@ final class GameChatEcho
 	{
 		for (int i = 0; i + 1 < lines.length; i++)
 		{
-			if (!TABLE_LINE.matcher(lines[i]).matches() || !TABLE_RULE.matcher(lines[i + 1]).matches())
+			if (!TABLE_LINE.matcher(lines[i]).matches() || !isRule(lines[i + 1]))
 			{
 				continue;
 			}
 			header[i] = true;
-			for (int j = i + 2; j < lines.length && TABLE_LINE.matcher(lines[j]).matches()
-				&& !TABLE_RULE.matcher(lines[j]).matches(); j++)
+			for (int j = i + 2; j < lines.length && TABLE_LINE.matcher(lines[j]).matches() && !isRule(lines[j]); j++)
 			{
 				row[j] = true;
 			}
 		}
+	}
+
+	private static boolean isRule(String line)
+	{
+		return TABLE_RULE.matcher(line.trim()).matches();
 	}
 
 	/**

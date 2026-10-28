@@ -1,5 +1,6 @@
 package com.aichat;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import org.junit.Test;
@@ -27,6 +28,22 @@ public class ConnectionCheckTest
 		// Anthropic's own order (newest first) is kept.
 		assertEquals(Arrays.asList("claude-opus-5-5", "claude-haiku-4-5"),
 			ConnectionCheck.chatModels(Arrays.asList("claude-opus-5-5", "claude-haiku-4-5"), false));
+	}
+
+	@Test
+	public void aLongListIsQuickToFilter()
+	{
+		// It's filtered on the Swing thread, whatever length the service sends.
+		List<String> ids = new ArrayList<>();
+		for (int i = 0; i < 50_000; i++)
+		{
+			ids.add("model-" + i);
+		}
+		ids.add("model-0");
+		long started = System.nanoTime();
+		assertEquals(50_000, ConnectionCheck.chatModels(ids, false).size());
+		long ms = (System.nanoTime() - started) / 1_000_000;
+		assertTrue("took " + ms + "ms", ms < 1000);
 	}
 
 	@Test

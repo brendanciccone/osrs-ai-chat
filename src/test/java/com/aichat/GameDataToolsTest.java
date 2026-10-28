@@ -232,6 +232,72 @@ public class GameDataToolsTest
 	}
 
 	@Test
+	public void aSettingTurnedOffWhileTheReadWaitsSharesNothing() throws Exception
+	{
+		// Asked for with the setting on; turned off before the game got to it.
+		List<Runnable> queued = new CopyOnWriteArrayList<>();
+		Ended e = new Ended();
+		CountDownLatch done = new CountDownLatch(1);
+		tools(queued::add, GameDataTools.READ_TIMEOUT_MILLIS).run("get_inventory", new JsonObject(), r ->
+		{
+			e.result = r;
+			done.countDown();
+		});
+		shareItems = false;
+		queued.get(0).run();
+		assertTrue("no result", done.await(10, TimeUnit.SECONDS));
+		assertTrue(e.result.error);
+		assertTrue(e.result.content, e.result.content.startsWith("The player hasn't turned on \"" + ITEMS + "\""));
+		assertEquals(0, game.reads.get());
+		assertEquals(Collections.singletonList("Didn't share your inventory: \"" + ITEMS + "\" is off"), activity);
+	}
+
+	@Test
+	public void aResultWaitingForTheOtherCallsIsntSentOnceTheSettingIsOff() throws Exception
+	{
+		// The inventory is in, but a slower look-up in the same round isn't: the results go back together.
+		GameDataTools tools = tools();
+		CountDownLatch read = new CountDownLatch(1);
+		List<Consumer<ChatApi.ToolResult>> slow = new CopyOnWriteArrayList<>();
+		ChatApi.ToolRunner runner = (name, input, done) ->
+		{
+			if ("wiki_page".equals(name))
+			{
+				slow.add(done);
+				return;
+			}
+			tools.run(name, input, r ->
+			{
+				done.accept(r);
+				read.countDown();
+			});
+		};
+		List<List<ChatApi.ToolResult>> handedBack = new CopyOnWriteArrayList<>();
+		ChatApi.runTools(runner, Arrays.asList("get_inventory", "wiki_page"), Arrays.asList(new JsonObject(), new JsonObject()),
+			handedBack::add);
+		assertTrue("not read", read.await(10, TimeUnit.SECONDS));
+		shareItems = false;
+		slow.get(0).accept(ChatApi.ToolResult.ok("The Wiki page"));
+
+		List<ChatApi.ToolResult> results = handedBack.get(0);
+		assertTrue(results.get(0).error);
+		assertTrue(results.get(0).content, results.get(0).content.startsWith("The player hasn't turned on \"" + ITEMS + "\""));
+		assertEquals("The Wiki page", results.get(1).content);
+
+		// Still on when the round's last result came in: shared.
+		shareItems = true;
+		handedBack.clear();
+		CountDownLatch again = new CountDownLatch(1);
+		ChatApi.runTools(tools, Collections.singletonList("get_inventory"), Collections.singletonList(new JsonObject()), r ->
+		{
+			handedBack.add(r);
+			again.countDown();
+		});
+		assertTrue("no result", again.await(10, TimeUnit.SECONDS));
+		assertTrue(handedBack.get(0).get(0).content, handedBack.get(0).get(0).content.startsWith("The player's inventory"));
+	}
+
+	@Test
 	public void needsThePlayerLoggedIn() throws Exception
 	{
 		game.loggedIn = false;

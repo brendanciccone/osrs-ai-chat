@@ -1,10 +1,12 @@
 package com.aichat;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.BitSet;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import okhttp3.HttpUrl;
 
 /**
@@ -1003,8 +1005,12 @@ class Markdown
 		private final List<Node> nodes = new ArrayList<>();
 		private final List<Node> delimiters = new ArrayList<>();
 		private final StringBuilder text = new StringBuilder();
-		/** Lengths of backtick runs known to have no closing run further on. */
-		private final BitSet noCloser = new BitSet();
+		/**
+		 * Where the runs of backticks after the first one start, by length, found in one pass when it's reached; those
+		 * behind the parser are dropped as it passes them. Searching on for a closing run instead would read the rest of
+		 * the text again for every run of a new length that has none.
+		 */
+		private Map<Integer, ArrayDeque<Integer>> backtickRuns;
 		/** How far bare addresses have been read: nothing before here ends one. */
 		private int addressScanned;
 
@@ -1101,10 +1107,9 @@ class Markdown
 		private int codeSpan(int i)
 		{
 			int run = runLength(i, '`');
-			int close = noCloser.get(run) ? -1 : findCloser(i + run, run);
+			int close = findCloser(i + run, run);
 			if (close < 0)
 			{
-				noCloser.set(run);
 				text.append(repeat('`', run));
 				return i + run;
 			}
@@ -1117,26 +1122,33 @@ class Markdown
 			return close + run;
 		}
 
+		/** The first run of exactly {@code run} backticks at or after {@code from}, which only grows from call to call. */
 		private int findCloser(int from, int run)
 		{
-			int j = from;
-			while (j < n)
+			if (backtickRuns == null)
 			{
-				if (s.charAt(j) == '`')
+				backtickRuns = new HashMap<>();
+				int j = from;
+				while (j < n)
 				{
-					int length = runLength(j, '`');
-					if (length == run)
+					if (s.charAt(j) == '`')
 					{
-						return j;
+						int length = runLength(j, '`');
+						backtickRuns.computeIfAbsent(length, k -> new ArrayDeque<>()).add(j);
+						j += length;
 					}
-					j += length;
-				}
-				else
-				{
-					j++;
+					else
+					{
+						j++;
+					}
 				}
 			}
-			return -1;
+			ArrayDeque<Integer> starts = backtickRuns.get(run);
+			while (starts != null && !starts.isEmpty() && starts.peekFirst() < from)
+			{
+				starts.pollFirst();
+			}
+			return starts == null || starts.isEmpty() ? -1 : starts.peekFirst();
 		}
 
 		/** "[text](address)" at {@code i}: the index after it, or -1. Link text can't contain "[" or a line break. */

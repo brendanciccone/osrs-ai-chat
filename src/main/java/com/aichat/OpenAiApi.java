@@ -49,7 +49,8 @@ class OpenAiApi implements ChatApi
 	private static final int OPENAI_MAX_TOKENS = 8000;
 	private static final int COMPATIBLE_MAX_TOKENS = 16000;
 	/** Some models (Qwen, DeepSeek R1 on some hosts, local models) put their reasoning inside the reply. */
-	private static final Pattern THINKING = Pattern.compile("(?s)<think>.*?</think>");
+	private static final String THINK = "<think>";
+	private static final String END_THINK = "</think>";
 	private static final String COULDNT_SEND = "AI Chat couldn't send the next part of this. Check the API key and URL in the settings.";
 	/**
 	 * Added to the instructions when the model can't use tools: they say which setting allows a game-data tool that
@@ -575,7 +576,7 @@ class OpenAiApi implements ChatApi
 			m.thinks |= piece.contains("think>") || m.content.indexOf("think>", Math.max(0, m.content.length() - piece.length() - 8)) >= 0;
 			String now = m.thinks ? withoutThinking(m.content.toString()) : m.content.toString().trim();
 			// The start of a tag that hasn't finished arriving.
-			if (now.isEmpty() || "<think>".startsWith(now) || now.equals(m.lastShown) || over.get() || pending.isCancelled())
+			if (now.isEmpty() || THINK.startsWith(now) || now.equals(m.lastShown) || over.get() || pending.isCancelled())
 			{
 				return;
 			}
@@ -1073,13 +1074,27 @@ class OpenAiApi implements ChatApi
 	 */
 	static String withoutThinking(String content)
 	{
-		String text = THINKING.matcher(content).replaceAll("");
-		int close = text.lastIndexOf("</think>");
+		// Whole blocks in one pass: a pattern would search the rest of the reply again for every opening tag with no
+		// closing one after it, and a streaming reply is filtered again with every piece.
+		StringBuilder kept = new StringBuilder(content.length());
+		int from = 0;
+		for (int start; (start = content.indexOf(THINK, from)) >= 0; )
+		{
+			int end = content.indexOf(END_THINK, start + THINK.length());
+			if (end < 0)
+			{
+				break;
+			}
+			kept.append(content, from, start);
+			from = end + END_THINK.length();
+		}
+		String text = kept.append(content, from, content.length()).toString();
+		int close = text.lastIndexOf(END_THINK);
 		if (close >= 0)
 		{
-			text = text.substring(close + "</think>".length());
+			text = text.substring(close + END_THINK.length());
 		}
-		int open = text.indexOf("<think>");
+		int open = text.indexOf(THINK);
 		if (open >= 0)
 		{
 			text = text.substring(0, open);

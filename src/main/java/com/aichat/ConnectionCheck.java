@@ -2,8 +2,10 @@ package com.aichat;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * The provider's list of models, asked for with the player's key: by "Test connection", which says what it means for
@@ -83,9 +85,11 @@ final class ConnectionCheck
 	static List<String> chatModels(List<String> ids, boolean sorted)
 	{
 		List<String> models = new ArrayList<>();
+		// A set, not models.contains: a service's list can be long, and this runs on the Swing thread.
+		Set<String> seen = new HashSet<>();
 		for (String id : ids)
 		{
-			if (id != null && !id.trim().isEmpty() && !models.contains(id) && isChatModel(id))
+			if (id != null && !id.trim().isEmpty() && isChatModel(id) && seen.add(id))
 			{
 				models.add(id);
 			}

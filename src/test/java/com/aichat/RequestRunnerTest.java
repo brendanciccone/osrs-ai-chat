@@ -675,6 +675,12 @@ public class RequestRunnerTest
 			failure.usage.output = 300;
 			api.listener().onError(failure);
 			runEdt();
+			// A service's name for its model stays on its line: it can't add lines of its own to the log.
+			send("Q23");
+			ChatApi.Reply odd = reply("Hi.", 10, 2);
+			odd.model = "m\r\nreply from claude-opus-5-5: 0 input";
+			api.listener().onReply(odd);
+			runEdt();
 
 			List<String> lines = new ArrayList<>();
 			for (ILoggingEvent e : logged.list)
@@ -685,7 +691,9 @@ public class RequestRunnerTest
 			assertEquals(List.of(
 				"summary from claude-opus-5-5-20261001: 5000 input, 0 from cache, 30 written to cache, 100 output tokens",
 				"reply from claude-opus-5-5-20261001: 1204 input, 3410 from cache, 0 written to cache, 352 output tokens",
-				"failed reply from claude-opus-5-5: 9000 input, 0 from cache, 0 written to cache, 300 output tokens"), lines);
+				"failed reply from claude-opus-5-5: 9000 input, 0 from cache, 0 written to cache, 300 output tokens",
+				"reply from m reply from claude-opus-5-5: 0 input: 10 input, 0 from cache, 0 written to cache, 2 output tokens"),
+				lines);
 		}
 		finally
 		{

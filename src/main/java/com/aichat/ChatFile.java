@@ -12,6 +12,7 @@ import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.function.BooleanSupplier;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import lombok.extern.slf4j.Slf4j;
@@ -49,6 +50,9 @@ final class ChatFile implements ChatSaver.Disk
 	}
 
 	private static final String LOCK_NAME = "chats.lock";
+	/** A damaged file kept aside: "chats-damaged-" and the time it was found. */
+	private static final String DAMAGED = "chats-damaged-";
+	private static final Pattern DAMAGED_NAME = Pattern.compile(DAMAGED + "\\d+\\.json");
 
 	private final Callable<Filepath> folder;
 	private final Gson gson;
@@ -103,7 +107,7 @@ final class ChatFile implements ChatSaver.Disk
 			if (loaded == null)
 			{
 				// Damaged: kept aside for anyone who wants to look, and a fresh file started.
-				Filepath aside = dir.joinSegment("chats-damaged-" + System.currentTimeMillis() + ".json");
+				Filepath aside = dir.joinSegment(DAMAGED + System.currentTimeMillis() + ".json");
 				file.moveTo(aside);
 				log.warn("the saved chats were damaged; moved them to {}", aside.getFileName());
 			}
@@ -206,9 +210,10 @@ final class ChatFile implements ChatSaver.Disk
 	}
 
 	/**
-	 * Deletes the saved chats, and any temporary file a save left behind, unless another RuneLite window owns them: they
-	 * are that window's to keep or delete. The lock, if held, stays; if this window hasn't taken it, it's taken only
-	 * while deleting, so it doesn't keep a window that saves its chats from owning them later.
+	 * Deletes the saved chats, any damaged copy kept aside and any temporary file a save left behind, unless another
+	 * RuneLite window owns them: they are that window's to keep or delete. The lock, if held, stays; if this window
+	 * hasn't taken it, it's taken only while deleting, so it doesn't keep a window that saves its chats from owning them
+	 * later.
 	 */
 	@Override
 	public synchronized void delete()
@@ -230,13 +235,12 @@ final class ChatFile implements ChatSaver.Disk
 				borrowed = true;
 			}
 			dir.joinSegment(ChatStore.FILE_NAME).deleteIfExists();
-			List<Filepath> temps;
+			List<Filepath> copies;
 			try (Stream<Filepath> files = dir.walk(1))
 			{
-				temps = files.filter(f -> f.isFile() && f.getFileName().startsWith("chats") && f.getFileName().endsWith(".tmp"))
-					.collect(Collectors.toList());
+				copies = files.filter(f -> f.isFile() && isCopy(f.getFileName())).collect(Collectors.toList());
 			}
-			for (Filepath f : temps)
+			for (Filepath f : copies)
 			{
 				f.deleteIfExists();
 			}
@@ -252,6 +256,12 @@ final class ChatFile implements ChatSaver.Disk
 				unlock();
 			}
 		}
+	}
+
+	/** A copy of the chats other than the file itself: one kept aside when it was damaged, or a save's temporary file. */
+	private static boolean isCopy(String name)
+	{
+		return DAMAGED_NAME.matcher(name).matches() || name.startsWith("chats") && name.endsWith(".tmp");
 	}
 
 	/** Gives the lock back (closing its channel releases it). */
