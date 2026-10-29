@@ -58,6 +58,22 @@ public class GameChatEchoTest
 		// Pipes outside a table stay as they are.
 		assertEquals(List.of(h + "Claude: " + n + "| this or that |"),
 			GameChatEcho.echoMessages("Claude", null, "| this or that |", 500));
+		// The rule can have spaces around it.
+		assertEquals(List.of(h + "Claude: - " + n + "Rune: 9k"),
+			GameChatEcho.echoMessages("Claude", null, "| Bow | Price |\n  | --- | ---: |  \n| Rune | 9k |", 500));
+	}
+
+	@Test
+	public void aLongLineUnderATableLineIsQuickToCheck()
+	{
+		// Read on the game's thread: checking whether it's a table's rule mustn't try every way to split its spaces.
+		for (String line : List.of(" ".repeat(50_000) + "x", "|-|" + " ".repeat(50_000) + "x"))
+		{
+			long started = System.nanoTime();
+			GameChatEcho.echoMessages("Claude", null, "| a | b |\n" + line, 500);
+			long ms = (System.nanoTime() - started) / 1_000_000;
+			assertTrue("took " + ms + "ms", ms < 3000);
+		}
 	}
 
 	@Test

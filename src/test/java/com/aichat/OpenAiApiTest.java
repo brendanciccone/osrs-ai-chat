@@ -478,7 +478,10 @@ public class OpenAiApiTest
 				java.util.regex.Matcher length = java.util.regex.Pattern.compile("(?i)content-length: *(\\d+)").matcher(head);
 				for (int left = length.find() ? Integer.parseInt(length.group(1)) : 0; left > 0; left--)
 				{
-					in.read();
+					if (in.read() < 0)
+					{
+						return;
+					}
 				}
 				byte[] body = String.join("", events).getBytes(StandardCharsets.UTF_8);
 				OutputStream out = c.getOutputStream();
@@ -882,6 +885,15 @@ public class OpenAiApiTest
 		assertEquals("", OpenAiApi.withoutThinking("<think>\nstill thinking when it ran out"));
 		assertEquals("Answer", OpenAiApi.withoutThinking("reasoning from a prompt that opened the tag</think>\nAnswer"));
 		assertEquals("Plain answer", OpenAiApi.withoutThinking(" Plain answer "));
+		assertEquals("B D", OpenAiApi.withoutThinking("<think>a</think>B <think>c</think>D"));
+		assertEquals("B", OpenAiApi.withoutThinking("a</think>B<think>c"));
+
+		// Opening tags with no closing one: each isn't a search through the rest of the reply.
+		String opened = "<think>".repeat(40_000);
+		long started = System.nanoTime();
+		assertEquals("", OpenAiApi.withoutThinking(opened));
+		long ms = (System.nanoTime() - started) / 1_000_000;
+		assertTrue("took " + ms + "ms", ms < 3000);
 	}
 
 	@Test

@@ -16,6 +16,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import okhttp3.Call;
 import okhttp3.MediaType;
@@ -102,21 +103,42 @@ interface ChatApi
 	{
 		final String content;
 		final boolean error;
+		/** For the player's own data: whether it may still be sent. Null for anything else. */
+		private final BooleanSupplier allowed;
+		/** What goes instead once {@link #allowed} says no. */
+		private final ToolResult otherwise;
 
-		private ToolResult(String content, boolean error)
+		private ToolResult(String content, boolean error, BooleanSupplier allowed, ToolResult otherwise)
 		{
 			this.content = content;
 			this.error = error;
+			this.allowed = allowed;
+			this.otherwise = otherwise;
 		}
 
 		static ToolResult ok(String content)
 		{
-			return new ToolResult(content, false);
+			return new ToolResult(content, false, null, null);
 		}
 
 		static ToolResult error(String message)
 		{
-			return new ToolResult(message, true);
+			return new ToolResult(message, true, null, null);
+		}
+
+		/**
+		 * This result, sent only while {@code allowed} says so, and {@code otherwise} after: {@link #runTools} asks again
+		 * once every call of the round is in, so a setting turned off while this one waited for the others still counts.
+		 */
+		ToolResult onlyWhile(BooleanSupplier allowed, ToolResult otherwise)
+		{
+			return new ToolResult(content, error, allowed, otherwise);
+		}
+
+		/** What's sent: this, or what goes instead now that it isn't allowed. */
+		ToolResult sendable()
+		{
+			return allowed == null || allowed.getAsBoolean() ? this : otherwise;
 		}
 	}
 
@@ -541,7 +563,8 @@ interface ChatApi
 	 * Runs the tool calls of one reply at the same time and hands back their results in the same order once all are
 	 * in, on whichever thread finished last. {@code inputs}: null for a call whose arguments couldn't be read; it isn't
 	 * run, and the model is told why. Calls beyond {@link #MAX_TOOL_CALLS} aren't run either. A runner that breaks its
-	 * promise (throws, or answers twice) can't stall the reply.
+	 * promise (throws, or answers twice) can't stall the reply. Results kept to a setting ({@link ToolResult#onlyWhile})
+	 * are checked against it again as they're handed back.
 	 */
 	static void runTools(ToolRunner runner, List<String> names, List<JsonObject> inputs, Consumer<List<ToolResult>> done)
 	{
@@ -571,7 +594,7 @@ interface ChatApi
 					List<ToolResult> all = new ArrayList<>();
 					for (ToolResult result : results)
 					{
-						all.add(result);
+						all.add(result.sendable());
 					}
 					done.accept(all);
 				}
