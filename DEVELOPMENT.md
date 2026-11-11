@@ -64,7 +64,8 @@ their own order rather than lay it out themselves at a moment of their choosing.
   changes, which is ignored), the chat's title, the starters (they fill the box, never send), Retry only on the last
   message and the latest reply's Copy and Retry, the banner (and the note that points to it), the player's bubbles,
   the reply on its way, when the transcript follows the chat down, Jump to the latest, the lines that open with a
-  chevron (and the one over a reply, fitted to its width), and the input box growing with its text.
+  chevron (and the one over a reply, fitted to its width), the input box growing with its text, each chat keeping
+  what's typed in it, Esc (Stop) and Up (the last question back).
   `ModelPickerTest`: the model picker's menu (the models, the one set ticked, Type a model name…, Refresh list), what
   it saves and what it doesn't, and a long name cut at its end.
   `SystemPromptTest`: the settings the assistant is told about, by the names `AiChatConfig` gives them (`SettingName`

@@ -135,7 +135,8 @@ final class ChatSaver
 
 	/**
 	 * Puts saved chats back in front of {@code chats}, leaving out any that are already there; the empty chat made at
-	 * start-up gives way to them. Returns the chat to show, or null when there was nothing to bring back.
+	 * start-up gives way to them, unless the player has started typing in it. Returns the chat to show, or null when
+	 * there was nothing to bring back.
 	 */
 	static Chat restore(List<Chat> chats, Chat current, ChatStore.Loaded loaded)
 	{
@@ -151,7 +152,7 @@ final class ChatSaver
 		{
 			return null;
 		}
-		chats.removeIf(c -> c.messages.isEmpty() && !c.isRunning() && !c.namedByPlayer);
+		chats.removeIf(c -> c.messages.isEmpty() && !c.isRunning() && !c.namedByPlayer && c.draft == null);
 		chats.addAll(0, fresh);
 		if (current != null && chats.contains(current))
 		{

@@ -15,6 +15,7 @@ import java.awt.event.FocusEvent;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.RoundRectangle2D;
 import javax.swing.AbstractAction;
+import javax.swing.Action;
 import javax.swing.JButton;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
@@ -33,14 +34,16 @@ import net.runelite.client.ui.ColorScheme;
  * Where the player writes, at the bottom of the panel as in chat apps: a short note when a message can't go yet, the
  * input box (saying "Ask anything..." while it's empty), and under it the model picker and one round button. The button
  * sends; while a reply is on its way it stops it, and while a long chat's summary is being made it skips that. Enter
- * sends and Shift+Enter starts a new line. The box grows with what's typed in it, up to a few lines, then scrolls.
- * Swing EDT only.
+ * sends and Shift+Enter starts a new line; Up in an empty box brings back the chat's last question, and Esc stops a
+ * reply (see {@link #escape}). The box grows with what's typed in it, up to a few lines, then scrolls. Swing EDT only.
  */
 final class Composer extends JPanel
 {
 	static final String PLACEHOLDER = "Ask anything…";
 	static final String SEND_TIP = "Send (Enter)";
-	static final String STOP_TIP = "Stop";
+	static final String STOP_TIP = "Stop (Esc)";
+	static final String INPUT_TIP = "Enter sends, Shift+Enter adds a line, and Up in an empty box brings back your "
+		+ "last question";
 	/** While a long chat is summarised before the question goes, the button skips the summary instead. */
 	static final String SKIP_TIP = "Skip the summary and send the whole chat this time. Press Stop after that to "
 		+ "stop the question too.";
@@ -72,6 +75,9 @@ final class Composer extends JPanel
 
 		/** The input box is about to change height: the transcript above it gets shorter or taller. */
 		void inputResizing();
+
+		/** The chat's last question, for Up to bring back into the empty box; null if it has none. */
+		String lastSent();
 	}
 
 	/** A short note above the box, such as why a message can't be sent yet; hidden when there's none. */
@@ -90,6 +96,12 @@ final class Composer extends JPanel
 	};
 	final ModelPicker models;
 	final ActionButton action = new ActionButton();
+	/**
+	 * Esc: stops the reply on its way, as Stop does, and with the same pause after the button changes. The panel puts
+	 * it on Esc wherever the focus is in it. Off the rest of the time, so Esc goes on to whatever else takes it: and
+	 * while a long chat's summary is being made it doesn't skip that, which would send the whole chat.
+	 */
+	final Action escape;
 	private final RoundBox box = new RoundBox(new BorderLayout(), PanelStyle.FIELD_COLOR, PanelStyle.OUTLINE_COLOR);
 	private final Actions actions;
 	/** There's a chat to write in. */
@@ -131,7 +143,7 @@ final class Composer extends JPanel
 		input.setForeground(PanelStyle.TEXT_COLOR);
 		input.setCaretColor(PanelStyle.TEXT_COLOR);
 		input.setBorder(new EmptyBorder(0, 0, 0, 0));
-		input.setToolTipText("Enter sends, Shift+Enter adds a line");
+		input.setToolTipText(INPUT_TIP);
 		input.getInputMap().put(KeyStroke.getKeyStroke("ENTER"), "ai-chat-send");
 		input.getInputMap().put(KeyStroke.getKeyStroke("shift ENTER"), DefaultEditorKit.insertBreakAction);
 		input.getActionMap().put("ai-chat-send", new AbstractAction()
@@ -142,6 +154,47 @@ final class Composer extends JPanel
 				send();
 			}
 		});
+		// Up in the empty box brings back the chat's last question, to change and send again; with text in the box it
+		// moves the caret up a line, as always.
+		input.getInputMap().put(KeyStroke.getKeyStroke("UP"), "ai-chat-recall");
+		input.getActionMap().put("ai-chat-recall", new AbstractAction()
+		{
+			@Override
+			public void actionPerformed(ActionEvent e)
+			{
+				if (input.getDocument().getLength() == 0)
+				{
+					String last = actions.lastSent();
+					if (last != null)
+					{
+						fill(last);
+					}
+					return;
+				}
+				Action up = input.getActionMap().get(DefaultEditorKit.upAction);
+				if (up != null)
+				{
+					up.actionPerformed(e);
+				}
+			}
+		});
+		escape = new AbstractAction()
+		{
+			@Override
+			public boolean isEnabled()
+			{
+				return action.mode == Mode.STOP;
+			}
+
+			@Override
+			public void actionPerformed(ActionEvent e)
+			{
+				if (isEnabled() && action.settled())
+				{
+					actions.stop();
+				}
+			}
+		};
 		input.getDocument().addDocumentListener(new DocumentListener()
 		{
 			@Override
@@ -298,6 +351,13 @@ final class Composer extends JPanel
 		input.setText(text);
 		input.setCaretPosition(input.getDocument().getLength());
 		input.requestFocusInWindow();
+	}
+
+	/** Shows another chat's draft in the box (empty for none), with the caret at its end. Leaves the focus where it is. */
+	void showDraft(String text)
+	{
+		input.setText(text == null ? "" : text);
+		input.setCaretPosition(input.getDocument().getLength());
 	}
 
 	/** Put a message that couldn't be sent back in the box, after anything already there. */

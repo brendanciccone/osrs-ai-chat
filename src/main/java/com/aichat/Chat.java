@@ -68,6 +68,11 @@ class Chat
 	boolean defaultName = true;
 	/** The player named this chat themselves, so the name can appear in notifications (it isn't their question). */
 	boolean namedByPlayer;
+	/**
+	 * What the player has typed in this chat's input box and not sent, or null: back in the box when they come back to
+	 * the chat. In memory only: never saved or sent.
+	 */
+	String draft;
 	final List<Message> messages = new ArrayList<>();
 	/**
 	 * What the oldest messages were summarised to, sent instead of them (see {@link ConversationBuilder}); null until a

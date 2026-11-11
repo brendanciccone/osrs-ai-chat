@@ -26,12 +26,15 @@ import javax.swing.JPopupMenu;
 import javax.swing.JScrollBar;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
+import javax.swing.KeyStroke;
 import javax.swing.ScrollPaneConstants;
 import javax.swing.Scrollable;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import javax.swing.border.EmptyBorder;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import net.runelite.client.ui.PluginPanel;
 
 /**
@@ -130,6 +133,8 @@ class AiChatPanel extends PluginPanel
 	/** What the transcript currently shows, to skip rebuilding it when nothing changed. */
 	private String shownKey = "";
 	private Chat shownChat;
+	/** The chat whose draft the input box holds: what's typed there is kept as its {@link Chat#draft}. */
+	private Chat draftChat;
 	private String comboKey = "";
 	/** The transcript's rows, kept between rebuilds so a new message doesn't redraw every earlier one. */
 	private final Map<Chat.Message, MessageRow> rows = new IdentityHashMap<>();
@@ -183,7 +188,46 @@ class AiChatPanel extends PluginPanel
 					scrollToBottom();
 				}
 			}
+
+			@Override
+			public String lastSent()
+			{
+				Chat chat = host.currentChat();
+				for (int i = chat == null ? -1 : chat.messages.size() - 1; i >= 0; i--)
+				{
+					if (chat.messages.get(i).role == Chat.Role.USER)
+					{
+						return chat.messages.get(i).text;
+					}
+				}
+				return null;
+			}
 		});
+		// Each chat keeps what's typed in it until it's sent, kept up to date as it's typed.
+		composer.input.getDocument().addDocumentListener(new DocumentListener()
+		{
+			@Override
+			public void insertUpdate(DocumentEvent e)
+			{
+				keepDraft();
+			}
+
+			@Override
+			public void removeUpdate(DocumentEvent e)
+			{
+				keepDraft();
+			}
+
+			@Override
+			public void changedUpdate(DocumentEvent e)
+			{
+				keepDraft();
+			}
+		});
+		// Esc stops the reply on its way wherever the focus is in the panel, unless something in it takes Esc first
+		// (an open list of chats closes).
+		getInputMap(WHEN_ANCESTOR_OF_FOCUSED_COMPONENT).put(KeyStroke.getKeyStroke("ESCAPE"), "ai-chat-stop");
+		getActionMap().put("ai-chat-stop", composer.escape);
 		// A starter only fills the input box: the player sends it.
 		empty = new EmptyChat(composer::fill);
 
@@ -307,10 +351,32 @@ class AiChatPanel extends PluginPanel
 	/** Bring everything in line with the plugin's latest state. Cheap when nothing changed. */
 	void refreshAll()
 	{
+		refreshDraft();
 		refreshSetup();
 		refreshChats();
 		refreshTranscript();
 		refreshStatus();
+	}
+
+	/** Another chat is shown: the input box shows what was typed in that one. What's typed in each is already kept. */
+	private void refreshDraft()
+	{
+		Chat chat = host.currentChat();
+		if (chat != draftChat)
+		{
+			draftChat = chat;
+			composer.showDraft(chat == null ? null : chat.draft);
+		}
+	}
+
+	/** What's in the input box is the shown chat's draft, until it's sent. A deleted chat's draft goes with it. */
+	private void keepDraft()
+	{
+		if (draftChat != null)
+		{
+			String text = composer.input.getText();
+			draftChat.draft = text.isEmpty() ? null : text;
+		}
 	}
 
 	/**

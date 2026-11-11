@@ -7,6 +7,7 @@ import java.awt.Insets;
 import java.awt.Toolkit;
 import java.awt.event.ActionEvent;
 import java.awt.event.InputEvent;
+import java.awt.event.KeyEvent;
 import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.lang.reflect.InvocationTargetException;
@@ -16,6 +17,7 @@ import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import javax.swing.Action;
 import javax.swing.JComponent;
 import javax.swing.JMenuItem;
 import javax.swing.JPanel;
@@ -253,7 +255,7 @@ public class AiChatPanelTest
 			host.current.pending = new ChatApi.Pending();
 			panel.refreshAll();
 			assertEquals(Composer.Mode.STOP, button.mode);
-			assertEquals("Stop", button.getToolTipText());
+			assertEquals("Stop (Esc)", button.getToolTipText());
 			assertTrue(button.isEnabled());
 			panel.composer.input.setText("");
 			assertTrue("Stop has nothing to send", button.isEnabled());
@@ -336,6 +338,132 @@ public class AiChatPanelTest
 			settle(button);
 			button.doClick();
 			assertEquals(Arrays.asList("What drops a whip?", "And a dragon pickaxe?"), host.sent);
+		});
+	}
+
+	/**
+	 * Presses Esc with the focus somewhere in the panel, as Swing would: false if the panel lets it go on to whatever
+	 * else takes it.
+	 */
+	private static boolean escape(AiChatPanel panel)
+	{
+		KeyStroke esc = KeyStroke.getKeyStroke("ESCAPE");
+		Object name = panel.getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT).get(esc);
+		Action action = panel.getActionMap().get(name);
+		KeyEvent press = new KeyEvent(panel, KeyEvent.KEY_PRESSED, 0, 0, KeyEvent.VK_ESCAPE, KeyEvent.CHAR_UNDEFINED);
+		return SwingUtilities.notifyAction(action, esc, press, panel, 0);
+	}
+
+	@Test
+	public void escStopsTheReplyOnItsWayAndNothingElse() throws Throwable
+	{
+		onEdt(() ->
+		{
+			AiChatPanel panel = new AiChatPanel(host);
+			Composer.ActionButton button = panel.composer.action;
+			panel.composer.input.setText("What drops a whip?");
+			assertFalse("nothing to stop: Esc goes on to whatever else takes it", escape(panel));
+			assertEquals(0, host.stops);
+			assertEquals("and nothing is sent", 0, host.sent.size());
+
+			add(Chat.Role.USER, "What drops a whip?");
+			host.current.pending = new ChatApi.Pending();
+			panel.refreshAll();
+			// Pressed the moment the question went: meant for something else, as with the button.
+			unsettle(button);
+			assertTrue(escape(panel));
+			assertEquals(0, host.stops);
+			settle(button);
+			assertTrue(escape(panel));
+			assertEquals(1, host.stops);
+
+			// While a long chat's summary is being made, Esc doesn't skip it: that would send the whole chat.
+			host.current.skipSummary = () ->
+			{
+			};
+			panel.refreshAll();
+			settle(button);
+			assertFalse(escape(panel));
+			assertEquals(1, host.stops);
+		});
+	}
+
+	@Test
+	public void upInAnEmptyBoxBringsBackTheLastQuestion() throws Throwable
+	{
+		onEdt(() ->
+		{
+			AiChatPanel panel = new AiChatPanel(host);
+			JTextArea input = panel.composer.input;
+			assertEquals(Composer.INPUT_TIP, input.getToolTipText());
+			press(input, "UP");
+			assertEquals("nothing asked yet", "", input.getText());
+
+			add(Chat.Role.USER, "What drops a whip?");
+			add(Chat.Role.ASSISTANT, "Abyssal demons.");
+			add(Chat.Role.USER, "And a dragon pickaxe?");
+			add(Chat.Role.ASSISTANT, "Several bosses, such as the King Black Dragon.");
+			panel.refreshAll();
+			press(input, "UP");
+			assertEquals("And a dragon pickaxe?", input.getText());
+			assertEquals("the caret waits at the end", input.getText().length(), input.getCaretPosition());
+			assertTrue("nothing is sent", host.sent.isEmpty());
+
+			// With text in the box, Up moves the caret up a line, as always.
+			input.setSize(200, 100);
+			input.setText("One\ntwo");
+			input.setCaretPosition(input.getText().length());
+			press(input, "UP");
+			assertEquals("One\ntwo", input.getText());
+			assertTrue("on the first line", input.getCaretPosition() <= "One".length());
+		});
+	}
+
+	@Test
+	public void eachChatKeepsWhatWasTypedInItUntilItsSent() throws Throwable
+	{
+		onEdt(() ->
+		{
+			AiChatPanel panel = new AiChatPanel(host);
+			JTextArea input = panel.composer.input;
+			Chat first = host.current;
+			input.setText("What drops a whip?");
+
+			// Another chat: its own box, empty to start with.
+			Chat second = new Chat("Chat 2");
+			host.chats.add(second);
+			host.current = second;
+			panel.refreshAll();
+			assertEquals("", input.getText());
+			input.setText("Best Agility course at 50?");
+
+			// Back to the first: what was typed there, with the caret at its end.
+			host.current = first;
+			panel.refreshAll();
+			assertEquals("What drops a whip?", input.getText());
+			assertEquals(input.getText().length(), input.getCaretPosition());
+
+			// Sent: gone from that chat, still waiting in the other.
+			panel.composer.action.doClick();
+			assertEquals(Arrays.asList("What drops a whip?"), host.sent);
+			assertNull(first.draft);
+			assertEquals("Best Agility course at 50?", second.draft);
+
+			// A message from the game chat that couldn't go waits in the chat that's open.
+			panel.restoreDraft("And a dragon pickaxe?");
+			assertEquals("And a dragon pickaxe?", first.draft);
+			input.setText("");
+			assertNull(first.draft);
+
+			// A chat deleted: what was typed in it goes with it, and the box shows the chat open now.
+			host.current = second;
+			panel.refreshAll();
+			assertEquals("Best Agility course at 50?", input.getText());
+			host.chats.remove(second);
+			host.current = first;
+			panel.refreshAll();
+			assertEquals("", input.getText());
+			assertNull(first.draft);
 		});
 	}
 
