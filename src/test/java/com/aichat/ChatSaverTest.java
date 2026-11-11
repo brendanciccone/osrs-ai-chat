@@ -300,19 +300,22 @@ public class ChatSaverTest
 		Chat named = chat("named", "Named");
 		named.namedByPlayer = true;
 		Chat empty = chat("empty", "Chat 1");
+		Chat typed = chat("typed", "Chat 2");
+		typed.draft = "What drops a whip?";
 		Chat again = chat("a", "Agility", "best course?");
 		chats.add(named);
 		chats.add(empty);
+		chats.add(typed);
 		chats.add(again);
 
 		Chat shown = ChatSaver.restore(chats, empty, loaded);
-		// "a" is already here; the empty chat gives way, the one the player named doesn't.
-		assertEquals(List.of("b", "named", "a"), ids(chats));
+		// "a" is already here; the empty chat gives way, the one the player named or started typing in doesn't.
+		assertEquals(List.of("b", "named", "typed", "a"), ids(chats));
 		assertSame("the one that was open, as the shown one went", loaded.current, shown);
 
 		// Nothing new: nothing changes.
 		assertNull(ChatSaver.restore(chats, named, loaded));
-		assertEquals(3, chats.size());
+		assertEquals(4, chats.size());
 	}
 
 	private static List<String> ids(List<Chat> chats)

@@ -13,7 +13,8 @@ look things up on the OSRS Wiki while it answers. Uses your own API key. Free an
 - A chat panel in the RuneLite sidebar that works like the AI chat apps you know: your messages in bubbles on the
   right, replies across the panel, "Ask anything..." at the bottom, and a few ideas to start a new chat with. Keep
   several chats: the chat's title at the top switches between them, **+** starts a new one, and the **⋯** menu
-  renames, clears or deletes it
+  renames, clears or deletes it. Each chat keeps what you've typed in it until you send it. Enter sends, **Esc** stops
+  a reply, and **Up** in an empty box brings back your last question to change and send again
 - `::ai <message>` in the chatbox to ask without opening the panel (or `::ai` alone, or a hotkey you pick in the
   settings, to open an "Ask:" box); the line is handled by the plugin and isn't sent to the game
 - Replies appear in the panel as they're written, with light formatting (lists, bold, tables, links you can click).
@@ -106,7 +107,8 @@ there's no server in between.
   each, and any older ones still sent to the assistant; see [Long chats](#long-chats)), so they're still there next
   time, including any character info that went with them and the list of what was looked up for each reply (the
   look-ups' contents aren't kept). Clear and Delete remove them from there too. Turn off **Save chat history** to keep
-  chats only while RuneLite is open; that also deletes the saved copy. API keys are never saved there. With
+  chats only while RuneLite is open; that also deletes the saved copy. API keys are never saved there, and neither is
+  anything you've typed and not sent: that stays with its chat only while RuneLite is open. With
   several RuneLite windows open, the first one remembers its chats and the others keep theirs only while open.
   Uninstalling AI Chat leaves the file: turn off **Save chat history** first, or delete the
   `.runelite/plugin-data/osrs-ai-chat` folder afterwards.
