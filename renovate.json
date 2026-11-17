@@ -1,0 +1,82 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":pinAllExceptPeerDependencies",
+    "helpers:pinGitHubActionDigestsToSemver"
+  ],
+  "timezone": "America/New_York",
+  "schedule": [
+    "* * 1-3 * *"
+  ],
+  "minimumReleaseAge": "7 days",
+  "internalChecksFilter": "strict",
+  "platformAutomerge": false,
+  "labels": [
+    "dependencies"
+  ],
+  "packageRules": [
+    {
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "digest"
+      ],
+      "groupName": "non-major dependencies",
+      "automerge": true
+    },
+    {
+      "matchUpdateTypes": [
+        "pin",
+        "pinDigest"
+      ],
+      "automerge": false
+    },
+    {
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "matchPackageNames": [
+        "wrangler",
+        "miniflare",
+        "/^@cloudflare\\//"
+      ],
+      "groupName": "Cloudflare toolchain",
+      "dependencyDashboardApproval": true,
+      "automerge": false
+    },
+    {
+      "matchPackageNames": [
+        "next",
+        "eslint-config-next",
+        "/^@opennextjs\\//"
+      ],
+      "groupName": "Next.js toolchain",
+      "automerge": false
+    },
+    {
+      "matchManagers": [
+        "gradle-wrapper"
+      ],
+      "enabled": false
+    }
+  ],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": [
+      "* * 1-3 * *"
+    ],
+    "minimumReleaseAgeBehaviour": "timestamp-optional",
+    "automerge": true
+  },
+  "vulnerabilityAlerts": {
+    "labels": [
+      "security"
+    ],
+    "minimumReleaseAge": "7 days",
+    "automerge": false
+  }
+}
