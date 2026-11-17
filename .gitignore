@@ -15,3 +15,12 @@ bin/
 .DS_Store
 # osrs-ai-chat
 *.tmp
+
+# Local environment and secrets
+.env*
+
+# Claude Code local settings (the rest of .claude/ is committed)
+.claude/*.local.json
+
+# iCloud conflict copies
+* [0-9].*
